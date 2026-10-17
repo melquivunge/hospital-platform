@@ -4,6 +4,7 @@ x-app: &app
         context: .
         target: app
     image: hospital-platform-app:local
+  pull_policy: never
     env_file: .env
     environment:
         DB_HOST: db
