@@ -43,6 +43,12 @@ composer test
 sh scripts/test-branch-guards.sh
 ```
 
+Para executar os testes com o PHP da imagem e as dependências de desenvolvimento instaladas no checkout:
+
+```sh
+docker compose run --rm --no-deps -e APP_ENV=testing -e DB_DATABASE=hospital_test -v "$PWD:/var/www/html" app php artisan test
+```
+
 `composer test` usa exclusivamente o banco `hospital_test` configurado em phpunit.xml. Defina DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD para um PostgreSQL de teste acessível; não use credenciais de produção. O Compose inicializa `hospital_test` apenas ao criar o volume pela primeira vez.
 
 ## Regra de ouro: nunca trabalhar na main

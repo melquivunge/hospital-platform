@@ -145,6 +145,16 @@
 /* Authentication keeps a consistent accessible light surface in either system theme. */
 .auth-surface {
     color-scheme: light;
+    --color-background: #f5f6f4;
+    --color-foreground: #172d36;
+    --color-primary: #126b61;
+    --color-primary-foreground: #ffffff;
+    --color-muted-foreground: #54666d;
+    --color-input: #c3cfcc;
+    --color-border: #c3cfcc;
+    --color-ring: #126b61;
+    --color-accent: #e2ece8;
+    --color-accent-foreground: #172d36;
     --background: #f5f6f4;
     --foreground: #172d36;
     --primary: #126b61;
