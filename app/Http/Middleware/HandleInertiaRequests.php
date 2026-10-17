@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Membership;
 use App\Models\PolicyVersion;
+use App\Models\Professional;
 use App\Tenancy\CurrentTenant;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -49,6 +50,8 @@ class HandleInertiaRequests extends Middleware
             'currentTenant' => fn () => app(CurrentTenant::class)->get()?->only('id', 'name'),
             'canManagePeople' => fn () => $request->user() !== null
                 && $request->user()->can('viewAny', Membership::class),
+            'canViewProfessionals' => fn () => $request->user() !== null
+                && $request->user()->can('viewAny', Professional::class),
             'canViewPolicies' => fn () => $request->user() !== null
                 && $request->user()->can('viewAny', PolicyVersion::class),
             'canSwitchTenant' => fn () => $request->user() !== null

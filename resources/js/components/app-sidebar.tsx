@@ -4,6 +4,7 @@ import {
     Building2,
     LayoutGrid,
     SlidersHorizontal,
+    Stethoscope,
     Users,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -22,6 +23,7 @@ import { dashboard } from '@/routes';
 import { edit as selectTenant } from '@/routes/current-tenant';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
+import { index as professionals } from '@/routes/professionals';
 import { index as units } from '@/routes/units';
 import type { NavItem } from '@/types';
 
@@ -39,10 +41,24 @@ const mainNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
-    const { currentTenant, canSwitchTenant, canManagePeople, canViewPolicies } =
-        usePage().props;
+    const {
+        currentTenant,
+        canSwitchTenant,
+        canManagePeople,
+        canViewPolicies,
+        canViewProfessionals,
+    } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
+        ...(canViewProfessionals
+            ? [
+                  {
+                      title: 'Profissionais',
+                      href: professionals(),
+                      icon: Stethoscope,
+                  },
+              ]
+            : []),
         ...(canManagePeople
             ? [{ title: 'Pessoas', href: people(), icon: Users }]
             : []),

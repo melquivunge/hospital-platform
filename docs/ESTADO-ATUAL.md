@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, com identidade visual própria. Próximo passo: etapa 3 (profissionais e elegibilidade).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas e cadastro de profissionais, com identidade visual própria. Próximo passo: etapa 3b (funções, habilitações por unidade/função/setor e elegibilidade).
 
 ## Onde está cada coisa
 
@@ -31,14 +31,23 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #5 | Identidade visual no app inteiro e página de erro própria | Mesclado |
 | #6 | Este arquivo de estado | Mesclado |
 | #7 | Etapa 2b-2: pessoas e papéis (convite, papéis, revogar/reativar, último administrador) | Mesclado após revisão de segurança |
-| #8 | Etapa 2c: catálogo de regras e ADR do RLS | Aberto, aguardando CI e merge autorizado |
+| #8 | Etapa 2c: catálogo de regras e ADR do RLS | Mesclado |
+| — | Etapa 3a: cadastro de profissionais e unidade-base (branch `feat/professionals`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS).
-- **Próximo: etapa 3** (profissionais e elegibilidade), e depois as etapas 4 a 9 (plantões, importação, vagas, trocas, presença, relatórios).
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais).
+- **Próximo: etapa 3b** (funções, habilitações e elegibilidade), e depois as etapas 4 a 9 (plantões, importação, vagas, trocas, presença, relatórios).
+
+### Etapa 3: decisões do usuário (17/10/2026)
+
+- O profissional é um cadastro independente da conta de acesso. A ligação a uma conta fica para quando houver portal do profissional.
+- Habilitação é um registro por profissional, unidade e função, com status (pendente, aprovada, suspensa, revogada) e validade. Inclui os setores autorizados.
+- Dados do cadastro: nome, registro no conselho (conselho, número e UF), identificador externo e contato (e-mail e telefone).
+- 3a (feita): cadastro, unidade-base obrigatória, troca de base só por administrador de rede ou por gestor das duas unidades, com motivo e histórico na auditoria.
+- 3b (próxima): funções da rede, habilitações e serviço de elegibilidade com motivos (mesma rede, mesma UF, habilitação aprovada e vigente durante todo o plantão, setor autorizado).
 
 ### Etapa 2c: como funciona o catálogo de regras
 
@@ -103,7 +112,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 128 testes passando (etapa 2c), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 138 testes passando (etapa 3a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
@@ -119,6 +128,7 @@ sh scripts/test-branch-guards.sh
 - Proxy confiável (`trustProxies`) e e-mail de recuperação em fila: definir quando houver hospedagem.
 - Catálogo de regras: rascunho/aprovação, agendamento de vigência e as demais regras de presença (raio, janelas de entrada e saída) ficaram fora da 2c por decisão do usuário. O raio deve entrar junto com os pontos autorizados (etapa 8).
 - RLS não adotado na V1 (ADR-0002); reavaliar antes da produção.
+- Profissionais: a mensagem de duplicidade (registro no conselho ou identificador externo) revela a um gestor que o dado já existe em outra unidade da rede. Risco aceito, porque a unicidade vale para a rede inteira. A ligação do profissional a uma conta de acesso ainda não existe.
 - Decisões de produto em aberto:
   - Validar se a UF combina com o fuso?
   - Impedir apagar UF ou fuso de unidade com escalas publicadas?
