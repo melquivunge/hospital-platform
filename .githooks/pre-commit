@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+branch=$(git symbolic-ref --quiet --short HEAD) || { echo 'Commit exige uma branch de tarefa.' >&2; exit 1; }
+case "$branch" in main|master) echo 'Regra de ouro: crie uma branch; commits na main/master são proibidos.' >&2; exit 1;; esac

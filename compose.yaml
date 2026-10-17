@@ -1,0 +1,73 @@
+name: hospital-platform
+x-app: &app
+    build:
+        context: .
+        target: app
+    image: hospital-platform-app:local
+    env_file: .env
+    environment:
+        DB_HOST: db
+        DB_PORT: 5432
+        MAIL_HOST: mailpit
+        MAIL_PORT: 1025
+    volumes:
+        - app-storage:/var/www/html/storage
+    security_opt:
+        - no-new-privileges:true
+services:
+    db:
+        image: postgres:18-bookworm
+        environment:
+            POSTGRES_DB: ${DB_DATABASE:?Run scripts/setup-local.sh}
+            POSTGRES_USER: ${DB_USERNAME:?Run scripts/setup-local.sh}
+            POSTGRES_PASSWORD: ${DB_PASSWORD:?Run scripts/setup-local.sh}
+        volumes:
+            - pgdata:/var/lib/postgresql
+            - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
+        healthcheck:
+            test:
+                [
+                    CMD-SHELL,
+                    'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"',
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+    init:
+        <<: *app
+        command: [php, artisan, migrate, --force, --no-interaction]
+        depends_on:
+            db:
+                condition: service_healthy
+    app:
+        <<: *app
+        depends_on:
+            init:
+                condition: service_completed_successfully
+    web:
+        build:
+            context: .
+            target: web
+        image: hospital-platform-web:local
+        ports:
+            - '127.0.0.1:${APP_PORT:-8080}:8080'
+        depends_on:
+            - app
+        healthcheck:
+            test: [CMD, wget, --quiet, --spider, 'http://127.0.0.1:8080/up']
+            interval: 10s
+            timeout: 5s
+            retries: 12
+    worker:
+        <<: *app
+        command: [php, artisan, queue:work, --sleep=3, --tries=3, --timeout=60]
+        depends_on:
+            init:
+                condition: service_completed_successfully
+    mailpit:
+        image: axllent/mailpit:v1.27
+        ports:
+            - '127.0.0.1:${MAILPIT_PORT:-8025}:8025'
+volumes:
+    pgdata:
+    app-storage:

@@ -1,6 +1,6 @@
 # Blueprint ECC — construção da primeira entrega web
 
-Data: 17/10/2026. Estado: proposta de arquitetura e plano, aguardando aceite; não executar como autorização implícita de código ou produção.
+Data: 17/10/2026. Estado: arquitetura aceita pelo usuário em 17/10/2026; etapa 1 em implementação. Infraestrutura GitHub/CI/Docker incluída por solicitação posterior; CD adiado até definição de hospedagem.
 Contrato funcional: ../PRODUCT.md, seção Contrato V1. Instruções: ../AGENTS.md.
 
 ## Evidência e objetivo

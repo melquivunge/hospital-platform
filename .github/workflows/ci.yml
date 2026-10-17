@@ -1,0 +1,80 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'feat/**', 'fix/**', 'chore/**', 'docs/**']
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18-bookworm
+        env:
+          POSTGRES_DB: hospital_test
+          POSTGRES_USER: hospital
+          POSTGRES_PASSWORD: ci-disposable-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hospital -d hospital_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: hospital_test
+      DB_USERNAME: hospital
+      DB_PASSWORD: ci-disposable-only
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962
+        with:
+          php-version: '8.5'
+          extensions: pdo_pgsql, intl, mbstring, zip
+          coverage: none
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: cp .env.example .env
+      - run: composer install --no-interaction --prefer-dist
+      - run: php artisan key:generate
+      - run: npm ci
+      - run: php artisan wayfinder:generate --with-form
+      - run: npm run types:check
+      - run: npm run check
+      - run: npm run build
+      - run: composer test
+      - run: composer audit
+      - run: npm audit --audit-level=high
+      - name: Branch guard regression
+        run: sh scripts/test-branch-guards.sh
+  containers:
+    name: containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: sh scripts/setup-local.sh
+      - run: docker compose config --quiet
+      - run: docker compose up --build -d --wait --wait-timeout 180
+      - name: Smoke test HTTP and database
+        run: |
+          curl --fail --silent http://localhost:8080/up > /dev/null
+          curl --fail --silent http://localhost:8080/login | grep -q 'Plataforma Hospitalar'
+          docker compose exec -T app php artisan migrate:status
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8080/register)" = 404
+      - name: Diagnostic logs
+        if: failure()
+        run: docker compose logs --tail=80
+      - name: Stop services without deleting volumes
+        if: always()
+        run: docker compose down
