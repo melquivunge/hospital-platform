@@ -11,6 +11,7 @@ use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -178,5 +179,48 @@ class PeopleManagementTest extends TestCase
         });
 
         $this->assertNotNull($user->fresh()?->email_verified_at);
+    }
+
+    public function test_reinvitation_does_not_restore_previous_roles(): void
+    {
+        Notification::fake();
+        $admin = $this->admin();
+        $member = Membership::factory()->for($admin->tenant)->withRole(Role::NetworkAdmin)->create();
+        $member->revoke();
+
+        $this->actingAs($admin->user)
+            ->post(route('people.store'), ['name' => 'X', 'email' => $member->user->email, 'role' => 'auditor'])
+            ->assertRedirect();
+
+        $roles = RoleAssignment::withoutTenantScope()->where('membership_id', $member->id)->pluck('role')->map->value->all();
+        $this->assertSame(['auditor'], $roles);
+    }
+
+    public function test_legacy_mixed_case_email_is_found_not_duplicated(): void
+    {
+        Notification::fake();
+        $admin = $this->admin();
+        $legacy = User::factory()->create();
+        DB::table('users')->where('id', $legacy->id)->update(['email' => 'Legado@Example.test']);
+
+        $this->actingAs($admin->user)
+            ->post(route('people.store'), ['name' => 'X', 'email' => 'legado@example.test', 'role' => 'auditor'])
+            ->assertRedirect();
+
+        $this->assertSame(1, User::whereRaw('lower(email) = ?', ['legado@example.test'])->count());
+    }
+
+    public function test_non_admin_cannot_change_roles_or_access(): void
+    {
+        $admin = $this->admin();
+        $member = Membership::factory()->for($admin->tenant)->withRole(Role::Auditor)->create();
+        $auditor = Membership::factory()->for($admin->tenant)->withRole(Role::Auditor)->create();
+        $assignment = RoleAssignment::withoutTenantScope()->where('membership_id', $member->id)->firstOrFail();
+
+        $this->actingAs($auditor->user)
+            ->post(route('people.roles.store', $member), ['role' => 'auditor'])->assertForbidden();
+        $this->delete(route('people.roles.destroy', [$member, $assignment]))->assertForbidden();
+        $this->post(route('people.revoke', $member))->assertForbidden();
+        $this->post(route('people.reactivate', $member))->assertForbidden();
     }
 }

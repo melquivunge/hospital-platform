@@ -11,6 +11,8 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
+use Illuminate\Contracts\Auth\PasswordBroker;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -49,8 +51,10 @@ class PeopleController extends Controller
         $data = $request->validated();
         $tenantId = app(CurrentTenant::class)->require()->id;
 
-        [$membership, $isNewUser] = DB::transaction(function () use ($data, $tenantId) {
-            $user = User::where('email', $data['email'])->first();
+        [$membership, $isNewUser] = $this->retryOnDuplicate(fn () => DB::transaction(function () use ($data, $tenantId) {
+            Membership::lockTenant($tenantId);
+
+            $user = User::whereRaw('lower(email) = ?', [$data['email']])->first();
             $isNewUser = $user === null;
             $user ??= User::create(['name' => $data['name'], 'email' => $data['email'], 'password' => Str::password(64)]);
 
@@ -60,22 +64,28 @@ class PeopleController extends Controller
                 throw ValidationException::withMessages(['email' => 'Esta pessoa já tem acesso à instituição.']);
             }
 
-            $membership->exists ? $membership->reactivate() : $membership->save();
+            if ($membership->exists) {
+                // A re-invitation grants only what this invitation says, never the old roles.
+                $membership->roleAssignments()->delete();
+                $membership->reactivate();
+            } else {
+                $membership->save();
+            }
+
             $this->grantIfMissing($membership, Role::from($data['role']), $data['unit_id'] ?? null);
 
             AuditEvent::record('member.invited', $tenantId, $membership, ['user_id' => $user->id, 'new_identity' => $isNewUser]);
 
             return [$membership, $isNewUser];
-        });
+        }));
 
         // After commit: a new person sets the password (and confirms the email) through this link.
-        if ($isNewUser) {
-            Password::broker()->sendResetLink(['email' => $data['email']]);
-        }
+        $sent = ! $isNewUser || Password::broker()->sendResetLink(['email' => $data['email']]) === PasswordBroker::RESET_LINK_SENT;
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => $isNewUser
-            ? 'Convite enviado. A pessoa receberá um e-mail para definir a senha.'
-            : 'Acesso concedido. A pessoa já pode entrar com a conta existente.']);
+        // Same wording whether or not the email already had an account: no cross-client account discovery.
+        Inertia::flash('toast', $sent
+            ? ['type' => 'success', 'message' => 'Convite registrado. A pessoa pode entrar com o e-mail informado.']
+            : ['type' => 'error', 'message' => 'Acesso registrado, mas o e-mail de definição de senha não pôde ser enviado agora. Peça que a pessoa use "Esqueceu sua senha?".']);
 
         return to_route('people.show', $membership);
     }
@@ -99,7 +109,16 @@ class PeopleController extends Controller
         }
 
         $data = $request->validated();
-        $this->grantIfMissing($membership, Role::from($data['role']), $data['unit_id'] ?? null);
+
+        DB::transaction(function () use ($membership, $data) {
+            Membership::lockTenant($membership->tenant_id);
+
+            if ($membership->refresh()->revoked_at !== null) {
+                throw ValidationException::withMessages(['role' => 'Reative o acesso antes de conceder papéis.']);
+            }
+
+            $this->grantIfMissing($membership, Role::from($data['role']), $data['unit_id'] ?? null);
+        });
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Papel concedido.']);
 
@@ -147,6 +166,23 @@ class PeopleController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Acesso reativado.']);
 
         return to_route('people.show', $membership);
+    }
+
+    /**
+     * Two first-time invitations of the same email race on the unique index; the loser retries once.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $work
+     * @return T
+     */
+    private function retryOnDuplicate(callable $work): mixed
+    {
+        try {
+            return $work();
+        } catch (UniqueConstraintViolationException) {
+            return $work();
+        }
     }
 
     private function grantIfMissing(Membership $membership, Role $role, ?int $unitId): void

@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades e setores, com identidade visual própria. Próximo passo: usuários e papéis (etapa 2b-2).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, com identidade visual própria. Próximo passo: etapa 2c (catálogo de regras e decisão sobre RLS) e, em seguida, etapa 3 (profissionais e elegibilidade).
 
 ## Onde está cada coisa
 
@@ -27,15 +27,16 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #2 | Endurecimento: recuperação de senha, produção, cabeçalhos HTTP, pt-BR | Mesclado |
 | #3 | Etapa 2a: isolamento entre clientes, vínculos, papéis, auditoria | Mesclado |
 | #4 | Etapa 2b-1: seletor de instituição, unidades e setores | Mesclado |
-| #5 | Identidade visual no app inteiro e página de erro própria | **Aberto**, CI aprovado; falta revisão independente e autorização de merge |
+| #5 | Identidade visual no app inteiro e página de erro própria | Mesclado |
+| #6 | Este arquivo de estado | Mesclado |
+| #7 | Etapa 2b-2: pessoas e papéis (convite, papéis, revogar/reativar, último administrador) | Mesclado após revisão de segurança |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5).
-- **Próximo: 2b-2.** Usuários e papéis: convidar pessoa, conceder e retirar papel, revogar e reativar vínculo, proteger o último administrador, e-mail sem distinção de maiúsculas. Só o administrador de rede faz isso.
-- Depois: 2c (catálogo de regras herdadas e decisão sobre RLS), e as etapas 3 a 9 do plano (profissionais, plantões, importação, vagas, trocas, presença, relatórios).
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7).
+- **Próximo: 2c** (catálogo de regras herdadas e decisão sobre RLS), e as etapas 3 a 9 do plano (profissionais, plantões, importação, vagas, trocas, presença, relatórios).
 
 ## Como testar localmente
 
@@ -53,17 +54,25 @@ docker compose up --build -d --wait
 
 ### 2. Usuário de teste
 
-Existe **um** usuário sintético: `admin@aurora.example`. Ele é administrador de rede de dois clientes fictícios, **Rede Aurora** (com unidades e setores de teste) e **Hospital Horizonte** (vazio).
+Contas no ambiente local:
+
+- `melquivunge@gmail.com` (usuário real do projeto): administrador de rede da **Rede Aurora** e da **Rede Insightcare Demo**.
+- `admin@aurora.example` (sintético): administrador da **Rede Aurora** (unidades e setores de teste) e do **Hospital Horizonte**.
+- `verificacao@horizonte.example` (sintético, usado nas verificações automáticas): administrador do **Hospital Horizonte**.
+
+Pacientes não existem: estão fora da V1 (PRODUCT.md).
 
 Nenhuma senha fica gravada no projeto. Para entrar:
 
 1. Abra http://localhost:8080/login e clique em **Esqueceu sua senha?**
 2. Informe `admin@aurora.example` e envie.
 3. Abra http://localhost:8025, abra o e-mail "Reset your password" e clique no link.
-4. Defina uma senha e entre.
-5. Como a conta tem duas instituições, escolha uma (por exemplo, Rede Aurora).
+4. Defina uma senha e entre (o e-mail fica confirmado nesse passo).
+5. Com mais de uma instituição, escolha uma. A gestão de equipe fica em **Pessoas**.
 
 ### 3. Criar outro cliente e administrador
+
+Para pessoas de um cliente existente, use a tela **Pessoas** (convite). Para um cliente novo:
 
 ```sh
 docker compose exec app php artisan tenant:provision "Nome do Cliente" --admin-email=pessoa@exemplo.test --admin-name="Nome"
@@ -83,7 +92,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 101 testes passando (PR #5), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 117 testes passando (PR #7), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
@@ -101,4 +110,5 @@ sh scripts/test-branch-guards.sh
   - Validar se a UF combina com o fuso?
   - Impedir apagar UF ou fuso de unidade com escalas publicadas?
 - Exclusão de unidades e setores não existe de propósito, para preservar o histórico.
+- Convite: decidir se vincular uma conta já existente exige aceite da pessoa (hoje o vínculo é imediato).
 - Dados sintéticos no ambiente local: unidades "Hospital Teste …" criadas durante as verificações.
