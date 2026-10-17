@@ -3,6 +3,7 @@
 use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PeopleController;
+use App\Http\Controllers\PolicyController;
 use App\Http\Controllers\SectorController;
 use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
@@ -19,6 +20,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('people/{membership}/revoke', [PeopleController::class, 'revoke'])->name('people.revoke');
     Route::post('people/{membership}/reactivate', [PeopleController::class, 'reactivate'])->name('people.reactivate');
     Route::post('people/{membership}/roles', [PeopleController::class, 'grantRole'])->name('people.roles.store');
+    Route::get('policies', [PolicyController::class, 'index'])->name('policies.index');
+    Route::post('policies/{key}', [PolicyController::class, 'publishNetwork'])->name('policies.publish');
+    Route::post('units/{unit}/policies/{key}', [PolicyController::class, 'publishLocal'])->name('units.policies.publish');
 
     Route::scopeBindings()->group(function () {
         Route::delete('people/{membership}/roles/{roleAssignment}', [PeopleController::class, 'revokeRole'])->name('people.roles.destroy');

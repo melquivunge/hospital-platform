@@ -1,5 +1,11 @@
 import { Link, usePage } from '@inertiajs/react';
-import { ArrowLeftRight, Building2, LayoutGrid, Users } from 'lucide-react';
+import {
+    ArrowLeftRight,
+    Building2,
+    LayoutGrid,
+    SlidersHorizontal,
+    Users,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -15,6 +21,7 @@ import {
 import { dashboard } from '@/routes';
 import { edit as selectTenant } from '@/routes/current-tenant';
 import { index as people } from '@/routes/people';
+import { index as policies } from '@/routes/policies';
 import { index as units } from '@/routes/units';
 import type { NavItem } from '@/types';
 
@@ -32,10 +39,17 @@ const mainNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
-    const { currentTenant, canSwitchTenant, canManagePeople } = usePage().props;
-    const navItems: NavItem[] = canManagePeople
-        ? [...mainNavItems, { title: 'Pessoas', href: people(), icon: Users }]
-        : mainNavItems;
+    const { currentTenant, canSwitchTenant, canManagePeople, canViewPolicies } =
+        usePage().props;
+    const navItems: NavItem[] = [
+        ...mainNavItems,
+        ...(canManagePeople
+            ? [{ title: 'Pessoas', href: people(), icon: Users }]
+            : []),
+        ...(canViewPolicies
+            ? [{ title: 'Regras', href: policies(), icon: SlidersHorizontal }]
+            : []),
+    ];
 
     return (
         <Sidebar collapsible="icon" variant="inset">
