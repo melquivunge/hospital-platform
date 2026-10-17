@@ -32,6 +32,7 @@ export default function Dashboard({
             done: stats.units > 0,
             href: units(),
             action: 'Ver unidades',
+            adminOnly: true,
         },
         {
             title: 'Completar cadastros',
@@ -40,6 +41,7 @@ export default function Dashboard({
             done: stats.units > 0 && stats.incomplete === 0,
             href: units(),
             action: 'Revisar unidades',
+            adminOnly: true,
         },
         {
             title: 'Organizar setores',
@@ -54,7 +56,8 @@ export default function Dashboard({
             done: false,
             upcoming: true,
         },
-    ];
+        // Only show as pending what this role can actually resolve.
+    ].filter((step) => !step.adminOnly || canCreateUnit);
 
     return (
         <>

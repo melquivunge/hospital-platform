@@ -94,7 +94,7 @@ export default function UnitsIndex({
                                         <td className="px-5 py-4">
                                             <Link
                                                 href={show(unit.id)}
-                                                className="font-medium after:absolute after:inset-0 focus-visible:outline-none after:focus-visible:rounded-sm after:focus-visible:ring-2 after:focus-visible:ring-ring after:focus-visible:ring-inset"
+                                                className="font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:rounded-sm focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
                                             >
                                                 {unit.name}
                                             </Link>

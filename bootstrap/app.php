@@ -49,10 +49,17 @@ return Application::configure(basePath: dirname(__DIR__))
             $status = $response->getStatusCode();
             $branded = in_array($status, [403, 404, 419, 503], true) || ($status >= 500 && ! config('app.debug'));
 
-            if (! $branded || $request->expectsJson()) {
+            if (! $branded || $request->is('api/*') || $request->expectsJson()) {
                 return $response;
             }
 
-            return Inertia::render('error', ['status' => $status])->toResponse($request)->setStatusCode($status);
+            $page = Inertia::render('error', ['status' => $status])->toResponse($request)->setStatusCode($status);
+
+            // Keep client-relevant headers only; copying all would clobber Inertia's own Content-Type.
+            if ($response->headers->has('Retry-After')) {
+                $page->headers->set('Retry-After', $response->headers->get('Retry-After'));
+            }
+
+            return $page;
         });
     })->create();
