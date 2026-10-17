@@ -6,6 +6,7 @@ use App\Tenancy\BelongsToTenant;
 use App\Tenancy\Role;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Role of a membership, tenant-wide (unit_id null) or for one unit.
@@ -29,5 +30,21 @@ class RoleAssignment extends Model
         return [
             'role' => Role::class,
         ];
+    }
+
+    /**
+     * @return BelongsTo<Membership, $this>
+     */
+    public function membership(): BelongsTo
+    {
+        return $this->belongsTo(Membership::class);
+    }
+
+    /**
+     * @return BelongsTo<Unit, $this>
+     */
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
 use Database\Factories\MembershipFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use LogicException;
 
 /**
@@ -111,6 +113,62 @@ class Membership extends Model
         $this->unsetRelation('roleAssignments');
 
         return $assignment;
+    }
+
+    /**
+     * Route binding only inside the current tenant: memberships of other clients are 404.
+     */
+    public function resolveRouteBinding($value, $field = null): ?self
+    {
+        return $this->where($field ?? $this->getRouteKeyName(), $value)
+            ->where('tenant_id', app(CurrentTenant::class)->require()->id)
+            ->first();
+    }
+
+    /**
+     * Active network admins of a tenant. Callers lock the tenant row first so two concurrent
+     * removals cannot both pass the "not the last admin" check.
+     */
+    public static function activeNetworkAdminCount(int $tenantId): int
+    {
+        return RoleAssignment::withoutTenantScope()
+            ->where('tenant_id', $tenantId)
+            ->where('role', Role::NetworkAdmin)
+            ->whereHas('membership', fn (Builder $query) => $query->whereNull('revoked_at'))
+            ->count();
+    }
+
+    public static function lockTenant(int $tenantId): void
+    {
+        Tenant::whereKey($tenantId)->lockForUpdate()->first();
+    }
+
+    public function revokeRole(RoleAssignment $assignment): void
+    {
+        DB::transaction(function () use ($assignment) {
+            self::lockTenant($this->tenant_id);
+
+            if ($assignment->role === Role::NetworkAdmin && self::activeNetworkAdminCount($this->tenant_id) <= 1) {
+                throw ValidationException::withMessages(['role' => 'A instituição precisa de ao menos um administrador de rede ativo.']);
+            }
+
+            $assignment->delete();
+            AuditEvent::record('role.revoked', $this->tenant_id, $this, ['role' => $assignment->role->value, 'unit_id' => $assignment->unit_id]);
+        });
+        $this->unsetRelation('roleAssignments');
+    }
+
+    public function reactivate(): void
+    {
+        if ($this->revoked_at === null) {
+            return;
+        }
+
+        DB::transaction(function () {
+            $this->forceFill(['revoked_at' => null])->save();
+
+            AuditEvent::record('membership.reactivated', $this->tenant_id, $this, ['user_id' => $this->user_id]);
+        });
     }
 
     public function revoke(): void

@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { ArrowLeftRight, Building2, LayoutGrid } from 'lucide-react';
+import { ArrowLeftRight, Building2, LayoutGrid, Users } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { edit as selectTenant } from '@/routes/current-tenant';
+import { index as people } from '@/routes/people';
 import { index as units } from '@/routes/units';
 import type { NavItem } from '@/types';
 
@@ -31,7 +32,10 @@ const mainNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
-    const { currentTenant, canSwitchTenant } = usePage().props;
+    const { currentTenant, canSwitchTenant, canManagePeople } = usePage().props;
+    const navItems: NavItem[] = canManagePeople
+        ? [...mainNavItems, { title: 'Pessoas', href: people(), icon: Users }]
+        : mainNavItems;
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -65,7 +69,7 @@ export function AppSidebar() {
                                     </Link>
                                 </SidebarMenuButton>
                             ) : (
-                                <p className="truncate px-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+                                <p className="truncate px-2 text-xs text-sidebar-foreground/75 group-data-[collapsible=icon]:hidden">
                                     {currentTenant.name}
                                 </p>
                             )}
@@ -75,7 +79,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain items={navItems} />
             </SidebarContent>
 
             <SidebarFooter>
