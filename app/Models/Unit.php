@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use App\Tenancy\BelongsToTenant;
+use App\Tenancy\Role;
 use Database\Factories\UnitFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -33,6 +35,20 @@ class Unit extends Model
     public function isComplete(): bool
     {
         return $this->uf !== null && $this->timezone !== null;
+    }
+
+    /**
+     * Network admins and auditors see every unit of the tenant; other roles only their units.
+     *
+     * @param  Builder<Unit>  $query
+     */
+    public function scopeVisibleTo(Builder $query, Membership $membership): void
+    {
+        if ($membership->hasRole(Role::NetworkAdmin) || $membership->hasRole(Role::Auditor)) {
+            return;
+        }
+
+        $query->whereIn('id', $membership->roleAssignments->pluck('unit_id')->filter()->all());
     }
 
     /**

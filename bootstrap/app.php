@@ -11,6 +11,8 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -41,4 +43,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // Branded pt-BR error page; never shows exception messages (they can name models or internals).
+        $exceptions->respond(function (Response $response, Throwable $e, Request $request) {
+            $status = $response->getStatusCode();
+            $branded = in_array($status, [403, 404, 419, 503], true) || ($status >= 500 && ! config('app.debug'));
+
+            if (! $branded || $request->expectsJson()) {
+                return $response;
+            }
+
+            return Inertia::render('error', ['status' => $status])->toResponse($request)->setStatusCode($status);
+        });
     })->create();
