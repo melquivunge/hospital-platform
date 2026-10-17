@@ -318,4 +318,4 @@ ECC Product Capability aplicado. Agente de pesquisa UX examinou as 18 imagens re
 
 ### Direção visual — 17/10/2026
 
-Usuário exige interface elegante, bonita e profissional. Direção em [docs/design/direction.md](docs/design/direction.md); acabamento deve ser verificado em navegador e não apenas por inspeção do código.
+Usuário exige interface elegante, bonita e profissional. Direção em [docs/design/direction.md](docs/design/direction.md); acabamento deve ser verificado em navegador e não apenas por inspeção do código. 2c na branch feat/policy-catalog (17/10/2026): catálogo de regras versionado e só de inserção (precisão máxima da localização), herança rede → unidade com limites, valor efetivo resolvido na leitura (valor local nunca enfraquece o limite da rede), publicação direta com autor, motivo e vigência, conflito de versão; RLS não adotado na V1 (docs/adr/0002-no-postgres-rls-in-v1.md).

@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, com identidade visual própria. Próximo passo: etapa 2c (catálogo de regras e decisão sobre RLS) e, em seguida, etapa 3 (profissionais e elegibilidade).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, com identidade visual própria. Próximo passo: etapa 3 (profissionais e elegibilidade).
 
 ## Onde está cada coisa
 
@@ -14,6 +14,7 @@ Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pr
 | Contrato do produto (requisitos V1-01 a V1-14) | [PRODUCT.md](../PRODUCT.md) |
 | Plano em etapas | [plans/web-v1.md](../plans/web-v1.md) |
 | Arquitetura | [docs/adr/0001-modular-web-platform.md](adr/0001-modular-web-platform.md) |
+| Decisão sobre RLS (não adotar na V1) | [docs/adr/0002-no-postgres-rls-in-v1.md](adr/0002-no-postgres-rls-in-v1.md) |
 | Direção visual | [docs/design/direction.md](design/direction.md) |
 | Como subir e verificar | [README.md](../README.md) |
 
@@ -30,13 +31,23 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #5 | Identidade visual no app inteiro e página de erro própria | Mesclado |
 | #6 | Este arquivo de estado | Mesclado |
 | #7 | Etapa 2b-2: pessoas e papéis (convite, papéis, revogar/reativar, último administrador) | Mesclado após revisão de segurança |
+| #8 | Etapa 2c: catálogo de regras e ADR do RLS | Aberto, aguardando CI e merge autorizado |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7).
-- **Próximo: 2c** (catálogo de regras herdadas e decisão sobre RLS), e as etapas 3 a 9 do plano (profissionais, plantões, importação, vagas, trocas, presença, relatórios).
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS).
+- **Próximo: etapa 3** (profissionais e elegibilidade), e depois as etapas 4 a 9 (plantões, importação, vagas, trocas, presença, relatórios).
+
+### Etapa 2c: como funciona o catálogo de regras
+
+- Tela **Regras** (administrador de rede, auditor e gestor de unidade). Hoje há uma única regra, a precisão máxima da localização (m), escolhida pelo usuário. Ela não tem valor padrão: sem publicação da rede, a regra fica "não configurada".
+- A rede publica o valor, se o hospital pode alterar e os limites. O gestor da unidade publica um valor local dentro desses limites; se deixar o campo vazio, a unidade volta ao valor herdado.
+- Cada publicação é uma nova versão em `policy_versions`, só de inserção (trigger no banco), com autor, motivo e vigência. Por decisão do usuário, a publicação é direta e imediata: não há rascunho/aprovação nem agendamento.
+- O valor efetivo (`PolicyVersion::effective`) é calculado na leitura. Um valor local fora dos limites atuais da rede é ignorado e vale o da rede. Quando a rede aperta os limites, a publicação lista as unidades afetadas e exige confirmação.
+- Duas publicações sobre a mesma versão: a segunda recebe um aviso de conflito (versão esperada, lock do cliente e índice único).
+- Etapas futuras (presença) devem chamar `effective()` no momento da ação e registrar os ids das versões usadas.
 
 ## Como testar localmente
 
@@ -92,7 +103,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 117 testes passando (PR #7), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 128 testes passando (etapa 2c), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
@@ -106,6 +117,8 @@ sh scripts/test-branch-guards.sh
 
 - Telas de configurações (perfil, segurança, aparência) e o e-mail de redefinição de senha ainda estão em inglês.
 - Proxy confiável (`trustProxies`) e e-mail de recuperação em fila: definir quando houver hospedagem.
+- Catálogo de regras: rascunho/aprovação, agendamento de vigência e as demais regras de presença (raio, janelas de entrada e saída) ficaram fora da 2c por decisão do usuário. O raio deve entrar junto com os pontos autorizados (etapa 8).
+- RLS não adotado na V1 (ADR-0002); reavaliar antes da produção.
 - Decisões de produto em aberto:
   - Validar se a UF combina com o fuso?
   - Impedir apagar UF ou fuso de unidade com escalas publicadas?

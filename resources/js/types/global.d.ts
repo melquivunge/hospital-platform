@@ -15,6 +15,7 @@ declare module '@inertiajs/core' {
             currentTenant: { id: number; name: string } | null;
             canSwitchTenant: boolean;
             canManagePeople: boolean;
+            canViewPolicies: boolean;
             [key: string]: unknown;
         };
     }
