@@ -2,6 +2,8 @@
 
 Primeira base web: Laravel 13 / PHP 8.5, React 19 / TypeScript / Inertia 3 e PostgreSQL 18. Autenticação com cadastro público fechado. Escalas, isolamento entre clientes e demais módulos continuam no [plano](plans/web-v1.md); este scaffold não é a plataforma completa.
 
+Estado atual, próximos passos e como testar com o usuário de teste: [docs/ESTADO-ATUAL.md](docs/ESTADO-ATUAL.md).
+
 ## Subir localmente com Docker
 
 Requisitos: Docker Desktop/Engine ativo, Compose v2, Git e OpenSSL. Não precisa instalar PHP, Composer ou Node no computador para subir os serviços.
