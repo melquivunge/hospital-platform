@@ -314,7 +314,7 @@ ECC Product Capability aplicado. Agente de pesquisa UX examinou as 18 imagens re
 
 ### Plano técnico proposto — 17/10/2026
 
-[Blueprint ECC da primeira entrega web](plans/web-v1.md): arquitetura recomendada, alternativas, nove etapas, dependências, testes e critérios de saída. Revisão independente realizada e achados incorporados. Arquitetura aceita pelo usuário. Base Laravel/React, autenticação e infraestrutura local implementadas na branch chore/bootstrap-infrastructure; módulos hospitalares ainda não implementados. CI e Docker em verificação neste ciclo, com resultados de execução registrados no PR. Hospedagem/CD adiado pelo usuário.
+[Blueprint ECC da primeira entrega web](plans/web-v1.md): arquitetura recomendada, alternativas, nove etapas, dependências, testes e critérios de saída. Revisão independente realizada e achados incorporados. Arquitetura aceita pelo usuário. Base Laravel/React, autenticação e infraestrutura local implementadas na branch chore/bootstrap-infrastructure; módulos hospitalares ainda não implementados. 17/10/2026: CI (quality, containers) aprovado; revisão independente sem bloqueadores, achados S1/S2/S4 corrigidos; PR #1 pronto para revisão, aguardando merge autorizado. Pendentes: enumeração em recuperação de senha, checklist de produção, traduções pt_BR, cabeçalhos Nginx. Hospedagem/CD adiado pelo usuário.
 
 ### Direção visual — 17/10/2026
 
