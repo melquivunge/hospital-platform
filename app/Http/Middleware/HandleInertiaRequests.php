@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Tenancy\CurrentTenant;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -42,6 +43,10 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // Lazy: the tenant context is resolved by a route middleware that runs after this one.
+            'currentTenant' => fn () => app(CurrentTenant::class)->get()?->only('id', 'name'),
+            'canSwitchTenant' => fn () => $request->user() !== null
+                && $request->user()->memberships()->active()->count() > 1,
         ];
     }
 }

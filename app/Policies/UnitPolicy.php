@@ -10,6 +10,19 @@ use App\Tenancy\Role;
 
 class UnitPolicy
 {
+    /**
+     * Any active member may open the list; the controller narrows it to the units they can view.
+     */
+    public function viewAny(User $user): bool
+    {
+        return self::currentMembership($user) !== null;
+    }
+
+    public function create(User $user): bool
+    {
+        return self::currentMembership($user)?->hasRole(Role::NetworkAdmin) ?? false;
+    }
+
     public function view(User $user, Unit $unit): bool
     {
         $membership = self::membershipFor($user, $unit->tenant_id);
@@ -37,5 +50,12 @@ class UnitPolicy
         }
 
         return $user->activeMembershipIn($tenantId);
+    }
+
+    public static function currentMembership(User $user): ?Membership
+    {
+        $tenantId = app(CurrentTenant::class)->id();
+
+        return $tenantId === null ? null : self::membershipFor($user, $tenantId);
     }
 }

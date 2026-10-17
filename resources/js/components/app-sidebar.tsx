@@ -1,7 +1,6 @@
-import { Link } from '@inertiajs/react';
-import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-react';
+import { Link, usePage } from '@inertiajs/react';
+import { ArrowLeftRight, Building2, LayoutGrid } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
-import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -14,30 +13,26 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { edit as selectTenant } from '@/routes/current-tenant';
+import { index as units } from '@/routes/units';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
     {
-        title: 'Dashboard',
+        title: 'Visão geral',
         href: dashboard(),
         icon: LayoutGrid,
     },
-];
-
-const footerNavItems: NavItem[] = [
     {
-        title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
+        title: 'Unidades',
+        href: units(),
+        icon: Building2,
     },
 ];
 
 export function AppSidebar() {
+    const { currentTenant, canSwitchTenant } = usePage().props;
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -49,6 +44,33 @@ export function AppSidebar() {
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
+                    {currentTenant && (
+                        <SidebarMenuItem>
+                            {canSwitchTenant ? (
+                                <SidebarMenuButton
+                                    asChild
+                                    tooltip={{
+                                        children: `Instituição: ${currentTenant.name}. Trocar`,
+                                    }}
+                                >
+                                    <Link href={selectTenant()}>
+                                        <ArrowLeftRight aria-hidden="true" />
+                                        <span className="truncate">
+                                            {currentTenant.name}
+                                            <span className="sr-only">
+                                                {' '}
+                                                (trocar instituição)
+                                            </span>
+                                        </span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            ) : (
+                                <p className="truncate px-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+                                    {currentTenant.name}
+                                </p>
+                            )}
+                        </SidebarMenuItem>
+                    )}
                 </SidebarMenu>
             </SidebarHeader>
 
@@ -57,7 +79,6 @@ export function AppSidebar() {
             </SidebarContent>
 
             <SidebarFooter>
-                <NavFooter items={footerNavItems} className="mt-auto" />
                 <NavUser />
             </SidebarFooter>
         </Sidebar>
