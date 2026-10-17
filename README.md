@@ -28,6 +28,17 @@ docker compose down
 
 `down` preserva os volumes. Não usar `down -v` em dados a preservar. O Compose é exclusivo para desenvolvimento: servidor de produção, TLS, backups e CD serão definidos com a hospedagem.
 
+## Checklist de produção
+
+Obrigatório antes de qualquer ambiente com dados reais. A aplicação recusa iniciar com `APP_ENV=production` se `APP_DEBUG=true` ou `SESSION_SECURE_COOKIE=false`, e força URLs `https`.
+
+- `APP_ENV=production`, `APP_DEBUG=false`, `APP_KEY` próprio do ambiente e `APP_URL` com `https://`.
+- HTTPS obrigatório no terminador TLS, com redirecionamento de HTTP e `Strict-Transport-Security` (não enviado pelo Nginx local, que é só HTTP).
+- `SESSION_SECURE_COOKIE=true` (padrão quando a variável não existe; o `.env` local desliga explicitamente).
+- Proxies confiáveis configurados com IPs específicos, nunca `*`, para `X-Forwarded-*` não ser falsificável (Laravel `trustProxies` e, se houver proxy antes do Nginx, `set_real_ip_from`). Ainda não configurado: sem isso, atrás de um balanceador todos os clientes compartilham o IP do proxy e os limites por IP de login e de recuperação de senha viram globais.
+- Credenciais de banco e e-mail exclusivas do ambiente, guardadas fora do repositório; backup e restauração testados.
+- Cabeçalhos de segurança (CSP, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) presentes na resposta final, mesmo atrás de proxy/CDN. Ao alterar o script inline de tema em `resources/views/app.blade.php`, atualizar o hash em `docker/nginx/default.conf`; `SecurityConfigTest` falha se divergirem.
+
 ## Verificações
 
 O CI executa testes PHP com PostgreSQL descartável, Pint, PHPStan, TypeScript, lint/formatação, build, auditorias de dependências e smoke test dos containers. As credenciais do serviço de teste em CI são descartáveis, sem relação com ambientes reais.

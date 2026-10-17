@@ -92,4 +92,53 @@ class PasswordResetTest extends TestCase
 
         $response->assertSessionHasErrors('email');
     }
+
+    public function test_reset_link_response_does_not_reveal_whether_email_exists(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create();
+
+        $known = $this->from(route('password.request'))
+            ->post(route('password.email'), ['email' => $user->email]);
+        $unknown = $this->from(route('password.request'))
+            ->post(route('password.email'), ['email' => 'ninguem@example.com']);
+
+        foreach ([$known, $unknown] as $response) {
+            $response->assertRedirect(route('password.request'))
+                ->assertSessionHasNoErrors()
+                ->assertSessionHas('status', __('passwords.sent'));
+        }
+
+        Notification::assertSentTimes(ResetPassword::class, 1);
+    }
+
+    public function test_json_and_broker_throttled_responses_match_success(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create();
+
+        // Second request for the same user hits the broker throttle; it must still look like success.
+        foreach ([$user->email, $user->email, 'ninguem@example.com'] as $email) {
+            $this->postJson(route('password.email'), ['email' => $email])
+                ->assertOk()
+                ->assertExactJson(['message' => __('passwords.sent')]);
+        }
+
+        Notification::assertSentTimes(ResetPassword::class, 1);
+    }
+
+    public function test_reset_link_requests_are_rate_limited_per_ip(): void
+    {
+        Notification::fake();
+
+        foreach (range(1, 5) as $i) {
+            $this->post(route('password.email'), ['email' => "pessoa{$i}@example.com"])
+                ->assertRedirect();
+        }
+
+        $this->post(route('password.email'), ['email' => 'pessoa6@example.com'])
+            ->assertTooManyRequests();
+    }
 }

@@ -5,8 +5,10 @@ namespace App\Providers;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -23,7 +25,24 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->ensureSafeProductionConfig();
         $this->configureDefaults();
+    }
+
+    /**
+     * Refuse to boot production with debug output or session cookies sent over plain HTTP.
+     */
+    protected function ensureSafeProductionConfig(): void
+    {
+        if (! app()->isProduction()) {
+            return;
+        }
+
+        if (config('app.debug') || ! config('session.secure')) {
+            throw new RuntimeException('Produção exige APP_DEBUG=false e SESSION_SECURE_COOKIE=true.');
+        }
+
+        URL::forceScheme('https');
     }
 
     /**

@@ -72,6 +72,8 @@ jobs:
           curl --fail --silent http://localhost:8080/login | grep -q 'Plataforma Hospitalar'
           docker compose exec -T app php artisan migrate:status
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8080/register)" = 404
+          curl --silent --head http://localhost:8080/login | grep -qi '^content-security-policy:.*frame-ancestors'
+          ! curl --silent --head http://localhost:8080/login | grep -qi '^x-powered-by'
       - name: Diagnostic logs
         if: failure()
         run: docker compose logs --tail=80
