@@ -18,17 +18,17 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
+        <env force="true" name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
-        <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="pgsql"/>
-        <env name="DB_DATABASE" value="hospital_test"/>
-        <env name="DB_URL" value=""/>
-        <env name="MAIL_MAILER" value="array"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="SESSION_DRIVER" value="array"/>
+        <env force="true" name="CACHE_STORE" value="array"/>
+        <env force="true" name="DB_CONNECTION" value="pgsql"/>
+        <env force="true" name="DB_DATABASE" value="hospital_test"/>
+        <env force="true" name="DB_URL" value=""/>
+        <env force="true" name="MAIL_MAILER" value="array"/>
+        <env force="true" name="QUEUE_CONNECTION" value="sync"/>
+        <env force="true" name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

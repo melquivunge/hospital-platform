@@ -141,3 +141,22 @@
         @apply bg-background text-foreground;
     }
 }
+
+/* Authentication keeps a consistent accessible light surface in either system theme. */
+.auth-surface {
+    color-scheme: light;
+    --background: #f5f6f4;
+    --foreground: #172d36;
+    --primary: #126b61;
+    --primary-foreground: #ffffff;
+    --muted-foreground: #54666d;
+    --input: #c3cfcc;
+    --border: #c3cfcc;
+    --ring: #126b61;
+    --accent: #e2ece8;
+    --accent-foreground: #172d36;
+}
+.auth-surface input:not([type='checkbox']),
+.auth-surface button[type='submit'] {
+    min-height: 44px;
+}

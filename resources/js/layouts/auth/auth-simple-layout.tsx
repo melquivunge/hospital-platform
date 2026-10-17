@@ -9,7 +9,7 @@ export default function AuthSimpleLayout({
     description,
 }: AuthLayoutProps) {
     return (
-        <div className="min-h-svh bg-[#f5f6f4] text-[#172d36] lg:grid lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="auth-surface min-h-svh bg-[#f5f6f4] text-[#172d36] lg:grid lg:grid-cols-[0.9fr_1.1fr]">
             <aside className="hidden flex-col justify-between bg-[#132f39] p-12 text-white lg:flex xl:p-16">
                 <div className="flex items-center gap-3 text-sm font-semibold tracking-wide">
                     <Activity className="size-7 text-[#8ed0c1]" /> PLATAFORMA
