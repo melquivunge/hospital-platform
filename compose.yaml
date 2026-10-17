@@ -1,10 +1,7 @@
 name: hospital-platform
 x-app: &app
-    build:
-        context: .
-        target: app
     image: hospital-platform-app:local
-  pull_policy: never
+    pull_policy: never
     env_file: .env
     environment:
         DB_HOST: db
@@ -42,6 +39,9 @@ services:
                 condition: service_healthy
     app:
         <<: *app
+        build:
+            context: .
+            target: app
         depends_on:
             init:
                 condition: service_completed_successfully
