@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Professionals\QualificationStatus;
 use App\Tenancy\BelongsToTenant;
 use App\Tenancy\Role;
 use Database\Factories\ProfessionalFactory;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Professional of a tenant (V1-03). Not a login account. The base unit is administrative: it only
@@ -25,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $external_id
  * @property string|null $email
  * @property string|null $phone
+ * @property int $eligibility_version
  */
 #[Fillable(['base_unit_id', 'name', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone'])]
 class Professional extends Model
@@ -37,7 +40,7 @@ class Professional extends Model
      */
     protected function casts(): array
     {
-        return ['base_unit_id' => 'integer'];
+        return ['base_unit_id' => 'integer', 'eligibility_version' => 'integer'];
     }
 
     /**
@@ -49,7 +52,8 @@ class Professional extends Model
     }
 
     /**
-     * Network admins and auditors see every professional; unit managers those based in their units.
+     * Network admins and auditors see every professional; unit managers those based in their units
+     * or with a non-revoked qualification there (the destination unit decides it).
      *
      * @param  Builder<Professional>  $query
      */
@@ -59,7 +63,18 @@ class Professional extends Model
             return;
         }
 
-        $query->whereIn('base_unit_id', self::managedUnitIds($membership));
+        $unitIds = self::managedUnitIds($membership);
+        $query->where(fn (Builder $query) => $query
+            ->whereIn('base_unit_id', $unitIds)
+            ->orWhereHas('qualifications', fn (Builder $query) => $query->whereIn('unit_id', $unitIds)->where('status', '<>', QualificationStatus::Revoked)));
+    }
+
+    /**
+     * @return HasMany<Qualification, $this>
+     */
+    public function qualifications(): HasMany
+    {
+        return $this->hasMany(Qualification::class);
     }
 
     /**
@@ -78,7 +93,7 @@ class Professional extends Model
     /**
      * @return list<int>
      */
-    private static function managedUnitIds(Membership $membership): array
+    public static function managedUnitIds(Membership $membership): array
     {
         if ($membership->revoked_at !== null) {
             return [];

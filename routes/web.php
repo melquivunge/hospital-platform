@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\JobFunctionController;
 use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\PolicyController;
 use App\Http\Controllers\ProfessionalController;
+use App\Http\Controllers\QualificationController;
 use App\Http\Controllers\SectorController;
 use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
@@ -16,6 +18,11 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
 
     Route::resource('units', UnitController::class)->except('destroy');
     Route::resource('professionals', ProfessionalController::class)->except('destroy');
+    Route::post('professionals/{professional}/qualifications', [QualificationController::class, 'store'])->name('professionals.qualifications.store');
+    Route::post('qualifications/{qualification}/transition', [QualificationController::class, 'transition'])->name('qualifications.transition');
+    Route::get('job-functions', [JobFunctionController::class, 'index'])->name('job-functions.index');
+    Route::post('job-functions', [JobFunctionController::class, 'store'])->name('job-functions.store');
+    Route::put('job-functions/{jobFunction}', [JobFunctionController::class, 'update'])->name('job-functions.update');
     Route::get('people', [PeopleController::class, 'index'])->name('people.index');
     Route::post('people', [PeopleController::class, 'store'])->name('people.store');
     Route::get('people/{membership}', [PeopleController::class, 'show'])->name('people.show');

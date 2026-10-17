@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\Professional;
 use App\Models\RoleAssignment;
 use App\Models\User;
+use App\Professionals\QualificationStatus;
 use App\Tenancy\Role;
 
 /**
@@ -35,6 +36,25 @@ class ProfessionalPolicy
     }
 
     public function view(User $user, Professional $professional): bool
+    {
+        $membership = UnitPolicy::membershipFor($user, $professional->tenant_id);
+
+        return $membership !== null && (
+            $membership->hasRole(Role::NetworkAdmin)
+            || $membership->hasRole(Role::Auditor)
+            || $membership->hasRole(Role::UnitManager, $professional->base_unit_id)
+            || $professional->qualifications()
+                ->whereIn('unit_id', Professional::managedUnitIds($membership))
+                ->where('status', '<>', QualificationStatus::Revoked)
+                ->exists()
+        );
+    }
+
+    /**
+     * Contact data and every qualification: network admins, auditors and the base unit's manager.
+     * A destination manager sees only what the decision about their own unit needs.
+     */
+    public function viewFull(User $user, Professional $professional): bool
     {
         $membership = UnitPolicy::membershipFor($user, $professional->tenant_id);
 
