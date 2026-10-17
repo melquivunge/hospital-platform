@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use LogicException;
@@ -41,6 +42,14 @@ class AuditEvent extends Model
         // ponytail: app-level guard only; add a DB trigger if other writers ever touch this table.
         static::updating(fn () => throw new LogicException('Eventos de auditoria não podem ser alterados.'));
         static::deleting(fn () => throw new LogicException('Eventos de auditoria não podem ser removidos.'));
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function actor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'actor_user_id');
     }
 
     /**
