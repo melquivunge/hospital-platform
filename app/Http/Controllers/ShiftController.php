@@ -21,7 +21,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Schedule of a unit (step 4a): weekly list, drafts, publication and cancellation. Times are typed and
+ * Schedule of a unit (step 4): day/week/month views, drafts, publication and cancellation. Times are typed and
  * shown in the unit's timezone and stored in UTC.
  */
 class ShiftController extends Controller
@@ -41,16 +41,18 @@ class ShiftController extends Controller
         $unit = $units->firstWhere('id', $request->integer('unit')) ?? $units->first();
 
         if ($unit === null) {
-            return Inertia::render('shifts/index', ['units' => [], 'unit' => null, 'week' => null, 'shifts' => [], 'canManage' => false]);
+            return Inertia::render('shifts/index', ['units' => [], 'unit' => null, 'view' => 'week', 'from' => null, 'to' => null, 'shifts' => [], 'canManage' => false]);
         }
 
         $timezone = $unit->timezone ?? 'UTC';
-        $week = self::weekStart($request->string('week')->value(), $timezone);
+        $view = in_array($request->string('view')->value(), ['day', 'week', 'month'], true) ? $request->string('view')->value() : 'week';
+        [$from, $to] = self::range($view, $request->string('date')->value(), $timezone);
 
+        // Overlap, not start: a shift crossing midnight stays visible on the day it ends (V1-05).
         $shifts = Shift::query()
             ->where('unit_id', $unit->id)
-            ->where('starts_at', '<', $week->addWeek()->utc())
-            ->where('ends_at', '>', $week->utc())
+            ->where('starts_at', '<', $to->utc())
+            ->where('ends_at', '>', $from->utc())
             ->with(['sector:id,name', 'jobFunction:id,name', 'professional:id,name'])
             ->orderBy('starts_at')
             ->orderBy('id')
@@ -60,7 +62,9 @@ class ShiftController extends Controller
         return Inertia::render('shifts/index', [
             'units' => $units->map->only('id', 'name')->values(),
             'unit' => [...$unit->only('id', 'name', 'timezone'), 'complete' => $unit->isComplete()],
-            'week' => $week->toDateString(),
+            'view' => $view,
+            'from' => $from->toDateString(),
+            'to' => $to->subDay()->toDateString(),
             'shifts' => $shifts,
             'canManage' => Gate::allows('manage', [Shift::class, $unit]),
         ]);
@@ -157,15 +161,22 @@ class ShiftController extends Controller
     }
 
     /**
-     * Local Monday of the requested week (or the current one) in the unit's timezone.
+     * Local [from, to) of the day, week (Monday) or month containing $date (default: today) in the unit's timezone.
+     *
+     * @return array{CarbonImmutable, CarbonImmutable}
      */
-    private static function weekStart(string $date, string $timezone): CarbonImmutable
+    private static function range(string $view, string $date, string $timezone): array
     {
         $day = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1
             ? CarbonImmutable::createFromFormat('!Y-m-d', $date, $timezone)
             : null;
+        $day = ($day ?: CarbonImmutable::now($timezone))->startOfDay();
 
-        return ($day ?: CarbonImmutable::now($timezone))->startOfWeek(CarbonImmutable::MONDAY)->startOfDay();
+        return match ($view) {
+            'day' => [$day, $day->addDay()],
+            'month' => [$day->startOfMonth(), $day->startOfMonth()->addMonth()],
+            default => [$day->startOfWeek(CarbonImmutable::MONDAY), $day->startOfWeek(CarbonImmutable::MONDAY)->addWeek()],
+        };
     }
 
     /**

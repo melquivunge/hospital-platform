@@ -3,6 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Page, PageHeader, WarningBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import { index, show } from '@/routes/shifts';
 import { create } from '@/routes/units/shifts';
 
@@ -18,6 +19,8 @@ export type ShiftSummary = {
     status: 'draft' | 'published' | 'cancelled';
 };
 
+type View = 'day' | 'week' | 'month';
+
 type Unit = {
     id: number;
     name: string;
@@ -28,6 +31,31 @@ type Unit = {
 const selectClassName =
     'h-11 w-full rounded-md border border-input bg-card px-3 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none';
 
+const stepLabels: Record<View, [string, string]> = {
+    day: ['Dia anterior', 'Próximo dia'],
+    week: ['Semana anterior', 'Próxima semana'],
+    month: ['Mês anterior', 'Próximo mês'],
+};
+
+/**
+ * A shift is listed on every local day it covers, so one crossing midnight (or a week/month
+ * boundary) stays visible on the day it ends. Ending exactly at 00:00 does not cover that day.
+ */
+function coversDay(shift: ShiftSummary, day: string) {
+    return (
+        shift.date <= day &&
+        (day < shift.endDate ||
+            (day === shift.endDate &&
+                (day === shift.date || shift.end !== '00:00')))
+    );
+}
+
+const viewLabels: Record<View, string> = {
+    day: 'Dia',
+    week: 'Semana',
+    month: 'Mês',
+};
+
 export const statusLabels: Record<ShiftSummary['status'], string> = {
     draft: 'Rascunho',
     published: 'Publicado',
@@ -35,18 +63,47 @@ export const statusLabels: Record<ShiftSummary['status'], string> = {
 };
 
 /** Local calendar dates (YYYY-MM-DD) handled as UTC noon to avoid any timezone shift. */
+function toDate(date: string) {
+    return new Date(`${date}T12:00:00Z`);
+}
+
 function addDays(date: string, days: number) {
-    const value = new Date(`${date}T12:00:00Z`);
+    const value = toDate(date);
     value.setUTCDate(value.getUTCDate() + days);
 
     return value.toISOString().slice(0, 10);
 }
 
+function addMonths(date: string, months: number) {
+    const value = toDate(date.slice(0, 8) + '01');
+    value.setUTCMonth(value.getUTCMonth() + months);
+
+    return value.toISOString().slice(0, 10);
+}
+
+function daysBetween(from: string, to: string) {
+    const days: string[] = [];
+
+    for (let day = from; day <= to; day = addDays(day, 1)) {
+        days.push(day);
+    }
+
+    return days;
+}
+
 export function formatDay(date: string) {
-    return new Date(`${date}T12:00:00Z`).toLocaleDateString('pt-BR', {
+    return toDate(date).toLocaleDateString('pt-BR', {
         weekday: 'long',
         day: '2-digit',
         month: '2-digit',
+        timeZone: 'UTC',
+    });
+}
+
+function formatMonth(date: string) {
+    return toDate(date).toLocaleDateString('pt-BR', {
+        month: 'long',
+        year: 'numeric',
         timeZone: 'UTC',
     });
 }
@@ -68,17 +125,21 @@ export function StatusBadge({ status }: { status: ShiftSummary['status'] }) {
 export default function ShiftsIndex({
     units,
     unit,
-    week,
+    view,
+    from,
+    to,
     shifts,
     canManage,
 }: {
     units: { id: number; name: string }[];
     unit: Unit | null;
-    week: string | null;
+    view: View;
+    from: string | null;
+    to: string | null;
     shifts: ShiftSummary[];
     canManage: boolean;
 }) {
-    if (unit === null || week === null) {
+    if (unit === null || from === null || to === null) {
         return (
             <>
                 <Head title="Escala" />
@@ -92,15 +153,25 @@ export default function ShiftsIndex({
         );
     }
 
-    const days = Array.from({ length: 7 }, (_, offset) =>
-        addDays(week, offset),
-    );
-    const go = (query: { unit?: number; week?: string }) =>
+    // Mid-week anchor: switching a week that straddles two months opens the month of its Thursday.
+    const anchor = view === 'week' ? addDays(from, 3) : from;
+    const go = (query: { unit?: number; view?: View; date?: string }) =>
         router.get(
-            index({ query: { unit: unit.id, week, ...query } }).url,
+            index({ query: { unit: unit.id, view, date: anchor, ...query } })
+                .url,
             {},
             { preserveScroll: true },
         );
+    const step = (direction: 1 | -1) =>
+        view === 'month'
+            ? addMonths(from, direction)
+            : addDays(from, direction * (view === 'day' ? 1 : 7));
+    const period =
+        view === 'day'
+            ? formatDay(from)
+            : view === 'month'
+              ? formatMonth(from)
+              : `${formatDay(from)} a ${formatDay(to)}`;
 
     return (
         <>
@@ -141,30 +212,53 @@ export default function ShiftsIndex({
                             ))}
                         </select>
                     </div>
+
+                    <div
+                        role="group"
+                        aria-label="Visualização"
+                        className="flex rounded-md border bg-card p-1"
+                    >
+                        {(Object.keys(viewLabels) as View[]).map((option) => (
+                            <Button
+                                key={option}
+                                variant={option === view ? 'default' : 'ghost'}
+                                aria-pressed={option === view}
+                                className="min-h-11"
+                                onClick={() => go({ view: option })}
+                            >
+                                {viewLabels[option]}
+                            </Button>
+                        ))}
+                    </div>
+
                     <nav
-                        aria-label="Semana"
+                        aria-label="Período"
                         className="flex flex-wrap items-center gap-2"
                     >
                         <Button
                             variant="outline"
                             className="min-h-11"
-                            onClick={() => go({ week: addDays(week, -7) })}
+                            onClick={() => go({ date: step(-1) })}
                         >
                             <ChevronLeft aria-hidden="true" />
-                            <span className="sr-only sm:not-sr-only">
-                                Semana anterior
+                            <span className="sr-only">
+                                {stepLabels[view][0]}
                             </span>
                         </Button>
-                        <p className="px-2 text-sm font-medium tabular-nums">
-                            {formatDay(days[0])} a {formatDay(days[6])}
+                        <p
+                            className="px-2 text-sm font-medium tabular-nums first-letter:uppercase"
+                            aria-live="polite"
+                            aria-atomic="true"
+                        >
+                            {period}
                         </p>
                         <Button
                             variant="outline"
                             className="min-h-11"
-                            onClick={() => go({ week: addDays(week, 7) })}
+                            onClick={() => go({ date: step(1) })}
                         >
-                            <span className="sr-only sm:not-sr-only">
-                                Próxima semana
+                            <span className="sr-only">
+                                {stepLabels[view][1]}
                             </span>
                             <ChevronRight aria-hidden="true" />
                         </Button>
@@ -180,67 +274,222 @@ export default function ShiftsIndex({
                     </p>
                 )}
 
-                <div className="grid gap-4">
-                    {days.map((day) => {
-                        const dayShifts = shifts.filter(
-                            (shift) => shift.date === day,
-                        );
-
-                        return (
-                            <section
+                {view === 'day' && (
+                    <DaySection day={from} shifts={shifts} showAll />
+                )}
+                {view === 'week' && (
+                    <div className="grid gap-4">
+                        {daysBetween(from, to).map((day) => (
+                            <DaySection
                                 key={day}
-                                aria-labelledby={`day-${day}`}
-                                className="overflow-hidden rounded-lg border bg-card"
-                            >
-                                <h2
-                                    id={`day-${day}`}
-                                    className="flex items-center gap-2 border-b bg-muted/40 px-5 py-3 text-sm font-semibold"
-                                >
-                                    <CalendarDays
-                                        className="size-4 text-primary"
-                                        aria-hidden="true"
-                                    />
-                                    <span className="inline-block first-letter:uppercase">
-                                        {formatDay(day)}
-                                    </span>
-                                </h2>
-                                {dayShifts.length === 0 ? (
-                                    <p className="px-5 py-4 text-sm text-muted-foreground">
-                                        Nenhum plantão.
-                                    </p>
-                                ) : (
-                                    <ul className="divide-y">
-                                        {dayShifts.map((shift) => (
-                                            <li key={shift.id}>
-                                                <Link
-                                                    href={show(shift.id)}
-                                                    className="grid gap-1 px-5 py-3 text-sm hover:bg-muted/40 sm:grid-cols-[12rem_1fr_auto] sm:items-center sm:gap-4"
-                                                >
-                                                    <span className="font-medium tabular-nums">
-                                                        {timeRange(shift)}
-                                                    </span>
-                                                    <span>
-                                                        {shift.sector} ·{' '}
-                                                        {shift.function} ·{' '}
-                                                        {shift.professional ?? (
-                                                            <strong className="font-semibold">
-                                                                Vaga aberta
-                                                            </strong>
-                                                        )}
-                                                    </span>
-                                                    <StatusBadge
-                                                        status={shift.status}
-                                                    />
-                                                </Link>
-                                            </li>
-                                        ))}
-                                    </ul>
+                                day={day}
+                                shifts={shifts.filter((shift) =>
+                                    coversDay(shift, day),
                                 )}
-                            </section>
-                        );
-                    })}
-                </div>
+                                showAll
+                            />
+                        ))}
+                    </div>
+                )}
+                {view === 'month' && (
+                    <MonthView
+                        from={from}
+                        to={to}
+                        shifts={shifts}
+                        onOpenDay={(date) => go({ view: 'day', date })}
+                    />
+                )}
             </Page>
+        </>
+    );
+}
+
+function DaySection({
+    day,
+    shifts,
+    showAll = false,
+}: {
+    day: string;
+    shifts: ShiftSummary[];
+    /** Label shifts that started on an earlier day ("Desde …"). */
+    showAll?: boolean;
+}) {
+    return (
+        <section
+            aria-labelledby={`day-${day}`}
+            className="overflow-hidden rounded-lg border bg-card"
+        >
+            <h2
+                id={`day-${day}`}
+                className="flex items-center gap-2 border-b bg-muted/40 px-5 py-3 text-sm font-semibold"
+            >
+                <CalendarDays
+                    className="size-4 text-primary"
+                    aria-hidden="true"
+                />
+                <span className="inline-block first-letter:uppercase">
+                    {formatDay(day)}
+                </span>
+            </h2>
+            {shifts.length === 0 ? (
+                <p className="px-5 py-4 text-sm text-muted-foreground">
+                    Nenhum plantão.
+                </p>
+            ) : (
+                <ul className="divide-y">
+                    {shifts.map((shift) => (
+                        <li key={shift.id}>
+                            <Link
+                                href={show(shift.id)}
+                                className="grid gap-1 px-5 py-3 text-sm hover:bg-muted/40 sm:grid-cols-[12rem_1fr_auto] sm:items-center sm:gap-4"
+                            >
+                                <span className="font-medium tabular-nums">
+                                    {showAll && shift.date !== day
+                                        ? `Desde ${formatDay(shift.date)}, ${shift.start} – ${shift.end}`
+                                        : timeRange(shift)}
+                                </span>
+                                <span>
+                                    {shift.sector} · {shift.function} ·{' '}
+                                    {shift.professional ?? (
+                                        <strong className="font-semibold">
+                                            Vaga aberta
+                                        </strong>
+                                    )}
+                                </span>
+                                <StatusBadge status={shift.status} />
+                            </Link>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </section>
+    );
+}
+
+const weekdays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+
+function MonthView({
+    from,
+    to,
+    shifts,
+    onOpenDay,
+}: {
+    from: string;
+    to: string;
+    shifts: ShiftSummary[];
+    onOpenDay: (date: string) => void;
+}) {
+    const days = daysBetween(from, to);
+    // Monday-first grid: blank cells before the 1st.
+    const leading = (toDate(from).getUTCDay() + 6) % 7;
+    const byDay = (day: string) =>
+        shifts.filter((shift) => coversDay(shift, day));
+    const busyDays = days.filter((day) => byDay(day).length > 0);
+
+    return (
+        <>
+            {/* Phones: list of the days that have shifts (equivalent to the grid). */}
+            <div className="grid gap-4 md:hidden">
+                {busyDays.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        Nenhum plantão neste mês.
+                    </p>
+                ) : (
+                    busyDays.map((day) => (
+                        <DaySection
+                            key={day}
+                            day={day}
+                            shifts={byDay(day)}
+                            showAll
+                        />
+                    ))
+                )}
+            </div>
+
+            <table className="hidden w-full table-fixed border-collapse overflow-hidden rounded-lg border bg-card text-sm md:table">
+                <caption className="sr-only">
+                    Plantões do mês por dia. Abra um dia para ver os detalhes.
+                </caption>
+                <thead className="bg-muted/60 text-xs text-muted-foreground">
+                    <tr>
+                        {weekdays.map((weekday) => (
+                            <th key={weekday} scope="col" className="py-2">
+                                {weekday}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {Array.from(
+                        { length: Math.ceil((leading + days.length) / 7) },
+                        (_, week) => (
+                            <tr key={week}>
+                                {Array.from({ length: 7 }, (_, column) => {
+                                    const day =
+                                        days[week * 7 + column - leading];
+
+                                    if (day === undefined) {
+                                        return (
+                                            <td
+                                                key={column}
+                                                className="border bg-muted/30"
+                                            />
+                                        );
+                                    }
+
+                                    const dayShifts = byDay(day);
+
+                                    return (
+                                        <td
+                                            key={column}
+                                            className="h-28 border p-1 align-top"
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenDay(day)}
+                                                aria-label={`${formatDay(day)}: ${dayShifts.length} ${dayShifts.length === 1 ? 'plantão' : 'plantões'}. Abrir dia`}
+                                                className="flex h-full w-full flex-col items-stretch gap-1 rounded p-1 text-left hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                                            >
+                                                <span className="text-xs font-semibold tabular-nums">
+                                                    {Number(day.slice(8))}
+                                                </span>
+                                                {dayShifts
+                                                    .slice(0, 3)
+                                                    .map((shift) => (
+                                                        <span
+                                                            key={shift.id}
+                                                            className={cn(
+                                                                'truncate rounded px-1 text-xs',
+                                                                shift.status ===
+                                                                    'published'
+                                                                    ? 'bg-primary/10'
+                                                                    : 'bg-muted',
+                                                            )}
+                                                        >
+                                                            {shift.date === day
+                                                                ? shift.start
+                                                                : `até ${shift.end}`}{' '}
+                                                            {shift.professional ??
+                                                                'Vaga'}
+                                                            {shift.status !==
+                                                                'published' &&
+                                                                ` (${statusLabels[shift.status]})`}
+                                                        </span>
+                                                    ))}
+                                                {dayShifts.length > 3 && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        +{dayShifts.length - 3}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        ),
+                    )}
+                </tbody>
+            </table>
         </>
     );
 }
