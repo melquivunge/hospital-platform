@@ -74,8 +74,9 @@ class TenantContextTest extends TestCase
         $first = Membership::factory()->withRole(Role::NetworkAdmin)->create();
         Membership::factory()->for($first->user)->withRole(Role::Auditor)->create();
 
+        // No data is rendered: the user is sent to pick an institution first (step 2b).
         $this->actingAs($first->user)
             ->get(route('dashboard'))
-            ->assertForbidden();
+            ->assertRedirect(route('current-tenant.edit'));
     }
 }

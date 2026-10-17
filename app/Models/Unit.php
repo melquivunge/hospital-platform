@@ -24,6 +24,17 @@ class Unit extends Model
     /** @use HasFactory<UnitFactory> */
     use BelongsToTenant, HasFactory;
 
+    /** Same list as the units_uf_check constraint. */
+    public const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
+
+    /**
+     * Without UF and timezone the unit cannot publish schedules (V1-02).
+     */
+    public function isComplete(): bool
+    {
+        return $this->uf !== null && $this->timezone !== null;
+    }
+
     /**
      * @return HasMany<Sector, $this>
      */

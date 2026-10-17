@@ -22,10 +22,13 @@ class ResolveTenant
         $selected = $memberships->firstWhere('tenant_id', $request->session()->get('tenant_id'))
             ?? ($memberships->count() === 1 ? $memberships->first() : null);
 
-        // ponytail: several memberships without a selection get 403 until the selector screen (step 2b).
-        abort_if($selected === null, 403, $memberships->isEmpty()
-            ? 'Sua conta não tem acesso ativo a nenhuma instituição.'
-            : 'Selecione a instituição para continuar.');
+        abort_if($memberships->isEmpty(), 403, 'Sua conta não tem acesso ativo a nenhuma instituição.');
+
+        if ($selected === null) {
+            $request->session()->forget('tenant_id');
+
+            return redirect()->guest(route('current-tenant.edit'));
+        }
 
         $request->session()->put('tenant_id', $selected->tenant_id);
         app(CurrentTenant::class)->set($selected->tenant);

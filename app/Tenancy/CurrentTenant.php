@@ -16,6 +16,11 @@ final class CurrentTenant
         $this->tenant = $tenant;
     }
 
+    public function get(): ?Tenant
+    {
+        return $this->tenant;
+    }
+
     public function id(): ?int
     {
         return $this->tenant?->id;
