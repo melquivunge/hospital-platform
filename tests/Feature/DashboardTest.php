@@ -3,8 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Membership;
+use App\Models\Sector;
+use App\Models\Unit;
 use App\Tenancy\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class DashboardTest extends TestCase
@@ -25,5 +28,22 @@ class DashboardTest extends TestCase
 
         $response = $this->get(route('dashboard'));
         $response->assertOk();
+    }
+
+    public function test_overview_counts_only_what_the_member_can_see(): void
+    {
+        $manager = Membership::factory()->create();
+        $assigned = Unit::factory()->for($manager->tenant)->create(['timezone' => null]);
+        Sector::factory()->count(2)->for($assigned)->create();
+        Unit::factory()->for($manager->tenant)->create();
+        Unit::factory()->create();
+        $manager->grant(Role::UnitManager, $assigned);
+
+        $this->actingAs($manager->user)
+            ->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('dashboard')
+                ->where('stats', ['units' => 1, 'sectors' => 2, 'incomplete' => 1])
+                ->where('canCreateUnit', false));
     }
 }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CurrentTenantController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SectorController;
 use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
@@ -8,7 +9,7 @@ use Illuminate\Support\Facades\Route;
 Route::redirect('/', '/login')->name('home');
 
 Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+    Route::get('dashboard', DashboardController::class)->name('dashboard');
 
     Route::resource('units', UnitController::class)->except('destroy');
     Route::scopeBindings()->group(function () {

@@ -7,7 +7,6 @@ use App\Models\AuditEvent;
 use App\Models\Sector;
 use App\Models\Unit;
 use App\Policies\UnitPolicy;
-use App\Tenancy\Role;
 use DateTimeZone;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -28,11 +27,10 @@ class UnitController extends Controller
         Gate::authorize('viewAny', Unit::class);
 
         $membership = UnitPolicy::currentMembership($request->user());
-        $seesAll = $membership?->hasRole(Role::NetworkAdmin) || $membership?->hasRole(Role::Auditor);
-        $unitIds = $membership?->roleAssignments->pluck('unit_id')->filter()->all() ?? [];
+        abort_if($membership === null, 403);
 
         $units = Unit::query()
-            ->when(! $seesAll, fn ($query) => $query->whereIn('id', $unitIds))
+            ->visibleTo($membership)
             ->withCount('sectors')
             ->orderBy('name')
             ->get()

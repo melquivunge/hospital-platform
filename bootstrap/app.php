@@ -11,6 +11,8 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -41,4 +43,23 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // Branded pt-BR error page; never shows exception messages (they can name models or internals).
+        $exceptions->respond(function (Response $response, Throwable $e, Request $request) {
+            $status = $response->getStatusCode();
+            $branded = in_array($status, [403, 404, 419, 503], true) || ($status >= 500 && ! config('app.debug'));
+
+            if (! $branded || $request->is('api/*') || $request->expectsJson()) {
+                return $response;
+            }
+
+            $page = Inertia::render('error', ['status' => $status])->toResponse($request)->setStatusCode($status);
+
+            // Keep client-relevant headers only; copying all would clobber Inertia's own Content-Type.
+            if ($response->headers->has('Retry-After')) {
+                $page->headers->set('Retry-After', $response->headers->get('Retry-After'));
+            }
+
+            return $page;
+        });
     })->create();
