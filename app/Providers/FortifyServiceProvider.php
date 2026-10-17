@@ -3,9 +3,11 @@
 namespace App\Providers;
 
 use App\Actions\Fortify\ResetUserPassword;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Auth\PasswordBroker;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -46,6 +48,17 @@ class FortifyServiceProvider extends ServiceProvider
     private function configureActions(): void
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
+
+        // Deactivated accounts fail like wrong credentials; hash is always checked so timing does not reveal accounts.
+        Fortify::authenticateUsing(function (Request $request) {
+            // Fixed bcrypt (cost 12, same as BCRYPT_ROUNDS) of a discarded random value: unknown emails cost the same.
+            $dummyHash = '$2y$12$UWHj/1cny7d3.iaBjKxwmeX6a.xf69/SDFJFK5OPGne7KPqcMYchO';
+
+            $user = User::where(Fortify::username(), $request->string(Fortify::username())->toString())->first();
+            $valid = Hash::check($request->string('password')->toString(), $user->password ?? $dummyHash);
+
+            return $valid && $user?->deactivated_at === null ? $user : null;
+        });
     }
 
     /**

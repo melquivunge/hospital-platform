@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Tenancy\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Scoped: reset between requests and queue jobs, so a tenant context never leaks to the next one.
+        $this->app->scoped(CurrentTenant::class);
     }
 
     /**

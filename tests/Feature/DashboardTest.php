@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
+use App\Models\Membership;
+use App\Tenancy\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -16,9 +17,10 @@ class DashboardTest extends TestCase
         $response->assertRedirect(route('login'));
     }
 
-    public function test_authenticated_users_can_visit_the_dashboard()
+    public function test_authenticated_members_can_visit_the_dashboard()
     {
-        $user = User::factory()->create();
+        // Without an active membership there is no operational access (TenantContextTest).
+        $user = Membership::factory()->withRole(Role::NetworkAdmin)->create()->user;
         $this->actingAs($user);
 
         $response = $this->get(route('dashboard'));
