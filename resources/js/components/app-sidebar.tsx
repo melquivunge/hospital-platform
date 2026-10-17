@@ -69,7 +69,7 @@ export function AppSidebar() {
                                     </Link>
                                 </SidebarMenuButton>
                             ) : (
-                                <p className="truncate px-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+                                <p className="truncate px-2 text-xs text-sidebar-foreground/75 group-data-[collapsible=icon]:hidden">
                                     {currentTenant.name}
                                 </p>
                             )}
