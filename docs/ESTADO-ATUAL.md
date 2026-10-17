@@ -56,6 +56,13 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
 - **4b (agenda):** visões de dia, semana e mês na tela "Escala", no fuso da unidade.
   - A visão de dia lista também os plantões iniciados na véspera que terminam nesse dia (V1-05).
   - O mês é uma grade no computador e uma lista no celular.
+- **Itens das fotos de referência** (references/insightcare-screenshots, IMG_0911 a 0917), escolhidos pelo usuário em 17/10/2026:
+  - **Faixa de dias no celular:** com ponto nos dias em que começa algum plantão.
+  - **Filtro de vagas:** "Mostrar também vagas abertas".
+  - **Busca de profissional:** por nome ou registro no conselho.
+  - **Turno:** calculado pelo início, no horário da unidade. Diurno de 07:00 a 18:59, noturno nos demais (decisão do usuário).
+  - **Valor:** opcional, em R$ (`value_cents`), visível a quem consulta a escala: coordenador, gestor, admin e auditor (decisão do usuário).
+  - **Fora desta etapa:** colegas de plantão, menu de troca/ceder/check-in e "meus plantões" dependem das etapas 6 a 8 e da conta do profissional.
 - **Eventos para notificação:** não há tabela de outbox separada. Os eventos `shift.published` e `shift.cancelled` já são gravados em `audit_events`, só de inserção, na mesma transação da mudança. A etapa 9 deve consumi-los com um cursor de entrega e deduplicação, e criar a tabela própria só se o consumo exigir.
 - **Visão "meus plantões" do profissional:** depende de ligar o cadastro do profissional a uma conta de acesso, que ainda não existe.
 

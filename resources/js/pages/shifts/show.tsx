@@ -9,7 +9,13 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { edit, index } from '@/routes/shifts';
 import type { ShiftSummary } from '@/pages/shifts/index';
-import { formatDay, StatusBadge, timeRange } from '@/pages/shifts/index';
+import {
+    formatDay,
+    formatMoney,
+    PeriodLabel,
+    StatusBadge,
+    timeRange,
+} from '@/pages/shifts/index';
 
 type Shift = ShiftSummary & {
     unit: { id: number; name: string; timezone: string | null };
@@ -55,6 +61,14 @@ export default function ShiftShow({
                         <StatusBadge status={shift.status} />
                     </Detail>
                     <Detail label="Horário">{timeRange(shift)}</Detail>
+                    <Detail label="Turno">
+                        <PeriodLabel period={shift.period} />
+                    </Detail>
+                    <Detail label="Valor">
+                        {shift.valueCents === null
+                            ? 'Não informado'
+                            : formatMoney(shift.valueCents)}
+                    </Detail>
                     <Detail label="Fuso">
                         {shift.unit.timezone?.replaceAll('_', ' ')}
                     </Detail>

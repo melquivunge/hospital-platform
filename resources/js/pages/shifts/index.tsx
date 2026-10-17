@@ -1,5 +1,13 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import {
+    CalendarDays,
+    ChevronLeft,
+    ChevronRight,
+    Moon,
+    Plus,
+    Sun,
+} from 'lucide-react';
+import { useState } from 'react';
 import { Page, PageHeader, WarningBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -17,6 +25,8 @@ export type ShiftSummary = {
     function: string | null;
     professional: string | null;
     status: 'draft' | 'published' | 'cancelled';
+    period: 'day' | 'night';
+    valueCents: number | null;
 };
 
 type View = 'day' | 'week' | 'month';
@@ -114,6 +124,25 @@ export function timeRange(shift: ShiftSummary) {
     return `${shift.start} – ${shift.end}${nextDay ? ` (${formatDay(shift.endDate)})` : ''}`;
 }
 
+export function formatMoney(cents: number) {
+    return (cents / 100).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+    });
+}
+
+/** Shift period with icon and text (never the icon alone). */
+export function PeriodLabel({ period }: { period: ShiftSummary['period'] }) {
+    const Icon = period === 'day' ? Sun : Moon;
+
+    return (
+        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <Icon className="size-4 text-primary" aria-hidden="true" />
+            {period === 'day' ? 'Diurno' : 'Noturno'}
+        </span>
+    );
+}
+
 export function StatusBadge({ status }: { status: ShiftSummary['status'] }) {
     return status === 'published' ? (
         <span className="text-sm font-medium">{statusLabels[status]}</span>
@@ -128,7 +157,9 @@ export default function ShiftsIndex({
     view,
     from,
     to,
-    shifts,
+    weekFrom,
+    markers,
+    shifts: allShifts,
     canManage,
 }: {
     units: { id: number; name: string }[];
@@ -136,9 +167,16 @@ export default function ShiftsIndex({
     view: View;
     from: string | null;
     to: string | null;
+    weekFrom: string | null;
+    markers: string[];
     shifts: ShiftSummary[];
     canManage: boolean;
 }) {
+    const [showVacancies, setShowVacancies] = useState(true);
+    const shifts = showVacancies
+        ? allShifts
+        : allShifts.filter((shift) => shift.professional !== null);
+
     if (unit === null || from === null || to === null) {
         return (
             <>
@@ -265,6 +303,27 @@ export default function ShiftsIndex({
                     </nav>
                 </div>
 
+                <label className="mb-6 flex min-h-11 w-fit items-center gap-3 text-sm">
+                    <input
+                        type="checkbox"
+                        checked={showVacancies}
+                        onChange={(event) =>
+                            setShowVacancies(event.target.checked)
+                        }
+                        className="size-4 accent-primary"
+                    />
+                    Mostrar também vagas abertas (sem profissional)
+                </label>
+
+                {view !== 'month' && weekFrom !== null && (
+                    <DayStrip
+                        days={daysBetween(weekFrom, addDays(weekFrom, 6))}
+                        markers={markers}
+                        current={view === 'day' ? from : null}
+                        onOpenDay={(date) => go({ view: 'day', date })}
+                    />
+                )}
+
                 {!unit.complete && (
                     <p className="mb-6">
                         <WarningBadge>
@@ -348,13 +407,23 @@ function DaySection({
                                         ? `Desde ${formatDay(shift.date)}, ${shift.start} – ${shift.end}`
                                         : timeRange(shift)}
                                 </span>
-                                <span>
-                                    {shift.sector} · {shift.function} ·{' '}
-                                    {shift.professional ?? (
-                                        <strong className="font-semibold">
-                                            Vaga aberta
-                                        </strong>
-                                    )}
+                                <span className="grid gap-0.5">
+                                    <span>
+                                        {shift.sector} · {shift.function} ·{' '}
+                                        {shift.professional ?? (
+                                            <strong className="font-semibold">
+                                                Vaga aberta
+                                            </strong>
+                                        )}
+                                    </span>
+                                    <span className="flex flex-wrap gap-x-4">
+                                        <PeriodLabel period={shift.period} />
+                                        {shift.valueCents !== null && (
+                                            <span className="text-muted-foreground tabular-nums">
+                                                {formatMoney(shift.valueCents)}
+                                            </span>
+                                        )}
+                                    </span>
                                 </span>
                                 <StatusBadge status={shift.status} />
                             </Link>
@@ -367,6 +436,69 @@ function DaySection({
 }
 
 const weekdays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+
+/** Phone-only strip of the week's days; a dot marks days with shifts. */
+function DayStrip({
+    days,
+    markers,
+    current,
+    onOpenDay,
+}: {
+    days: string[];
+    markers: string[];
+    current: string | null;
+    onOpenDay: (date: string) => void;
+}) {
+    return (
+        <ol
+            aria-label="Dias da semana"
+            className="mb-6 grid grid-cols-7 gap-1 md:hidden"
+        >
+            {days.map((day, position) => {
+                const busy = markers.includes(day);
+                const selected = day === current;
+
+                return (
+                    <li key={day}>
+                        <button
+                            type="button"
+                            onClick={() => onOpenDay(day)}
+                            aria-current={selected ? 'date' : undefined}
+                            aria-label={`${formatDay(day)}${busy ? ', com plantão' : ''}`}
+                            className={cn(
+                                'flex min-h-14 w-full flex-col items-center justify-center gap-0.5 rounded-md text-xs focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+                                selected
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-muted',
+                            )}
+                        >
+                            <span aria-hidden="true">
+                                {weekdays[position].charAt(0)}
+                            </span>
+                            <span
+                                aria-hidden="true"
+                                className="text-sm font-semibold tabular-nums"
+                            >
+                                {Number(day.slice(8))}
+                            </span>
+                            <span
+                                aria-hidden="true"
+                                className={cn(
+                                    'size-1.5 rounded-full',
+                                    busy
+                                        ? selected
+                                            ? 'bg-primary-foreground'
+                                            : 'bg-primary'
+                                        : 'bg-transparent',
+                                )}
+                            />
+                        </button>
+                    </li>
+                );
+            })}
+        </ol>
+    );
+}
 
 function MonthView({
     from,
