@@ -6,6 +6,7 @@ use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\PolicyVersion;
 use App\Models\Professional;
+use App\Models\Shift;
 use App\Tenancy\CurrentTenant;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -55,6 +56,8 @@ class HandleInertiaRequests extends Middleware
                 && $request->user()->can('viewAny', Professional::class),
             'canManageJobFunctions' => fn () => $request->user() !== null
                 && $request->user()->can('manage', JobFunction::class),
+            'canViewShifts' => fn () => $request->user() !== null
+                && $request->user()->can('viewAny', Shift::class),
             'canViewPolicies' => fn () => $request->user() !== null
                 && $request->user()->can('viewAny', PolicyVersion::class),
             'canSwitchTenant' => fn () => $request->user() !== null
