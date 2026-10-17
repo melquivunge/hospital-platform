@@ -60,7 +60,7 @@ class AuthenticationTest extends TestCase
         $this->post(route('login.store'), [
             'email' => $user->email,
             'password' => 'wrong-password',
-        ]);
+        ])->assertSessionHasErrors(['email' => 'Credenciais inválidas. Verifique o e-mail e a senha.']);
 
         $this->assertGuest();
     }
