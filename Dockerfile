@@ -15,7 +15,7 @@ COPY . .
 RUN composer dump-autoload --no-dev --optimize && npm ci && npm run build
 
 FROM php-base AS app
-COPY --from=build --chown=www-data:www-data /var/www/html /var/www/html
+COPY --from=build /var/www/html /var/www/html
 RUN rm -rf node_modules tests .github && chown -R www-data:www-data storage bootstrap/cache
 USER www-data
 CMD ["php-fpm"]
