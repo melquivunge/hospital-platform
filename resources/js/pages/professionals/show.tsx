@@ -1,6 +1,11 @@
 import { Head, Link } from '@inertiajs/react';
 import { History, Pencil } from 'lucide-react';
 import { Page, PageHeader } from '@/components/page';
+import { QualificationsSection } from '@/components/qualifications-section';
+import type {
+    Qualification,
+    QualificationOptions,
+} from '@/components/qualifications-section';
 import { Button } from '@/components/ui/button';
 import { councilLabel } from '@/pages/professionals/index';
 import { edit, index } from '@/routes/professionals';
@@ -13,8 +18,8 @@ type Professional = {
     council_number: string | null;
     council_uf: string | null;
     external_id: string | null;
-    email: string | null;
-    phone: string | null;
+    email?: string | null;
+    phone?: string | null;
 };
 
 type HistoryEntry = {
@@ -31,10 +36,14 @@ export default function ProfessionalShow({
     professional,
     history,
     canUpdate,
+    qualifications,
+    qualificationOptions,
 }: {
     professional: Professional;
     history: HistoryEntry[];
     canUpdate: boolean;
+    qualifications: Qualification[];
+    qualificationOptions: QualificationOptions | null;
 }) {
     return (
         <>
@@ -58,6 +67,14 @@ export default function ProfessionalShow({
                         )
                     }
                 />
+
+                <div className="mb-8">
+                    <QualificationsSection
+                        professionalId={professional.id}
+                        qualifications={qualifications}
+                        options={qualificationOptions}
+                    />
+                </div>
 
                 <div className="grid gap-8 lg:grid-cols-3">
                     <section
@@ -121,11 +138,19 @@ export default function ProfessionalShow({
                                 label="Identificador externo"
                                 value={professional.external_id}
                             />
-                            <Detail label="E-mail" value={professional.email} />
-                            <Detail
-                                label="Telefone"
-                                value={professional.phone}
-                            />
+                            {/* Contact is omitted for destination-only managers. */}
+                            {professional.email !== undefined && (
+                                <Detail
+                                    label="E-mail"
+                                    value={professional.email}
+                                />
+                            )}
+                            {professional.phone !== undefined && (
+                                <Detail
+                                    label="Telefone"
+                                    value={professional.phone}
+                                />
+                            )}
                         </dl>
                     </aside>
                 </div>

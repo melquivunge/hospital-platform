@@ -1,6 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeftRight,
+    BriefcaseMedical,
     Building2,
     LayoutGrid,
     SlidersHorizontal,
@@ -21,6 +22,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { edit as selectTenant } from '@/routes/current-tenant';
+import { index as jobFunctions } from '@/routes/job-functions';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
 import { index as professionals } from '@/routes/professionals';
@@ -47,6 +49,7 @@ export function AppSidebar() {
         canManagePeople,
         canViewPolicies,
         canViewProfessionals,
+        canManageJobFunctions,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
@@ -56,6 +59,15 @@ export function AppSidebar() {
                       title: 'Profissionais',
                       href: professionals(),
                       icon: Stethoscope,
+                  },
+              ]
+            : []),
+        ...(canManageJobFunctions
+            ? [
+                  {
+                      title: 'Funções',
+                      href: jobFunctions(),
+                      icon: BriefcaseMedical,
                   },
               ]
             : []),

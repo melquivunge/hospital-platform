@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Tenancy\ProfessionalRequest;
 use App\Models\AuditEvent;
+use App\Models\JobFunction;
 use App\Models\Professional;
+use App\Models\Qualification;
 use App\Models\Unit;
 use App\Policies\UnitPolicy;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -91,10 +93,42 @@ class ProfessionalController extends Controller
                 'occurredAt' => $event->occurred_at->toIso8601String(),
             ]);
 
+        $full = Gate::allows('viewFull', $professional);
+        $membership = UnitPolicy::membershipFor(request()->user(), $professional->tenant_id);
+
+        $qualifications = $professional->qualifications()
+            ->when(! $full, fn ($query) => $query->whereIn('unit_id', $membership === null ? [] : Professional::managedUnitIds($membership)))
+            ->with(['unit:id,name', 'jobFunction:id,name', 'sectors:id,name'])
+            ->orderByRaw("status = 'revoked'")
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Qualification $qualification) => [
+                'id' => $qualification->id,
+                'unit' => $qualification->unit?->name,
+                'function' => $qualification->jobFunction?->name,
+                'sectors' => $qualification->sectors->pluck('name')->sort()->values(),
+                'status' => $qualification->status->value,
+                'validFrom' => $qualification->valid_from->toDateString(),
+                'validUntil' => $qualification->valid_until?->toDateString(),
+                'canDecide' => Gate::allows('decide', $qualification),
+            ]);
+        $canRequest = Gate::allows('request', [Qualification::class, $professional]);
+
         return Inertia::render('professionals/show', [
-            'professional' => [...$professional->only(self::FIELDS), 'baseUnit' => $professional->baseUnit?->name],
+            'professional' => [
+                ...$professional->only($full ? self::FIELDS : array_diff(self::FIELDS, ['email', 'phone'])),
+                'baseUnit' => $professional->baseUnit?->name,
+            ],
             'history' => $history,
             'canUpdate' => Gate::allows('update', $professional),
+            'qualifications' => $qualifications,
+            'canRequestQualification' => $canRequest,
+            // Requesting is allowed for any unit of the network; approval happens at the destination.
+            'qualificationOptions' => $canRequest ? [
+                'units' => Unit::query()->with('sectors:id,unit_id,name')->orderBy('name')->get()
+                    ->map(fn (Unit $unit) => ['id' => $unit->id, 'name' => $unit->name, 'sectors' => $unit->sectors->sortBy('name')->map->only('id', 'name')->values()]),
+                'functions' => JobFunction::query()->orderBy('name')->get(['id', 'name']),
+            ] : null,
         ]);
     }
 
