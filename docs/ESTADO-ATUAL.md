@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações e serviço de elegibilidade, com identidade visual própria. Próximo passo: etapa 4 (plantões e publicação segura).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade e escala com publicação segura, com identidade visual própria. Próximo passo: etapa 4b (agenda diária/semanal/mensal e eventos para notificação).
 
 ## Onde está cada coisa
 
@@ -33,14 +33,25 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #7 | Etapa 2b-2: pessoas e papéis (convite, papéis, revogar/reativar, último administrador) | Mesclado após revisão de segurança |
 | #8 | Etapa 2c: catálogo de regras e ADR do RLS | Mesclado |
 | #9 | Etapa 3a: cadastro de profissionais e unidade-base | Mesclado |
-| — | Etapa 3b: funções, habilitações e elegibilidade (branch `feat/eligibility`) | Em revisão |
+| #10 | Etapa 3b: funções, habilitações e elegibilidade | Mesclado |
+| — | Etapa 4a: plantões, publicação e cancelamento (branch `feat/shifts`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade).
-- **Próximo: etapa 4** (plantões e publicação segura), e depois as etapas 5 a 9 (importação, vagas, trocas, presença, relatórios).
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala).
+- **Próximo: etapa 4b** (agenda diária/semanal/mensal e eventos/outbox para notificações), e depois as etapas 5 a 9 (importação, vagas, trocas, presença, relatórios).
+
+### Etapa 4a: decisões do usuário (17/10/2026) e como funciona
+
+- **Conflito de horário:** conta rascunho e publicado. Uma restrição de exclusão no PostgreSQL (`shifts_no_overlap`, extensão `btree_gist`) impede o mesmo profissional em dois plantões não cancelados sobrepostos `[início, fim)`, inclusive com publicações simultâneas.
+- **Publicado:** só pode ser cancelado, com motivo e antes do início. O responsável muda só pelos fluxos das etapas 6 e 7.
+- **Quem monta a escala:** o coordenador de plantões da unidade e o administrador de rede. O gestor da unidade e o auditor só consultam.
+- **Criar, editar e publicar:** cada operação trava os profissionais (ordem de id) e depois o plantão, e revalida a elegibilidade. A publicação grava a `eligibility_version` e a habilitação usadas.
+- **Plantão já iniciado:** não pode ser criado, editado nem publicado (padrão conservador; registrado como decisão técnica).
+- **Horários:** digitados no fuso da unidade e guardados em UTC. Horário inexistente no fuso é rejeitado. A lista é semanal, por unidade.
+- **Limite de duração:** não há duração máxima de plantão; o limite precisa ser definido pelo produto.
 
 ### Etapa 3: decisões do usuário (17/10/2026)
 
@@ -117,7 +128,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 157 testes passando (etapa 3b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 171 testes passando (etapa 4a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

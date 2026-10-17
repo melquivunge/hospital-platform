@@ -8,6 +8,7 @@ use App\Http\Controllers\PolicyController;
 use App\Http\Controllers\ProfessionalController;
 use App\Http\Controllers\QualificationController;
 use App\Http\Controllers\SectorController;
+use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +21,14 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::resource('professionals', ProfessionalController::class)->except('destroy');
     Route::post('professionals/{professional}/qualifications', [QualificationController::class, 'store'])->name('professionals.qualifications.store');
     Route::post('qualifications/{qualification}/transition', [QualificationController::class, 'transition'])->name('qualifications.transition');
+    Route::get('shifts', [ShiftController::class, 'index'])->name('shifts.index');
+    Route::get('units/{unit}/shifts/create', [ShiftController::class, 'create'])->name('units.shifts.create');
+    Route::post('units/{unit}/shifts', [ShiftController::class, 'store'])->name('units.shifts.store');
+    Route::get('shifts/{shift}', [ShiftController::class, 'show'])->name('shifts.show');
+    Route::get('shifts/{shift}/edit', [ShiftController::class, 'edit'])->name('shifts.edit');
+    Route::put('shifts/{shift}', [ShiftController::class, 'update'])->name('shifts.update');
+    Route::post('shifts/{shift}/publish', [ShiftController::class, 'publish'])->name('shifts.publish');
+    Route::post('shifts/{shift}/cancel', [ShiftController::class, 'cancel'])->name('shifts.cancel');
     Route::get('job-functions', [JobFunctionController::class, 'index'])->name('job-functions.index');
     Route::post('job-functions', [JobFunctionController::class, 'store'])->name('job-functions.store');
     Route::put('job-functions/{jobFunction}', [JobFunctionController::class, 'update'])->name('job-functions.update');
