@@ -12,7 +12,7 @@ use InvalidArgumentException;
 final class ClinicalSchema
 {
     /** @var list<string> */
-    public const TABLES = [];
+    public const TABLES = ['patients'];
 
     /**
      * Only rows of the client in the session are visible or writable; without a client, none is.
