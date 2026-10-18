@@ -27,6 +27,7 @@ export type ShiftSummary = {
     status: 'draft' | 'published' | 'cancelled';
     period: 'day' | 'night';
     valueCents: number | null;
+    announced: boolean;
 };
 
 type View = 'day' | 'week' | 'month';

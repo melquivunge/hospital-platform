@@ -18,6 +18,7 @@ export type Vacancy = Pick<
 > & {
     unit: string;
     application: { status: string; label: string } | null;
+    replacement: boolean;
 };
 
 /** Open vacancies the professional may apply to (references IMG_0928 to 0932). */
@@ -68,6 +69,8 @@ export default function Vacancies({
                                     </span>
                                     <span className="text-muted-foreground">
                                         {vacancy.function}
+                                        {vacancy.replacement &&
+                                            ' · Substituição'}
                                     </span>
                                     <span className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
                                         <PeriodLabel period={vacancy.period} />

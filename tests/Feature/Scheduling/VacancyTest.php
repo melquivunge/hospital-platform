@@ -148,6 +148,12 @@ class VacancyTest extends TestCase
 
         $this->actingAs($this->anaAccess->user)->get(route('shifts.mine'))->assertInertia(fn (Assert $page) => $page->has('shifts', 1));
         $this->post(route('vacancies.withdraw', $this->vacancy))->assertSessionHasErrors('application');
+
+        // A new announcement round does not show Bruno's outcome from the previous round.
+        $this->actingAs($this->brunoAccess->user)->get(route('vacancies.show', $this->vacancy))->assertInertia(fn (Assert $page) => $page->where('vacancy.application.status', 'not_selected'));
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.announce', $this->vacancy))->assertSessionHasNoErrors();
+        $this->actingAs($this->brunoAccess->user)->get(route('vacancies.show', $this->vacancy))
+            ->assertInertia(fn (Assert $page) => $page->where('vacancy.application', null)->where('canApply', true));
     }
 
     public function test_withdrawn_or_no_longer_eligible_candidate_is_not_selected_nor_replaced(): void
@@ -243,6 +249,151 @@ class VacancyTest extends TestCase
         $this->actingAs($this->anaAccess->user)->get(route('vacancies.show', $this->vacancy))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page->where('canApply', false)->where('vacancy.application.status', 'not_selected'));
+    }
+
+    /**
+     * Published shift of $professional on 2026-11-12, created and published by the coordinator.
+     */
+    private function assignedShift(Professional $professional, string $day = '2026-11-12'): Shift
+    {
+        $this->actingAs($this->coordinator->user)->post(route('units.shifts.store', $this->unit), [
+            'sector_id' => $this->icu->id,
+            'job_function_id' => $this->doctor->id,
+            'professional_id' => $professional->id,
+            'starts_at' => "{$day}T07:00",
+            'ends_at' => "{$day}T19:00",
+        ])->assertSessionHasNoErrors();
+        $shift = Shift::withoutTenantScope()->latest('id')->firstOrFail();
+        $this->post(route('shifts.publish', $shift))->assertSessionHasNoErrors();
+
+        return $shift;
+    }
+
+    public function test_announced_shift_keeps_its_responsible_until_the_coordinator_selects_a_replacement(): void
+    {
+        $shift = $this->assignedShift($this->ana);
+
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.announce', $shift))->assertSessionHasNoErrors();
+        $this->assertSame($this->ana->id, $shift->fresh()?->professional_id);
+        $this->post(route('shifts.announce', $shift))->assertSessionHasErrors(['shift' => 'Este plantão já está anunciado.']);
+        $this->get(route('shifts.mine'))->assertInertia(fn (Assert $page) => $page->where('shifts.0.announced', true)->where('shifts.0.upcoming', true));
+
+        // The announcer does not see nor apply to their own shift.
+        $this->get(route('vacancies.index'))->assertInertia(fn (Assert $page) => $page->has('vacancies', 1)->where('vacancies.0.id', $this->vacancy->id));
+        $this->post(route('vacancies.apply', $shift))->assertSessionHasErrors(['application' => 'Este plantão já é seu.']);
+
+        $this->actingAs($this->brunoAccess->user)->get(route('vacancies.show', $shift))
+            ->assertInertia(fn (Assert $page) => $page->where('vacancy.replacement', true)->where('canApply', true)->missing('vacancy.professional'));
+        $this->post(route('vacancies.apply', $shift))->assertSessionHasNoErrors();
+        $this->assertSame($this->ana->id, $shift->fresh()?->professional_id);
+
+        $this->actingAs($this->coordinator->user)->get(route('shifts.show', $shift))
+            ->assertInertia(fn (Assert $page) => $page->where('canSelect', true)->where('shift.announced', true)->has('applications', 1));
+        $this->post(route('shift-applications.select', $this->application($this->bruno)), ['reason' => 'Ana pediu substituição.'])->assertSessionHasNoErrors();
+
+        $fresh = $shift->fresh();
+        $this->assertSame($this->bruno->id, $fresh?->professional_id);
+        $this->assertNull($fresh?->announced_at);
+        $context = AuditEvent::where('action', 'shift.assigned')->latest('id')->firstOrFail()->context;
+        $this->assertSame($this->ana->id, $context['replaced_professional_id'] ?? null);
+
+        $this->actingAs($this->anaAccess->user)->get(route('shifts.mine'))->assertInertia(fn (Assert $page) => $page->has('shifts', 0));
+        $this->actingAs($this->brunoAccess->user)->get(route('shifts.mine'))->assertInertia(fn (Assert $page) => $page->has('shifts', 1));
+    }
+
+    public function test_only_the_responsible_announces_and_cancelling_closes_the_applications(): void
+    {
+        $shift = $this->assignedShift($this->ana);
+
+        $this->actingAs($this->brunoAccess->user)->post(route('shifts.announce', $shift))->assertSessionHasErrors(['shift' => 'Só o responsável pode anunciar este plantão.']);
+        $this->post(route('shifts.cancel-announcement', $shift))->assertSessionHasErrors('shift');
+        $this->post(route('vacancies.apply', $shift))->assertSessionHasErrors(['shift' => 'Esta vaga já foi preenchida.']);
+
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.announce', $shift));
+        $this->actingAs($this->brunoAccess->user)->post(route('vacancies.apply', $shift))->assertSessionHasNoErrors();
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.cancel-announcement', $shift))->assertSessionHasNoErrors();
+
+        $this->assertNull($shift->fresh()?->announced_at);
+        $this->assertSame(ApplicationStatus::NotSelected, $this->application($this->bruno)->status);
+        $this->actingAs($this->coordinator->user)->post(route('shift-applications.select', $this->application($this->bruno)), ['reason' => 'Motivo'])
+            ->assertSessionHasErrors(['shift' => 'Esta vaga já foi preenchida.']);
+        $this->assertSame($this->ana->id, $shift->fresh()?->professional_id);
+        $this->assertSame(['shift.announced', 'shift.announcement_cancelled'], AuditEvent::where('action', 'like', 'shift.announce%')->orderBy('id')->pluck('action')->all());
+
+        // A shift without an announcement is not selectable by the coordinator either.
+        $this->get(route('shifts.show', $shift))->assertInertia(fn (Assert $page) => $page->where('canSelect', false));
+    }
+
+    public function test_replacement_respects_conflicts_and_the_announcer_does_not_decide(): void
+    {
+        $shift = $this->assignedShift($this->ana);
+        $this->assignedShift($this->bruno, '2026-11-12');
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.announce', $shift));
+        $this->actingAs($this->brunoAccess->user)->post(route('vacancies.apply', $shift))->assertSessionHasNoErrors();
+
+        $this->actingAs($this->coordinator->user)->post(route('shift-applications.select', $this->application($this->bruno)), ['reason' => 'Motivo'])
+            ->assertSessionHasErrors(['professional_id' => 'O profissional já tem outro plantão nesse horário.']);
+        $this->assertSame($this->ana->id, $shift->fresh()?->professional_id);
+        $this->assertNotNull($shift->fresh()?->announced_at);
+
+        // A coordinator who is also the announcer cannot pick their own replacement.
+        $this->coordinator->grant(Role::Professional, $this->unit);
+        Professional::query()->whereKey($this->ana->id)->update(['membership_id' => $this->coordinator->id]);
+        [$caio] = $this->linkedProfessional('Caio Sintético');
+        $caioAccess = Membership::query()->whereKey($caio->membership_id)->firstOrFail();
+        $this->actingAs($caioAccess->user)->post(route('vacancies.apply', $shift))->assertSessionHasNoErrors();
+
+        $this->actingAs($this->coordinator->user)->post(route('shift-applications.select', $this->application($caio)), ['reason' => 'Motivo'])
+            ->assertSessionHasErrors(['application' => 'Você anunciou este plantão e não pode escolher o substituto. Outro coordenador precisa decidir.']);
+        $this->assertSame($this->ana->id, $shift->fresh()?->professional_id);
+    }
+
+    public function test_a_shift_filled_from_a_vacancy_can_be_replaced_twice(): void
+    {
+        [$caio, $caioAccess] = $this->linkedProfessional('Caio Sintético');
+        $this->actingAs($this->anaAccess->user)->post(route('vacancies.apply', $this->vacancy));
+        $this->actingAs($this->coordinator->user)->post(route('shift-applications.select', $this->application($this->ana)), ['reason' => 'Primeira escolha'])->assertSessionHasNoErrors();
+
+        foreach ([[$this->anaAccess, $this->brunoAccess, $this->bruno], [$this->brunoAccess, $caioAccess, $caio]] as [$announcer, $candidateAccess, $candidate]) {
+            $this->actingAs($announcer->user)->post(route('shifts.announce', $this->vacancy))->assertSessionHasNoErrors();
+            $this->actingAs($candidateAccess->user)->post(route('vacancies.apply', $this->vacancy))->assertSessionHasNoErrors();
+            $this->actingAs($this->coordinator->user)->post(route('shift-applications.select', $this->application($candidate)), ['reason' => 'Substituição'])->assertSessionHasNoErrors();
+            $this->assertSame($candidate->id, $this->vacancy->fresh()?->professional_id);
+        }
+
+        $this->assertSame(ApplicationStatus::Replaced, $this->application($this->ana)->status);
+        $this->assertSame(ApplicationStatus::Replaced, $this->application($this->bruno)->status);
+        $this->assertSame(ApplicationStatus::Selected, $this->application($caio)->status);
+    }
+
+    public function test_started_draft_or_unqualified_cases_are_not_announced_or_visible(): void
+    {
+        $shift = $this->assignedShift($this->ana);
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.announce', $shift));
+        [, $access] = $this->linkedProfessional('Dora Sem Habilitação', qualified: false);
+        $this->actingAs($access->user)->get(route('vacancies.index'))->assertInertia(fn (Assert $page) => $page->has('vacancies', 0));
+        $this->get(route('vacancies.show', $shift))->assertNotFound();
+
+        $this->actingAs($this->coordinator->user)->post(route('units.shifts.store', $this->unit), [
+            'sector_id' => $this->icu->id, 'job_function_id' => $this->doctor->id, 'professional_id' => $this->bruno->id,
+            'starts_at' => '2026-11-14T07:00', 'ends_at' => '2026-11-14T19:00',
+        ]);
+        $draft = Shift::withoutTenantScope()->latest('id')->firstOrFail();
+        $this->actingAs($this->brunoAccess->user)->post(route('shifts.announce', $draft))->assertSessionHasErrors('shift');
+
+        $started = $this->assignedShift($this->bruno, '2026-11-16');
+        $this->travelTo($started->starts_at->addHour());
+        $this->actingAs($this->brunoAccess->user)->post(route('shifts.announce', $started))->assertSessionHasErrors(['shift' => 'O plantão já começou e não pode ser anunciado.']);
+    }
+
+    public function test_cancelling_an_announced_shift_clears_the_announcement(): void
+    {
+        $shift = $this->assignedShift($this->ana);
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.announce', $shift));
+
+        $this->actingAs($this->coordinator->user)->post(route('shifts.cancel', $shift), ['reason' => 'Setor fechado'])->assertSessionHasNoErrors();
+        $this->assertNull($shift->fresh()?->announced_at);
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.cancel-announcement', $shift))->assertSessionHasErrors('shift');
     }
 
     public function test_database_allows_a_single_winner_per_vacancy(): void
