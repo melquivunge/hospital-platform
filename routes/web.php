@@ -23,6 +23,7 @@ use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\ShiftRequestController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\VacancyController;
+use App\Http\Controllers\VisitController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login')->name('home');
@@ -64,6 +65,13 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('appointments', [AppointmentController::class, 'index'])->name('appointments.index');
     Route::post('units/{unit}/appointments', [AppointmentController::class, 'store'])->middleware('throttle:60,1')->name('appointments.store');
     Route::post('appointments/{appointment}/cancel', [AppointmentController::class, 'cancel'])->middleware('throttle:60,1')->name('appointments.cancel');
+    Route::get('visits', [VisitController::class, 'index'])->name('visits.index');
+    Route::post('appointments/{appointment}/visit', [VisitController::class, 'open'])->middleware('throttle:60,1')->name('visits.open');
+    Route::get('visits/{visit}', [VisitController::class, 'show'])->name('visits.show');
+    Route::post('visits/{visit}/close', [VisitController::class, 'close'])->middleware('throttle:60,1')->name('visits.close');
+    Route::post('visits/{visit}/notes', [VisitController::class, 'storeNote'])->middleware('throttle:60,1')->name('visits.notes.store');
+    Route::put('clinical-notes/{note}', [VisitController::class, 'updateNote'])->middleware('throttle:60,1')->name('clinical-notes.update');
+    Route::post('clinical-notes/{note}/sign', [VisitController::class, 'signNote'])->middleware('throttle:60,1')->name('clinical-notes.sign');
     Route::get('appointments/queue', [AppointmentController::class, 'queue'])->name('appointments.queue');
     Route::post('appointments/{appointment}/arrive', [AppointmentController::class, 'arrive'])->middleware('throttle:60,1')->name('appointments.arrive');
     Route::post('appointments/{appointment}/no-show', [AppointmentController::class, 'noShow'])->middleware('throttle:60,1')->name('appointments.no-show');

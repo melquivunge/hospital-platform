@@ -56,7 +56,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #30 | Etapa 3.3: unificação de cadastros | Mesclado |
 | #31 | Etapa 3.4a: grade de agenda | Mesclado |
 | #32 | Etapa 3.4b: agendamento pela recepção | Mesclado |
-| — | Etapa 3.5: chegada, fila do dia e convênios (branch `feat/reception-arrival`) | Em revisão |
+| #33 | Etapa 3.5: chegada, fila do dia e convênios | Mesclado |
+| — | Etapa 3.6a: atendimento, evolução e trilha de leitura (branch `feat/clinical-visit`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -103,7 +104,15 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Corrida real chegada × cancelamento do mesmo agendamento (5 rodadas válidas, nas duas ordens): sempre uma ação vence, a outra é recusada com mensagem, um único evento de auditoria.
   - Navegador (1440 e 390 px): convênio cadastrado pelo administrador, chegada por convênio e cancelamento na fila; sem erro de JavaScript ou 5xx, sem rolagem horizontal.
   - Revisão independente (aprovada, sem crítico/alto). Corrigido: o convênio é conferido como ativo de novo dentro da transação (lock compartilhado); os botões repetidos de cada linha (chegada, falta, cancelar) têm nome acessível com paciente e horário. Limite conhecido: a fila aberta depois da meia-noite fica no dia anterior até recarregar (a chegada é recusada com mensagem).
-  - Próxima: **3.6** (atendimento e evolução).
+- **3.6a (atendimento e evolução; a 3.6 foi dividida em 3.6a e 3.6b):**
+  - Tela "Meus atendimentos" (profissional com conta ligada): pacientes que já chegaram para ele e atendimentos em andamento, em qualquer unidade. "Iniciar atendimento" só depois da chegada confirmada (decisão técnica: o encaixe também passa pela confirmação de chegada na fila). Duas abas ou dois cliques caem no mesmo atendimento (lock no agendamento + atendimento único por agendamento). Agendamento: chegou → em atendimento → atendido.
+  - **Acesso clínico centralizado** (`App\Clinical\ClinicalAccess`): lê o prontuário só quem tem atendimento aberto do paciente em qualquer unidade da rede; cadastros unificados formam um prontuário só. Recepção, gestão e administração nunca leem. Cada abertura do atendimento grava uma leitura em `clinical_reads` (só inserção, garantido por gatilho no banco).
+  - Evolução: rascunho visto só pelo autor, salvo quantas vezes quiser; **assinatura com a senha** (sem ICP-Brasil) torna a evolução imutável: um gatilho no banco recusa alterar evolução assinada e apagar qualquer evolução. Correção é um **adendo**, também rascunho → assinado, ligado à evolução original. Encerrar o atendimento exige os rascunhos dele assinados; depois do encerramento, o prontuário deixa de abrir para esse profissional.
+  - Nenhum texto clínico vai para a auditoria (`visit.opened|closed`, `clinical_note.created|signed` só com ids), URLs, notificações ou mensagens.
+  - Corrida real (duas abas abrindo o mesmo atendimento, 6 rodadas): sempre um atendimento e um evento de auditoria.
+  - Navegador (1440 e 390 px): rascunho, encerramento recusado com rascunho pendente, senha errada, assinatura, adendo e encerramento; sem erro de JavaScript ou 5xx. O teste no navegador achou um defeito corrigido: rascunho de outro atendimento do mesmo paciente aparecia e bloqueava o encerramento.
+  - Revisão de segurança independente (sem crítico). Corrigido: rascunho gravado com o atendimento travado (corrida real encerrar × salvar rascunho, 6 rodadas: nunca fica rascunho em atendimento encerrado); rascunho de um atendimento só se edita ou assina com ele aberto; um rascunho de evolução por autor e atendimento (índice no banco); gatilhos ampliados: evolução nasce rascunho, autor e data de criação não mudam, atendimento encerrado não reabre nem troca paciente, profissional ou agendamento, e esvaziar as três tabelas é recusado; senha errada na assinatura: 5 tentativas a cada 15 minutos por usuário (só as erradas contam) e cada falha vai para a auditoria (`clinical_note.sign_failed`). O rollback da migration devolve agendamentos em atendimento ou atendidos para "chegou".
+  - Próxima: **3.6b** (acesso de emergência com justificativa e validade de 4 horas, aviso ao gestor, consulta da trilha de leituras pela auditoria).
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
   - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`). Locks na mesma ordem dos demais fluxos (profissional → plantões por id → pedidos). Corrida real entre revogação e cancelamento do plantão (cliente sintético "Rede Corrida", 12 rodadas nas duas ordens): sem deadlock, um resultado coerente por rodada, um único evento de auditoria por pedido.
@@ -291,7 +300,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 291 testes passando (etapa 3.5), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 297 testes passando (etapa 3.6a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
