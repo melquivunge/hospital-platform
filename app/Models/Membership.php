@@ -181,6 +181,7 @@ class Membership extends Model
             $this->forceFill(['revoked_at' => now()])->save();
 
             AuditEvent::record('membership.revoked', $this->tenant_id, $this, ['user_id' => $this->user_id]);
+            Shift::vacateFor($this);
         });
     }
 }

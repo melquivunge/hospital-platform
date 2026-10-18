@@ -129,7 +129,7 @@ Dependências não implicam que o módulo inteiro precisa ser entregue de uma ve
 - Na conclusão, revalidar elegibilidade, candidatura ativa, vaga aberta e ausência de conflito conforme critérios aprovados.
 - Impedir que dois coordenadores atribuam a mesma vaga a pessoas diferentes; a segunda tentativa recebe o estado atualizado, sem sobrescrever a primeira.
 - Se o candidato desistir ou perder elegibilidade antes da conclusão, retornar a seleção para análise; não escolher automaticamente outro candidato.
-- Registrar autor, justificativa, data, versão das regras e resultado da decisão. Visibilidade da justificativa e destinatários das notificações ainda precisam ser definidos.
+- Registrar autor, justificativa, data, versão das regras e resultado da decisão. Visibilidade da justificativa ainda precisa ser definida; destinatários das notificações: envolvidos e coordenadores da unidade (etapa 9a).
 - Não aplicar uma exceção automática à escolha entre múltiplos candidatos sem uma nova decisão explícita do produto.
 
 **Casos de aceite propostos:** escolha válida e justificada; tentativa sem justificativa; candidatura retirada; conflito surgido após a escolha; duas escolhas concorrentes; acesso de coordenador de outra unidade. São cenários documentados, não testes executados.
@@ -223,7 +223,7 @@ Uma pessoa pode acumular papéis, mas não aprova uma mudança em que seja parti
 | V1-02 | Cadastrar rede, hospitais, UF, fuso horário, setores e locais de presença | Hospital sem UF/fuso não publica escala; nenhuma configuração concede acesso a outro cliente |
 | V1-03 | Cadastrar profissional, função, vínculos e habilitações por destino, com status e validade | Aprovação em A não habilita em B; pendência, suspensão e expiração impedem nova atribuição |
 | V1-04 | Criar e editar escala em rascunho; publicar com responsável ou vaga aberta | Datas completas, início anterior ao fim e vínculos válidos; rascunho não aparece como escala confirmada |
-| V1-05 | Agenda diária/semanal/mensal, lista e detalhes por perfil | Plantão atravessando meia-noite permanece consultável até o checkout; data e fuso ficam claros |
+| V1-05 | Agenda diária/semanal/mensal, lista e detalhes por perfil | Plantão atravessando meia-noite permanece consultável até o fim previsto (decisão do usuário, 18/10/2026); data e fuso ficam claros |
 | V1-06 | Solicitar troca entre dois plantões e transferência direta | Resumo distingue as operações; destinatário aceita; coordenadores exigidos aprovam antes de mudar a escala |
 | V1-07 | Anunciar plantão e candidatar-se a vaga, com retirada antes da conclusão | Anúncio não remove responsável; candidatura não equivale a alocação; coordenador escolhe e justifica |
 | V1-08 | Consultar solicitações com status, histórico e motivo compreensível | Cancelamento pendente preserva escala original; recusa e expiração têm resultado explícito |

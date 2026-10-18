@@ -94,6 +94,9 @@ class User extends Authenticatable implements MustVerifyEmail
             foreach ($tenantIds->isEmpty() ? [null] : $tenantIds as $tenantId) {
                 AuditEvent::record('user.deactivated', $tenantId, $this);
             }
+            foreach ($this->memberships()->get() as $membership) {
+                Shift::vacateFor($membership);
+            }
         });
     }
 }

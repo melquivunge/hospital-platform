@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Jobs\DeliverNotifications;
 use App\Models\AuditEvent;
 use App\Models\JobFunction;
 use App\Models\Membership;
@@ -19,6 +20,7 @@ use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -255,14 +257,69 @@ class TransferTest extends TestCase
         $this->actingAs($this->brunoAccess->user)->post(route('requests.respond', $this->request()), ['accept' => true])->assertSessionHasNoErrors();
         $this->brunoAccess->revoke();
 
-        $this->actingAs($this->coordinator->user)->post(route('requests.decide', $this->request()), ['approve' => true])
-            ->assertSessionHasErrors(['request' => 'Um dos profissionais perdeu o acesso à plataforma. Recuse a solicitação.']);
+        // Revoking the recipient closes the request at once; the approval finds nothing left to decide.
+        $this->assertSame(RequestStatus::Cancelled, $this->request()->status);
+        $this->assertSame('Acesso do profissional revogado.', $this->request()->decision_reason);
+        $this->actingAs($this->coordinator->user)->post(route('requests.decide', $this->request()), ['approve' => true])->assertSessionHasErrors('request');
         $this->assertSame($this->ana->id, $this->shift->fresh()?->professional_id);
-        $this->assertSame(RequestStatus::PendingCoordinator, $this->request()->status);
 
-        $this->post(route('shifts.cancel', $this->shift), ['reason' => 'Setor fechado'])->assertSessionHasNoErrors();
+        // A request closed by the shift's cancellation is audited too.
+        [$carla] = $this->linkedProfessional('Carla Sintética');
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.transfer.store', $this->shift), ['recipient_id' => $carla->id])->assertSessionHasNoErrors();
+        $this->actingAs($this->coordinator->user)->post(route('shifts.cancel', $this->shift), ['reason' => 'Setor fechado'])->assertSessionHasNoErrors();
         $this->assertEquals(['request_id' => $this->request()->id, 'reason' => 'Plantão cancelado.'],
-            AuditEvent::where('action', 'shift.transfer_cancelled')->sole()->context);
+            AuditEvent::where('action', 'shift.transfer_cancelled')->latest('id')->firstOrFail()->context);
+    }
+
+    public function test_revoked_access_turns_future_shifts_back_into_vacancies(): void
+    {
+        $this->travelTo('2026-11-01 12:00:00');
+        $later = $this->assignedShift($this->ana, '2026-11-20');
+        $this->requestToBruno();
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.announce', $later))->assertSessionHasNoErrors();
+        $this->actingAs($this->brunoAccess->user)->post(route('vacancies.apply', $later))->assertSessionHasNoErrors();
+        $past = $this->assignedShift($this->ana, '2026-11-05');
+        $this->travelTo('2026-11-10 12:00:00');
+
+        $this->actingAs($this->admin->user)->post(route('people.revoke', $this->anaAccess))->assertSessionHasNoErrors();
+
+        foreach ([$this->shift, $later] as $shift) {
+            $shift->refresh();
+            $this->assertNull($shift->professional_id);
+            $this->assertNull($shift->announced_at);
+            $this->assertSame('published', $shift->status->value);
+        }
+        $this->assertSame($this->ana->id, $past->fresh()?->professional_id);
+        $this->assertSame(RequestStatus::Cancelled, $this->request()->status);
+        $this->assertSame(ApplicationStatus::NotSelected, ShiftApplication::withoutTenantScope()->sole()->status);
+        $this->assertSame(2, AuditEvent::where('action', 'shift.vacated')->count());
+        $this->assertSame(1, AuditEvent::where('action', 'shift.transfer_cancelled')->count());
+
+        (new DeliverNotifications)->handle();
+        $this->assertSame(2, DB::table('user_notifications')->where('user_id', $this->coordinator->user_id)
+            ->where('title', 'Plantão voltou a ser vaga: acesso do profissional revogado')->count());
+
+        // The vacancies are open again: Bruno applies to the one that was Ana's.
+        $this->actingAs($this->brunoAccess->user)->post(route('vacancies.apply', $this->shift))->assertSessionHasNoErrors();
+    }
+
+    public function test_a_deactivated_account_also_frees_its_future_shifts(): void
+    {
+        // Ana already checked in on this one, inside the entry window before the start.
+        $started = $this->assignedShift($this->ana, '2026-11-02');
+        $this->travelTo('2026-11-02 09:40:00');
+        $point = DB::table('attendance_points')->insertGetId(['tenant_id' => $this->unit->tenant_id, 'unit_id' => $this->unit->id, 'name' => 'Portaria',
+            'latitude' => -23.5, 'longitude' => -46.6, 'radius_m' => 100, 'created_by_user_id' => $this->admin->user_id, 'created_at' => now()]);
+        DB::table('attendance_events')->insert(['tenant_id' => $this->unit->tenant_id, 'shift_id' => $started->id, 'professional_id' => $this->ana->id,
+            'user_id' => $this->anaAccess->user_id, 'kind' => 'check_in', 'result' => 'accepted', 'received_at' => now(), 'point_id' => $point,
+            'distance_m' => 5, 'idempotency_key' => '00000000-0000-0000-0000-000000000009']);
+
+        app(CurrentTenant::class)->set(null);
+        $this->anaAccess->user->deactivate();
+
+        $this->assertNull($this->shift->fresh()?->professional_id);
+        $this->assertSame($this->ana->id, $started->fresh()?->professional_id);
+        $this->assertSame(1, AuditEvent::where('action', 'shift.vacated')->count());
     }
 
     public function test_requests_page_needs_a_linked_professional_or_a_coordinator(): void

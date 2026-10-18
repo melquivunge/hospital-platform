@@ -48,21 +48,25 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #22 | Etapa 9a: notificações internas e barra superior | Mesclado |
 | #23 | Foto de perfil e configurações em português | Mesclado |
 | #24 | Etapa 9b: relatórios e exportação CSV/PDF | Mesclado |
-| — | Etapa 9c: revisão integrada (branch `chore/integrated-review`) | Em revisão |
+| #25 | Etapa 9c: revisão integrada | Mesclado |
+| — | Revogação libera plantões futuros (branch `feat/revoke-vacates-shifts`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
 - Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca, PR #19), 8a (presença por localização, PR #20), 8b (ocorrências, PR #21), 9a (notificações e barra superior, PR #22).
-- **Próximo:** com a 9c mesclada, o plano web V1 fica completo. Antes de operação real: os limites listados em "Limites conhecidos da V1" no README.
+- **Plano web V1 completo** (PRs #1 a #25). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
+- **Decisões do usuário (18/10/2026) após a 9c:**
+  - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`).
+  - **Meia-noite (V1-05):** o plantão que atravessa a meia-noite fica visível até o **fim previsto**, como já funcionava; o PRODUCT.md foi ajustado.
 - **9c (revisão integrada, 18/10/2026):**
   - `tests/Feature/JourneyTest.php`: a jornada inteira num cliente novo, só pelas rotas HTTP, passando por provisionamento, unidade, setor, função, convites de coordenação e gestão, profissionais com habilitação aprovada e acesso, regras e ponto de presença, escala publicada, candidatura e escolha, transferência aceita e aprovada, entrada por localização e saída ajustada. Depois confere as notificações por pessoa, o relatório e o CSV contra o que aconteceu, e a auditoria sem mistura entre clientes.
   - Telas: 29 combinações de perfil e tela (administrador, coordenadora e profissional) em 360, 768 e 1440 px, sem erro 5xx ou de JavaScript, sem rolagem horizontal, com um `h1` por página, todos os controles com nome acessível e foco visível nas primeiras paradas do teclado. O verificador foi validado antes numa página com esses defeitos plantados.
   - Dependências: `composer audit` e `npm audit` sem vulnerabilidades; `composer validate` ok. Não existe `npm run test:e2e` nos manifests: a jornada é coberta pelo `JourneyTest` e pela verificação no navegador.
   - Limites de produção consolidados no README ("Limites conhecidos da V1").
   - Revisão independente da integração (sem bloqueadores). Corrigido: aprovação de transferência ou troca e escolha de candidato agora recusam profissional cujo acesso foi revogado no meio do fluxo; pedidos encerrados pelo cancelamento do plantão ou pela entrada registrada ganham evento próprio na auditoria (`shift.*_cancelled` / `shift.*_expired`), e os envolvidos passam a ser notificados.
-  - Em aberto (produto): revogar o acesso não tira a pessoa dos plantões futuros já atribuídos; a candidatura escolhida continua "selecionada" num plantão cancelado (só exibição); o PRODUCT.md diz que o plantão que atravessa a meia-noite fica visível "até o checkout", mas a agenda usa o fim previsto.
+  - Em aberto (exibição): a candidatura escolhida continua "selecionada" num plantão cancelado.
 - **Decisões do usuário (18/10/2026) para a 9b:** indicadores de cobertura, solicitações, presença e horas por profissional; PDF gerado no servidor; acesso igual ao da Escala (coordenador, gestor, admin de rede e auditor, cada um nas suas unidades).
 - **9b-1 (relatórios e CSV, V1-11):**
   - Tela "Relatórios" (menu de quem vê a Escala): unidade e período (até 92 dias; inválido volta ao mês atual). Tudo conta os plantões da unidade que **começam** no período, no fuso da unidade, e cada grupo fecha com o total: publicados = preenchidos + anunciados + vagas abertas (mais rascunhos e cancelados); solicitações pela situação atual (a troca conta nas duas unidades que a aprovam, uma vez em cada); presença dos publicados já iniciados com responsável (com/sem entrada, saída registrada, saída ajustada, ocorrências abertas); horas por profissional.
@@ -239,7 +243,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 261 testes passando (etapa 9c), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 263 testes passando (revogação libera plantões), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
