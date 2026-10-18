@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 
 /**
  * Consultation booked by the reception (step 3.4b): scheduled → cancelled (with reason) or no-show
- * (after the time). Arrival and the visit itself come in steps 3.5 and 3.6.
+ * (after the time), or arrived (step 3.5, with the visit's modality). The visit itself comes in step 3.6.
  *
  * @property int $id
  * @property int $tenant_id
@@ -24,6 +24,11 @@ use Illuminate\Support\Carbon;
  * @property int|null $rescheduled_from_id
  * @property string|null $cancel_reason
  * @property Carbon|null $closed_at
+ * @property Carbon|null $arrived_at
+ * @property string|null $modality private, insurance or sus (set on arrival)
+ * @property int|null $insurer_id
+ * @property string|null $insurance_card_number
+ * @property Carbon|null $insurance_card_valid_until
  */
 #[Fillable(['unit_id', 'professional_id', 'patient_id', 'starts_at', 'ends_at', 'walk_in', 'rescheduled_from_id', 'created_by_user_id', 'created_at'])]
 class Appointment extends Model
@@ -37,7 +42,7 @@ class Appointment extends Model
      */
     protected function casts(): array
     {
-        return ['starts_at' => 'datetime', 'ends_at' => 'datetime', 'created_at' => 'datetime', 'closed_at' => 'datetime', 'walk_in' => 'boolean'];
+        return ['starts_at' => 'datetime', 'ends_at' => 'datetime', 'created_at' => 'datetime', 'closed_at' => 'datetime', 'walk_in' => 'boolean', 'arrived_at' => 'datetime', 'insurance_card_valid_until' => 'date'];
     }
 
     /**
@@ -46,6 +51,14 @@ class Appointment extends Model
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);
+    }
+
+    /**
+     * @return BelongsTo<Insurer, $this>
+     */
+    public function insurer(): BelongsTo
+    {
+        return $this->belongsTo(Insurer::class);
     }
 
     /**

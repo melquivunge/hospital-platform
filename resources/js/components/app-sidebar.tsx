@@ -10,7 +10,9 @@ import {
     ChartColumn,
     FileUp,
     Building2,
+    Landmark,
     LayoutGrid,
+    ListOrdered,
     Megaphone,
     Repeat,
     SlidersHorizontal,
@@ -33,7 +35,8 @@ import { edit as selectTenant } from '@/routes/current-tenant';
 import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
 import { index as patientMerges } from '@/routes/patient-merges';
-import { index as appointments } from '@/routes/appointments';
+import { index as appointments, queue } from '@/routes/appointments';
+import { index as insurers } from '@/routes/insurers';
 import { index as patients } from '@/routes/patients';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
@@ -75,6 +78,7 @@ export function AppSidebar() {
         canMergePatients,
         canManageSchedules,
         canBookAppointments,
+        canManageInsurers,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
@@ -83,6 +87,11 @@ export function AppSidebar() {
             : []),
         ...(canBookAppointments
             ? [
+                  {
+                      title: 'Fila do dia',
+                      href: queue(),
+                      icon: ListOrdered,
+                  },
                   {
                       title: 'Agendamentos',
                       href: appointments(),
@@ -138,6 +147,9 @@ export function AppSidebar() {
                       icon: BriefcaseMedical,
                   },
               ]
+            : []),
+        ...(canManageInsurers
+            ? [{ title: 'Convênios', href: insurers(), icon: Landmark }]
             : []),
         ...(canManagePeople
             ? [{ title: 'Pessoas', href: people(), icon: Users }]

@@ -1,8 +1,14 @@
-import { Form, Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { CalendarPlus } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import AppointmentController from '@/actions/App/Http/Controllers/AppointmentController';
+import type { AppointmentStatus } from '@/components/appointment-actions';
+import {
+    AppointmentStatusBadge,
+    CancelAppointment,
+    NoShowButton,
+} from '@/components/appointment-actions';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
@@ -25,7 +31,7 @@ type Appointment = {
     patientId: number;
     patient: string | null;
     walkIn: boolean;
-    status: 'scheduled' | 'cancelled' | 'no_show';
+    status: AppointmentStatus;
     cancelReason: string | null;
     rescheduled: boolean;
     canNoShow: boolean;
@@ -36,12 +42,6 @@ const slotLabels: Record<Slot['state'], string> = {
     booked: 'Ocupado',
     blocked: 'Bloqueado',
     past: 'Passou',
-};
-
-const statusLabels: Record<Appointment['status'], string> = {
-    scheduled: 'Agendado',
-    cancelled: 'Cancelado',
-    no_show: 'Faltou',
 };
 
 function dayTitle(date: string): string {
@@ -389,15 +389,7 @@ function AppointmentRow({
                         {appointment.rescheduled && ' · Remarcado'}
                     </span>
                 </span>
-                <span
-                    className={
-                        open
-                            ? 'rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary'
-                            : 'rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground'
-                    }
-                >
-                    {statusLabels[appointment.status]}
-                </span>
+                <AppointmentStatusBadge status={appointment.status} />
             </div>
             {appointment.cancelReason && (
                 <p className="text-muted-foreground">
@@ -415,59 +407,15 @@ function AppointmentRow({
                         Remarcar
                     </Button>
                     {appointment.canNoShow && (
-                        <Form
-                            {...AppointmentController.noShow.form(
-                                appointment.id,
-                            )}
-                            options={{ preserveScroll: true }}
-                        >
-                            <Button
-                                type="submit"
-                                variant="outline"
-                                className="min-h-11"
-                            >
-                                Faltou
-                            </Button>
-                        </Form>
+                        <NoShowButton
+                            appointmentId={appointment.id}
+                            context={`${appointment.patient} às ${appointment.start}`}
+                        />
                     )}
-                    <details className="group">
-                        <summary className="inline-flex min-h-11 cursor-pointer items-center rounded-md px-3 text-muted-foreground hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-                            Cancelar
-                        </summary>
-                        <Form
-                            {...AppointmentController.cancel.form(
-                                appointment.id,
-                            )}
-                            options={{ preserveScroll: true }}
-                            className="mt-2 flex flex-wrap items-end gap-2"
-                        >
-                            {({ processing, errors }) => (
-                                <>
-                                    <Field
-                                        id={`reason-${appointment.id}`}
-                                        label="Motivo do cancelamento"
-                                        error={errors.reason}
-                                    >
-                                        <Input
-                                            id={`reason-${appointment.id}`}
-                                            name="reason"
-                                            required
-                                            maxLength={255}
-                                            className="h-11"
-                                        />
-                                    </Field>
-                                    <Button
-                                        type="submit"
-                                        variant="destructive"
-                                        disabled={processing}
-                                        className="min-h-11"
-                                    >
-                                        Confirmar cancelamento
-                                    </Button>
-                                </>
-                            )}
-                        </Form>
-                    </details>
+                    <CancelAppointment
+                        appointmentId={appointment.id}
+                        context={`${appointment.patient} às ${appointment.start}`}
+                    />
                 </div>
             )}
         </li>

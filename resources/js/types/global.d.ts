@@ -27,6 +27,7 @@ declare module '@inertiajs/core' {
             canMergePatients: boolean;
             canManageSchedules: boolean;
             canBookAppointments: boolean;
+            canManageInsurers: boolean;
             [key: string]: unknown;
         };
     }

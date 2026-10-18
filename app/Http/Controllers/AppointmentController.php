@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\AuditEvent;
+use App\Models\Insurer;
 use App\Models\Membership;
 use App\Models\Patient;
 use App\Models\Professional;
@@ -156,7 +157,7 @@ class AppointmentController extends Controller
 
     public function cancel(Request $request, Appointment $appointment): RedirectResponse
     {
-        $unit = self::authorizeAppointment($request, $appointment);
+        self::authorizeAppointment($request, $appointment);
         $data = $request->validate(['reason' => ['required', 'string', 'max:255']], [], ['reason' => 'motivo']);
 
         DB::transaction(function () use ($appointment, $data) {
@@ -168,12 +169,95 @@ class AppointmentController extends Controller
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Agendamento cancelado.']);
 
-        return self::back($unit, $appointment);
+        return back();
+    }
+
+    /**
+     * The reception confirms the patient is here, on the day of the consultation, with the modality of the
+     * visit. An expired insurance card is refused: the desk checks it or records another modality.
+     */
+    public function arrive(Request $request, Appointment $appointment): RedirectResponse
+    {
+        $unit = self::authorizeAppointment($request, $appointment);
+        $timezone = $unit->timezone ?? 'UTC';
+        $today = CarbonImmutable::now($timezone)->toDateString();
+        $insurance = ['exclude_unless:modality,insurance', 'required'];
+        $data = $request->validate([
+            'modality' => ['required', Rule::in(['private', 'insurance', 'sus'])],
+            'insurer_id' => [...$insurance, 'integer', Rule::in(Insurer::query()->where('active', true)->pluck('id')->all())],
+            'insurance_card_number' => [...$insurance, 'string', 'max:40'],
+            'insurance_card_valid_until' => [...$insurance, 'date_format:Y-m-d', 'after_or_equal:'.$today],
+        ], [
+            'insurer_id.in' => 'Escolha um convênio ativo da rede.',
+            'insurance_card_valid_until.after_or_equal' => 'A carteira está vencida. Confira a validade ou registre outra modalidade.',
+        ], ['modality' => 'modalidade', 'insurer_id' => 'convênio', 'insurance_card_number' => 'número da carteira', 'insurance_card_valid_until' => 'validade da carteira']);
+
+        DB::transaction(function () use ($appointment, $data, $timezone, $today) {
+            $locked = Appointment::query()->whereKey($appointment->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== 'scheduled' || $locked->starts_at->setTimezone($timezone)->toDateString() !== $today) {
+                throw ValidationException::withMessages(['modality' => 'Só é possível confirmar a chegada de um agendamento em aberto, no dia da consulta.']);
+            }
+            // Deactivating an insurer updates its row: read under a share lock, it cannot change meanwhile.
+            if (isset($data['insurer_id']) && ! Insurer::query()->whereKey($data['insurer_id'])->where('active', true)->sharedLock()->exists()) {
+                throw ValidationException::withMessages(['insurer_id' => 'Escolha um convênio ativo da rede.']);
+            }
+            $locked->forceFill([
+                'status' => 'arrived', 'arrived_at' => now(), 'arrived_by_user_id' => Auth::id(), 'modality' => $data['modality'],
+                'insurer_id' => $data['insurer_id'] ?? null, 'insurance_card_number' => $data['insurance_card_number'] ?? null,
+                'insurance_card_valid_until' => $data['insurance_card_valid_until'] ?? null,
+            ])->save();
+            // The card number stays in the clinical table, out of the audit trail.
+            AuditEvent::record('appointment.arrived', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'modality' => $locked->modality, 'insurer_id' => $locked->insurer_id]));
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Chegada confirmada.']);
+
+        return back();
+    }
+
+    /**
+     * Today's queue of a unit, for one professional or all: waiting, arrived (in arrival order), and the
+     * no-shows and cancellations of the day.
+     */
+    public function queue(Request $request): Response
+    {
+        $units = Unit::query()->whereKey(self::bookingUnitIds(self::membership($request)))->orderBy('name')->get(['id', 'tenant_id', 'name', 'timezone']);
+        abort_if($units->isEmpty(), 403);
+        Inertia::encryptHistory();
+        $unit = $units->firstWhere('id', $request->integer('unit')) ?? $units->first();
+        $timezone = $unit->timezone ?? 'UTC';
+        $day = CarbonImmutable::now($timezone)->startOfDay();
+        $professionals = ScheduleController::professionals($unit);
+        $professional = $professionals->firstWhere('id', $request->integer('professional'));
+
+        return Inertia::render('appointments/queue', [
+            'units' => $units->map->only('id', 'name')->values(),
+            'unit' => $unit->only('id', 'name', 'timezone'),
+            'date' => $day->format('Y-m-d'),
+            'professionals' => $professionals->map->only('id', 'name')->values(),
+            'professionalId' => $professional?->id,
+            'insurers' => Insurer::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
+            'appointments' => Appointment::query()->where('unit_id', $unit->id)->when($professional, fn ($query) => $query->where('professional_id', $professional->id))
+                ->where('starts_at', '>=', $day->utc())->where('starts_at', '<', $day->addDay()->utc())
+                ->with(['patient:id,name,social_name', 'professional:id,name', 'insurer:id,name'])->orderBy('starts_at')->orderBy('id')->get()
+                ->map(fn (Appointment $appointment) => [
+                    'id' => $appointment->id,
+                    'start' => $appointment->starts_at->setTimezone($timezone)->format('H:i'),
+                    'patient' => $appointment->patient->social_name ?? $appointment->patient->name ?? null,
+                    'professional' => $appointment->professional?->name,
+                    'walkIn' => $appointment->walk_in,
+                    'status' => $appointment->status,
+                    'arrivedAt' => $appointment->arrived_at?->setTimezone($timezone)->format('H:i'),
+                    'modality' => $appointment->modality,
+                    'insurer' => $appointment->insurer?->name,
+                    'cancelReason' => $appointment->cancel_reason,
+                    'canNoShow' => $appointment->status === 'scheduled' && $appointment->starts_at->isPast(),
+                ]),
+        ]);
     }
 
     public function noShow(Request $request, Appointment $appointment): RedirectResponse
     {
-        $unit = self::authorizeAppointment($request, $appointment);
+        self::authorizeAppointment($request, $appointment);
 
         DB::transaction(function () use ($appointment) {
             $locked = Appointment::query()->whereKey($appointment->id)->lockForUpdate()->firstOrFail();
@@ -184,7 +268,7 @@ class AppointmentController extends Controller
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Falta registrada.']);
 
-        return self::back($unit, $appointment);
+        return back();
     }
 
     /**
@@ -290,13 +374,5 @@ class AppointmentController extends Controller
         self::authorizeUnit($request, $unit);
 
         return $unit;
-    }
-
-    private static function back(Unit $unit, Appointment $appointment): RedirectResponse
-    {
-        return to_route('appointments.index', [
-            'unit' => $unit->id, 'professional' => $appointment->professional_id,
-            'date' => $appointment->starts_at->setTimezone($unit->timezone ?? 'UTC')->format('Y-m-d'),
-        ]);
     }
 }
