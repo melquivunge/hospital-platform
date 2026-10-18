@@ -8,6 +8,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\JobFunctionController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PatientController;
 use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\PolicyController;
 use App\Http\Controllers\ProfessionalController;
@@ -51,6 +52,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('units/{unit}/attendance-points', [AttendancePointController::class, 'store'])->name('units.attendance-points.store');
     Route::post('shifts/{shift}/occurrences', [AttendanceOccurrenceController::class, 'store'])->middleware('throttle:20,1')->name('shifts.occurrences.store');
     Route::post('occurrences/{occurrence}/decide', [AttendanceOccurrenceController::class, 'decide'])->name('occurrences.decide');
+    Route::resource('patients', PatientController::class)->except('destroy');
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('reports/schedule.{format}', [ReportController::class, 'schedule'])->whereIn('format', ['csv', 'pdf'])->middleware('throttle:20,1')->name('reports.schedule');
     Route::get('reports/attendance.{format}', [ReportController::class, 'attendance'])->whereIn('format', ['csv', 'pdf'])->middleware('throttle:20,1')->name('reports.attendance');

@@ -12,6 +12,7 @@ import {
     Repeat,
     SlidersHorizontal,
     Stethoscope,
+    UsersRound,
     Users,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -28,6 +29,7 @@ import { dashboard } from '@/routes';
 import { edit as selectTenant } from '@/routes/current-tenant';
 import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
+import { index as patients } from '@/routes/patients';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
 import { index as reports } from '@/routes/reports';
@@ -63,9 +65,13 @@ export function AppSidebar() {
         canImport,
         canViewMyShifts,
         canViewRequests,
+        canViewPatients,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
+        ...(canViewPatients
+            ? [{ title: 'Pacientes', href: patients(), icon: UsersRound }]
+            : []),
         ...(canViewMyShifts
             ? [
                   {
