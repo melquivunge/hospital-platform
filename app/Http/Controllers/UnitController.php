@@ -76,6 +76,10 @@ class UnitController extends Controller
             'sectors' => $unit->sectors()->orderBy('name')->get(['id', 'name']),
             'canUpdate' => Gate::allows('update', $unit),
             'canManageSectors' => Gate::allows('create', [Sector::class, $unit]),
+            // Coordinates are shown only to who manages the points.
+            'attendancePoints' => Gate::allows('managePresence', $unit)
+                ? $unit->attendancePoints()->whereNull('deactivated_at')->orderBy('name')->get(['id', 'name', 'latitude', 'longitude', 'radius_m'])
+                : null,
         ]);
     }
 

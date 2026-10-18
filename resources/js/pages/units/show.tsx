@@ -1,5 +1,6 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { LayoutList, Pencil, Plus, TriangleAlert } from 'lucide-react';
+import { LayoutList, MapPin, Pencil, Plus, TriangleAlert } from 'lucide-react';
+import AttendancePointController from '@/actions/App/Http/Controllers/AttendancePointController';
 import SectorController from '@/actions/App/Http/Controllers/SectorController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader, WarningBadge } from '@/components/page';
@@ -19,16 +20,26 @@ type Unit = {
 
 type Sector = { id: number; name: string };
 
+type AttendancePoint = {
+    id: number;
+    name: string;
+    latitude: string;
+    longitude: string;
+    radius_m: number;
+};
+
 export default function UnitShow({
     unit,
     sectors,
     canUpdate,
     canManageSectors,
+    attendancePoints,
 }: {
     unit: Unit;
     sectors: Sector[];
     canUpdate: boolean;
     canManageSectors: boolean;
+    attendancePoints: AttendancePoint[] | null;
 }) {
     return (
         <>
@@ -196,8 +207,189 @@ export default function UnitShow({
                         </dl>
                     </aside>
                 </div>
+
+                {attendancePoints && (
+                    <AttendancePoints
+                        unitId={unit.id}
+                        points={attendancePoints}
+                    />
+                )}
             </Page>
         </>
+    );
+}
+
+/**
+ * Authorized presence points (step 8a). A point is never edited: add a new one and deactivate the old,
+ * so past records keep the configuration they used.
+ */
+function AttendancePoints({
+    unitId,
+    points,
+}: {
+    unitId: number;
+    points: AttendancePoint[];
+}) {
+    return (
+        <section
+            aria-labelledby="points-heading"
+            className="mt-8 overflow-hidden rounded-lg border bg-card"
+        >
+            <header className="border-b px-5 py-4">
+                <h2
+                    id="points-heading"
+                    className="flex items-center gap-2 font-semibold tracking-tight"
+                >
+                    <MapPin
+                        className="size-4 text-primary"
+                        aria-hidden="true"
+                    />
+                    Pontos de presença
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                    Entrada e saída só são aceitas dentro do raio de um ponto,
+                    somando a precisão do aparelho. Para mudar um ponto,
+                    cadastre outro e desative o antigo.
+                </p>
+            </header>
+
+            {points.length === 0 ? (
+                <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+                    Nenhum ponto ativo: a presença por localização fica
+                    desativada nesta unidade.
+                </p>
+            ) : (
+                <ul className="divide-y">
+                    {points.map((point) => (
+                        <li
+                            key={point.id}
+                            className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm"
+                        >
+                            <span>
+                                <span className="font-medium">
+                                    {point.name}
+                                </span>
+                                <span className="block text-muted-foreground tabular-nums">
+                                    {point.latitude}, {point.longitude} · raio{' '}
+                                    {point.radius_m} m
+                                </span>
+                            </span>
+                            <Form
+                                {...AttendancePointController.deactivate.form([
+                                    unitId,
+                                    point.id,
+                                ])}
+                                options={{ preserveScroll: true }}
+                            >
+                                {({ processing }) => (
+                                    <Button
+                                        type="submit"
+                                        variant="outline"
+                                        disabled={processing}
+                                        className="min-h-11"
+                                    >
+                                        {processing && <Spinner />}
+                                        Desativar
+                                        <span className="sr-only">
+                                            {' '}
+                                            {point.name}
+                                        </span>
+                                    </Button>
+                                )}
+                            </Form>
+                        </li>
+                    ))}
+                </ul>
+            )}
+
+            <Form
+                {...AttendancePointController.store.form(unitId)}
+                errorBag="newPoint"
+                options={{ preserveScroll: true }}
+                resetOnSuccess
+                className="grid gap-3 border-t bg-muted/40 px-5 py-4 sm:grid-cols-2"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <PointField
+                            id="point-name"
+                            name="name"
+                            label="Nome"
+                            error={errors.name}
+                            placeholder="Ex.: Portaria principal"
+                        />
+                        <PointField
+                            id="point-radius"
+                            name="radius_m"
+                            label="Raio (m)"
+                            error={errors.radius_m}
+                            inputMode="numeric"
+                        />
+                        <PointField
+                            id="point-latitude"
+                            name="latitude"
+                            label="Latitude"
+                            error={errors.latitude}
+                            inputMode="decimal"
+                            placeholder="-23.550520"
+                        />
+                        <PointField
+                            id="point-longitude"
+                            name="longitude"
+                            label="Longitude"
+                            error={errors.longitude}
+                            inputMode="decimal"
+                            placeholder="-46.633308"
+                        />
+                        <Button
+                            type="submit"
+                            disabled={processing}
+                            className="min-h-11 justify-self-start"
+                        >
+                            {processing ? (
+                                <Spinner />
+                            ) : (
+                                <Plus aria-hidden="true" />
+                            )}
+                            Cadastrar ponto
+                        </Button>
+                    </>
+                )}
+            </Form>
+        </section>
+    );
+}
+
+function PointField({
+    id,
+    name,
+    label,
+    error,
+    placeholder,
+    inputMode,
+}: {
+    id: string;
+    name: string;
+    label: string;
+    error?: string;
+    placeholder?: string;
+    inputMode?: 'numeric' | 'decimal';
+}) {
+    return (
+        <div className="grid gap-2">
+            <Label htmlFor={id}>{label}</Label>
+            <Input
+                id={id}
+                name={name}
+                required
+                inputMode={inputMode}
+                placeholder={placeholder}
+                aria-invalid={!!error}
+                aria-describedby={error ? `${id}-error` : undefined}
+                className="h-11 bg-card"
+            />
+            <InputError id={`${id}-error`} message={error} />
+        </div>
     );
 }
 

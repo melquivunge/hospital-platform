@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\AttendancePointController;
 use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
@@ -41,6 +43,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('my-shifts/{shift}/transfer', [ShiftRequestController::class, 'storeTransfer'])->name('shifts.transfer.store');
     Route::get('my-shifts/{shift}/swap', [ShiftRequestController::class, 'createSwap'])->name('shifts.swap.create');
     Route::post('my-shifts/{shift}/swap', [ShiftRequestController::class, 'storeSwap'])->name('shifts.swap.store');
+    // Rejected attempts are kept forever (append-only): bound how fast one person can create them.
+    Route::post('shifts/{shift}/attendance', [AttendanceController::class, 'store'])->middleware('throttle:20,1')->name('shifts.attendance');
+    Route::post('units/{unit}/attendance-points', [AttendancePointController::class, 'store'])->name('units.attendance-points.store');
     Route::get('requests', [ShiftRequestController::class, 'index'])->name('requests.index');
     Route::post('requests/{shiftRequest}/respond', [ShiftRequestController::class, 'respond'])->name('requests.respond');
     Route::post('requests/{shiftRequest}/cancel', [ShiftRequestController::class, 'cancel'])->name('requests.cancel');
@@ -72,6 +77,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
         Route::delete('people/{membership}/roles/{roleAssignment}', [PeopleController::class, 'revokeRole'])->name('people.roles.destroy');
         Route::post('units/{unit}/sectors', [SectorController::class, 'store'])->name('units.sectors.store');
         Route::put('units/{unit}/sectors/{sector}', [SectorController::class, 'update'])->name('units.sectors.update');
+        Route::post('units/{unit}/attendance-points/{attendancePoint}/deactivate', [AttendancePointController::class, 'deactivate'])->name('units.attendance-points.deactivate');
     });
 });
 

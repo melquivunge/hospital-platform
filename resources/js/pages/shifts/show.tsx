@@ -22,6 +22,17 @@ type Shift = ShiftSummary & {
     cancelReason: string | null;
 };
 
+type Attendance = {
+    id: number;
+    kind: string;
+    accepted: boolean;
+    reason: string | null;
+    at: string;
+    point: string | null;
+    distance: number | null;
+    accuracy: number | null;
+};
+
 type Application = {
     id: number;
     professional: string;
@@ -40,6 +51,7 @@ export default function ShiftShow({
     canCancel,
     canSelect,
     applications,
+    attendance,
 }: {
     shift: Shift;
     canEdit: boolean;
@@ -47,6 +59,7 @@ export default function ShiftShow({
     canCancel: boolean;
     canSelect: boolean;
     applications: Application[];
+    attendance: Attendance[];
 }) {
     return (
         <>
@@ -103,6 +116,48 @@ export default function ShiftShow({
                         </Detail>
                     )}
                 </dl>
+
+                {attendance.length > 0 && (
+                    <section aria-labelledby="attendance" className="mb-6">
+                        <h2
+                            id="attendance"
+                            className="mb-3 text-base font-semibold"
+                        >
+                            Presença
+                        </h2>
+                        <ul className="divide-y rounded-lg border bg-card text-sm">
+                            {attendance.map((event) => (
+                                <li
+                                    key={event.id}
+                                    className="grid gap-1 px-4 py-3"
+                                >
+                                    <p className="flex flex-wrap justify-between gap-2">
+                                        <span className="font-medium">
+                                            {event.kind}{' '}
+                                            {event.accepted
+                                                ? 'registrada'
+                                                : 'recusada'}
+                                        </span>
+                                        <span className="text-muted-foreground tabular-nums">
+                                            {event.at}
+                                        </span>
+                                    </p>
+                                    {event.accepted ? (
+                                        <p className="text-muted-foreground">
+                                            {event.point} · {event.distance} m
+                                            do ponto · precisão {event.accuracy}{' '}
+                                            m
+                                        </p>
+                                    ) : (
+                                        <p className="text-destructive">
+                                            {event.reason}
+                                        </p>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
 
                 {(canSelect || applications.length > 0) && (
                     <section aria-labelledby="candidates" className="mb-6">
