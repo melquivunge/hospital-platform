@@ -49,14 +49,16 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #23 | Foto de perfil e configurações em português | Mesclado |
 | #24 | Etapa 9b: relatórios e exportação CSV/PDF | Mesclado |
 | #25 | Etapa 9c: revisão integrada | Mesclado |
-| — | Revogação libera plantões futuros (branch `feat/revoke-vacates-shifts`) | Em revisão |
+| #26 | Revogação libera plantões futuros | Mesclado |
+| — | Contrato da entrega 3, atendimento ambulatorial (branch `docs/entrega-3-contract`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
 - Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca, PR #19), 8a (presença por localização, PR #20), 8b (ocorrências, PR #21), 9a (notificações e barra superior, PR #22).
-- **Plano web V1 completo** (PRs #1 a #25). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
+- **Entrega 3 (atendimento ambulatorial) em definição** (18/10/2026, decisão do usuário de seguir a ordem aprovada): contrato no PRODUCT.md, seção "Contrato da entrega 3". Decididos: identidade (CPF/CNS opcionais e únicos, cadastro provisório), unificação manual, prontuário só para quem atende com emergência auditada, recorte (agenda e recepção, atendimento e evolução, documentos, modalidade sem faturamento). Sem autorização de implementação até responder às questões abertas e revisar a arquitetura.
+- **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
   - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`). Locks na mesma ordem dos demais fluxos (profissional → plantões por id → pedidos). Corrida real entre revogação e cancelamento do plantão (cliente sintético "Rede Corrida", 12 rodadas nas duas ordens): sem deadlock, um resultado coerente por rodada, um único evento de auditoria por pedido.
   - **Meia-noite (V1-05):** o plantão que atravessa a meia-noite fica visível até o **fim previsto**, como já funcionava; o PRODUCT.md foi ajustado.
