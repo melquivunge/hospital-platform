@@ -30,6 +30,7 @@ declare module '@inertiajs/core' {
             canManageInsurers: boolean;
             canAttend: boolean;
             canViewClinicalAccess: boolean;
+            canViewBeds: boolean;
             [key: string]: unknown;
         };
     }

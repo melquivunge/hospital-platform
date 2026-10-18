@@ -13,10 +13,12 @@ enum Role: string
     case Professional = 'professional';
     case Importer = 'importer';
     case Reception = 'reception';
+    case BedManagement = 'bed_management';
+    case Housekeeping = 'housekeeping';
     case Auditor = 'auditor';
 
     public function requiresUnit(): bool
     {
-        return in_array($this, [self::UnitManager, self::ShiftCoordinator, self::Professional, self::Importer, self::Reception], true);
+        return in_array($this, [self::UnitManager, self::ShiftCoordinator, self::Professional, self::Importer, self::Reception, self::BedManagement, self::Housekeeping], true);
     }
 }

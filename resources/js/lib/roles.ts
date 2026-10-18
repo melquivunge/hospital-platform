@@ -6,6 +6,8 @@ export const roleLabels: Record<string, string> = {
     professional: 'Profissional',
     importer: 'Importador',
     reception: 'Recepção',
+    bed_management: 'Gestão de leitos',
+    housekeeping: 'Higienização',
     auditor: 'Auditor',
 };
 
@@ -18,6 +20,9 @@ export const roleDescriptions: Record<string, string> = {
     importer: 'Prepara importações de dados na unidade.',
     reception:
         'Cadastra pacientes, agenda consultas e confirma chegadas na unidade.',
+    bed_management:
+        'Acompanha o mapa de leitos, bloqueia, libera e envia leitos para higienização.',
+    housekeeping: 'Marca os leitos higienizados como prontos.',
     auditor: 'Consulta trilhas e relatórios, sem alterar registros.',
 };
 
