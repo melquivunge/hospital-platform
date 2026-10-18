@@ -4,7 +4,7 @@ Atualizado em 18/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: 3.8 (revisão integrada da entrega 3), depois a entrega 4 (plano em plans/web-v3-internacao.md).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: entrega 4, etapa 4.1 (leitos), plano em plans/web-v3-internacao.md.
 
 ## Onde está cada coisa
 
@@ -60,7 +60,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #34 | Etapa 3.6a: atendimento, evolução e trilha de leitura | Mesclado |
 | #35 | Etapa 3.6b: acesso de emergência e trilha de acessos | Mesclado |
 | #36 | Etapa 3.7: documentos anexos | Mesclado |
-| — | Entrega 4: contrato, ADR-0004 e plano (branch `docs/entrega-4-contrato`) | Em revisão |
+| #37 | Entrega 4: contrato, ADR-0004 e plano | Mesclado |
+| — | Etapa 3.8: revisão integrada da entrega 3 (branch `chore/delivery-3-integrated-review`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -130,7 +131,12 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Infraestrutura: PHP aceita 10 MB por arquivo e 12 MB por requisição (`docker/php/uploads.ini`); Nginx 12 MB.
   - Navegador (1440 e 390 px): PDF pequeno e de 9,9 MB aceitos, HTML disfarçado e arquivo de 11 MB recusados com mensagem, download com nome e tamanho corretos, retirada com motivo; sem erro de JavaScript ou 5xx.
   - Revisão de segurança independente (sem crítico/alto). Corrigido: retirar só com o atendimento do próprio documento aberto (um atendimento novo não reabre documentos antigos); arquivo ausente no disco dá 404 sem registrar leitura; até 20 documentos por atendimento. Decisões registradas: documento retirado não é baixado por ninguém (o arquivo fica no disco para a auditoria); arquivo poliglota (PDF com conteúdo extra) é aceito porque é sempre entregue como anexo, `nosniff` e `sandbox`. Limite conhecido: se o processo cair entre gravar o arquivo e confirmar a linha, sobra um arquivo sem registro (falhas comuns já o apagam); uma varredura periódica resolve se necessário.
-- **Entrega 3:** etapas 3.1 a 3.7 mescladas (#28 a #36). **Falta a 3.8 (revisão integrada)**, prevista no plano da entrega 3 e esquecida no fechamento; entrou como primeira tarefa do plano da entrega 4.
+- **Entrega 3:** etapas 3.1 a 3.7 mescladas (#28 a #36).
+- **3.8 (revisão integrada da entrega 3):**
+  - `tests/Feature/Clinical/OutpatientJourneyTest.php`: a jornada inteira num cliente novo, só pelas rotas: provisionamento, unidades, convênio, convites (recepção, gestão, auditoria), profissionais com habilitação e acesso, grade, cadastro provisório completado, duplicado unificado, agendamento pelo id do duplicado (cai no principal) e remarcação, chegada por convênio, atendimento, evolução assinada com adendo, documento, encerramento, recepção e gestão sem leitura, emergência da enfermeira de outra unidade. Depois confere a trilha de leitura, a notificação só ao gestor da unidade da emergência, a tela da auditoria e a auditoria sem texto clínico, carteira, CPF ou nome.
+  - Telas da entrega 3 nos três perfis (recepção, profissional, administração) em 360, 768 e 1440 px: 33 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
+  - Limites de produção da entrega 3 no README.
+  - Revisão de segurança independente da entrega inteira: nenhum caminho fora do RLS ou do `ClinicalAccess`, sem vazamento em props, mensagens ou auditoria, sem ciclo de locks, conta revogada perde tudo. **Duas decisões de produto pendentes** (no README): prazo para atendimento esquecido aberto e teto diário de acessos de emergência. Demais achados registrados como limites (unificação amplia o acesso por contrato; concessão vale 4 horas mesmo com habilitação revogada; mensagem de CPF já cadastrado).
 - **Entrega 4 (urgência, internação e leitos) em definição** (18/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4". Decisões do usuário: jornada primeiro (prescrição e farmácia na entrega 4b), escala de risco própria de 5 níveis (sem Manchester), papel Gestão de leitos, transferência dentro da rede; acesso na internação pelo médico responsável e pela equipe do setor ([ADR-0004](adr/0004-ward-team-record-access.md), aceita); "Não identificado" unificável depois; compatibilidade do leito com aviso e justificativa; sumário de alta obrigatório exceto óbito e evasão; tempo-alvo com destaque visual; censo diário. Plano em `plans/web-v3-internacao.md` (3.8, depois 4.1 a 4.8). ADR-0004 e plano aceitos e **implementação autorizada** pelo usuário (18/10/2026), uma etapa por vez, começando pela 3.8.
 
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
