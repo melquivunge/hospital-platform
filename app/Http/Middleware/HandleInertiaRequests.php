@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Clinical\ClinicalAccess;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\BedController;
+use App\Http\Controllers\EmergencyController;
 use App\Models\ImportBatch;
 use App\Models\Insurer;
 use App\Models\JobFunction;
@@ -70,6 +71,10 @@ class HandleInertiaRequests extends Middleware
             'canAttend' => fn () => $request->user() !== null && ClinicalAccess::professional($request->user()) !== null,
             'canViewClinicalAccess' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null
                 && ($membership->hasRole(Role::Auditor) || $membership->hasRole(Role::NetworkAdmin) || Professional::managedUnitIds($membership) !== []),
+            'canViewEmergency' => fn () => $request->user() !== null
+                && EmergencyController::visible($request, UnitPolicy::currentMembership($request->user())),
+            'canManageTriageLevels' => fn () => $request->user() !== null
+                && (UnitPolicy::currentMembership($request->user())?->hasRole(Role::NetworkAdmin) ?? false),
             'canViewBeds' => fn () => $request->user() !== null
                 && BedController::visibleUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canManageInsurers' => fn () => $request->user() !== null

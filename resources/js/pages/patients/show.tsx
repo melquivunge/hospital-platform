@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { index as appointments } from '@/routes/appointments';
 import { show as record } from '@/routes/clinical-record';
+import { index as emergency } from '@/routes/emergency';
 import { edit, index } from '@/routes/patients';
 
 type Patient = PatientSummary & {
@@ -95,6 +96,13 @@ export default function PatientShow({
                                     <Link href={record(patient.id)}>
                                         <FileHeart aria-hidden="true" />
                                         Prontuário
+                                    </Link>
+                                </Button>
+                            )}
+                            {canBookAppointments && (
+                                <Button asChild variant="outline" className="min-h-11">
+                                    <Link href={emergency({ query: { patient: patient.id } })}>
+                                        Chegada na urgência
                                     </Link>
                                 </Button>
                             )}
