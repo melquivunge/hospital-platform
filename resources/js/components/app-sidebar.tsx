@@ -16,6 +16,7 @@ import {
     ListOrdered,
     Megaphone,
     Repeat,
+    ShieldCheck,
     SlidersHorizontal,
     Stethoscope,
     UsersRound,
@@ -37,6 +38,7 @@ import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
 import { index as patientMerges } from '@/routes/patient-merges';
 import { index as appointments, queue } from '@/routes/appointments';
+import { index as clinicalAccess } from '@/routes/clinical-access';
 import { index as insurers } from '@/routes/insurers';
 import { index as visits } from '@/routes/visits';
 import { index as patients } from '@/routes/patients';
@@ -82,6 +84,7 @@ export function AppSidebar() {
         canBookAppointments,
         canManageInsurers,
         canAttend,
+        canViewClinicalAccess,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
@@ -157,6 +160,15 @@ export function AppSidebar() {
                       title: 'Funções',
                       href: jobFunctions(),
                       icon: BriefcaseMedical,
+                  },
+              ]
+            : []),
+        ...(canViewClinicalAccess
+            ? [
+                  {
+                      title: 'Acessos ao prontuário',
+                      href: clinicalAccess(),
+                      icon: ShieldCheck,
                   },
               ]
             : []),

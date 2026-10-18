@@ -31,6 +31,7 @@ class DeliverNotifications implements ShouldQueue
         'shift.swap_requested', 'shift.swap_accepted', 'shift.swapped', 'shift.swap_refused',
         'shift.swap_rejected', 'shift.swap_cancelled', 'shift.swap_expired',
         'attendance.occurrence_reported', 'attendance.occurrence_granted', 'attendance.occurrence_denied',
+        'clinical.emergency_access',
     ];
 
     public function handle(): void
@@ -85,6 +86,13 @@ class DeliverNotifications implements ShouldQueue
     {
         $tenant = (int) $event->tenant_id;
         $context = $event->context === null ? [] : (array) json_decode($event->context, true);
+        // Step 3.6b: the unit's managers (or, without one, the network admins) hear of every emergency access,
+        // with no patient data in the notification.
+        if ($event->action === 'clinical.emergency_access') {
+            $managers = $this->usersWithRole($tenant, Role::UnitManager, (int) ($context['unit_id'] ?? 0));
+
+            return [[$managers !== [] ? $managers : $this->usersWithRole($tenant, Role::NetworkAdmin), 'Acesso de emergência a um prontuário', '/clinical-access']];
+        }
         $shift = $event->subject_type === 'App\Models\Shift' ? DB::table('shifts')->where('tenant_id', $tenant)->where('id', $event->subject_id)->first() : null;
 
         if ($shift === null) {

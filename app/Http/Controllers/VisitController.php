@@ -101,21 +101,11 @@ class VisitController extends Controller
         ClinicalAccess::recordRead($request->user(), $patient, $visit);
         Inertia::encryptHistory();
         $timezone = $visit->unit()->value('timezone') ?? 'UTC';
-        $when = fn (?CarbonInterface $at) => $at?->setTimezone($timezone)->format('d/m/Y H:i');
-        $signed = fn (ClinicalNote $note) => ['id' => $note->id, 'body' => $note->body, 'signedAt' => $when($note->signed_at), 'author' => $note->author?->name];
 
         return Inertia::render('visits/show', [
-            'visit' => ['id' => $visit->id, 'openedAt' => $when($visit->opened_at)],
-            'patient' => [
-                'name' => $patient->social_name ?? $patient->name,
-                'civilName' => $patient->social_name !== null ? $patient->name : null,
-                'birthDate' => $patient->birth_date?->toDateString(),
-                'sex' => $patient->sex,
-            ],
-            'record' => ClinicalNote::query()->whereIn('patient_id', $ids)->whereNull('addendum_of_id')->where('status', 'signed')
-                ->with(['author:id,name', 'visit.unit:id,name', 'addenda' => fn ($query) => $query->where('status', 'signed')->with('author:id,name')->orderBy('signed_at')])
-                ->orderByDesc('signed_at')->get()
-                ->map(fn (ClinicalNote $note) => [...$signed($note), 'unit' => $note->visit?->unit?->name, 'addenda' => $note->addenda->map($signed)->values()]),
+            'visit' => ['id' => $visit->id, 'openedAt' => $visit->opened_at->setTimezone($timezone)->format('d/m/Y H:i')],
+            'patient' => self::patientHeader($patient),
+            'record' => self::signedRecord($ids, $timezone),
             // Drafts are seen only by their author.
             'drafts' => self::drafts($visit, $ids, $request->user()->id)->orderBy('id')->get(['id', 'body', 'addendum_of_id'])
                 ->map(fn (ClinicalNote $note) => ['id' => $note->id, 'body' => $note->body, 'addendumOf' => $note->addendum_of_id]),
@@ -222,6 +212,40 @@ class VisitController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Evolução assinada.']);
 
         return back();
+    }
+
+    /**
+     * Identification only, for the header of a record page.
+     *
+     * @return array<string, mixed>
+     */
+    public static function patientHeader(Patient $patient): array
+    {
+        return [
+            'name' => $patient->social_name ?? $patient->name,
+            'civilName' => $patient->social_name !== null ? $patient->name : null,
+            'birthDate' => $patient->birth_date?->toDateString(),
+            'sex' => $patient->sex,
+        ];
+    }
+
+    /**
+     * The signed notes of a record, newest first, each with its signed addenda. Callers must have checked
+     * ClinicalAccess and logged the read.
+     *
+     * @param  list<int>  $patientIds
+     * @return list<array<string, mixed>>
+     */
+    public static function signedRecord(array $patientIds, string $timezone): array
+    {
+        $when = fn (?CarbonInterface $at) => $at?->setTimezone($timezone)->format('d/m/Y H:i');
+        $signed = fn (ClinicalNote $note) => ['id' => $note->id, 'body' => $note->body, 'signedAt' => $when($note->signed_at), 'author' => $note->author?->name];
+
+        return array_values(ClinicalNote::query()->whereIn('patient_id', $patientIds)->whereNull('addendum_of_id')->where('status', 'signed')
+            ->with(['author:id,name', 'visit.unit:id,name', 'addenda' => fn ($query) => $query->where('status', 'signed')->with('author:id,name')->orderBy('signed_at')])
+            ->orderByDesc('signed_at')->get()
+            ->map(fn (ClinicalNote $note) => [...$signed($note), 'unit' => $note->visit?->unit?->name, 'addenda' => $note->addenda->map($signed)->values()->all()])
+            ->all());
     }
 
     /**

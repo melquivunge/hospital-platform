@@ -4,6 +4,7 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AttendanceOccurrenceController;
 use App\Http\Controllers\AttendancePointController;
+use App\Http\Controllers\ClinicalRecordController;
 use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
@@ -65,6 +66,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('appointments', [AppointmentController::class, 'index'])->name('appointments.index');
     Route::post('units/{unit}/appointments', [AppointmentController::class, 'store'])->middleware('throttle:60,1')->name('appointments.store');
     Route::post('appointments/{appointment}/cancel', [AppointmentController::class, 'cancel'])->middleware('throttle:60,1')->name('appointments.cancel');
+    Route::get('patients/{patient}/record', [ClinicalRecordController::class, 'show'])->name('clinical-record.show');
+    Route::get('patients/{patient}/emergency', [ClinicalRecordController::class, 'create'])->name('clinical-record.emergency');
+    Route::post('patients/{patient}/emergency', [ClinicalRecordController::class, 'store'])->middleware('throttle:3,10')->name('clinical-record.emergency.store');
+    Route::get('clinical-access', [ClinicalRecordController::class, 'accessLog'])->name('clinical-access.index');
     Route::get('visits', [VisitController::class, 'index'])->name('visits.index');
     Route::post('appointments/{appointment}/visit', [VisitController::class, 'open'])->middleware('throttle:60,1')->name('visits.open');
     Route::get('visits/{visit}', [VisitController::class, 'show'])->name('visits.show');
