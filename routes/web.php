@@ -39,6 +39,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('my-shifts/{shift}/cancel-announcement', [VacancyController::class, 'cancelAnnouncement'])->name('shifts.cancel-announcement');
     Route::get('my-shifts/{shift}/transfer', [ShiftRequestController::class, 'createTransfer'])->name('shifts.transfer.create');
     Route::post('my-shifts/{shift}/transfer', [ShiftRequestController::class, 'storeTransfer'])->name('shifts.transfer.store');
+    Route::get('my-shifts/{shift}/swap', [ShiftRequestController::class, 'createSwap'])->name('shifts.swap.create');
+    Route::post('my-shifts/{shift}/swap', [ShiftRequestController::class, 'storeSwap'])->name('shifts.swap.store');
     Route::get('requests', [ShiftRequestController::class, 'index'])->name('requests.index');
     Route::post('requests/{shiftRequest}/respond', [ShiftRequestController::class, 'respond'])->name('requests.respond');
     Route::post('requests/{shiftRequest}/cancel', [ShiftRequestController::class, 'cancel'])->name('requests.cancel');

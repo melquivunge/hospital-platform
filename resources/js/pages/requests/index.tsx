@@ -1,5 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
-import { ArrowDown, Inbox } from 'lucide-react';
+import { ArrowDown, ArrowDownUp, Inbox } from 'lucide-react';
 import ShiftRequestController from '@/actions/App/Http/Controllers/ShiftRequestController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -13,6 +13,9 @@ import { index } from '@/routes/requests';
 
 type Item = {
     id: number;
+    type: 'transfer' | 'swap';
+    counterpart: ShiftBrief | null;
+    approvals: { unit: string; approved: boolean }[];
     status: string;
     statusLabel: string;
     requestedAt: string;
@@ -28,7 +31,7 @@ type Item = {
     canDecide: boolean;
 };
 
-/** "Solicitações" (step 7a, reference IMG_0918): transfers sent, received and awaiting approval. */
+/** "Solicitações" (steps 7a/7b, reference IMG_0918): transfers and swaps sent, received and to approve. */
 export default function Requests({
     mine,
     toDecide,
@@ -44,7 +47,7 @@ export default function Requests({
             <Page width="narrow">
                 <PageHeader
                     title="Solicitações"
-                    description="Transferências de plantão. A escala só muda depois do aceite do colega e da aprovação da coordenação."
+                    description="Transferências e trocas de plantão. A escala só muda depois do aceite do colega e da aprovação da coordenação."
                 />
 
                 {isCoordinator && (
@@ -57,7 +60,7 @@ export default function Requests({
                         </h2>
                         <List
                             items={toDecide}
-                            empty="Nenhuma transferência aguardando a coordenação."
+                            empty="Nenhuma solicitação aguardando a sua unidade."
                         />
                     </section>
                 )}
@@ -100,7 +103,7 @@ function List({ items, empty }: { items: Item[]; empty: string }) {
                             {item.statusLabel}
                         </p>
                         <p className="text-muted-foreground">
-                            Transferência ·{' '}
+                            {item.type === 'swap' ? 'Troca' : 'Transferência'} ·{' '}
                             {item.direction === 'sent'
                                 ? 'enviada'
                                 : item.direction === 'received'
@@ -109,30 +112,56 @@ function List({ items, empty }: { items: Item[]; empty: string }) {
                             em {item.requestedAt}
                         </p>
                     </div>
-                    <ShiftCard shift={item.shift} />
-                    <div className="grid gap-1">
-                        <p>
-                            <span className="text-muted-foreground">De </span>
-                            <span className="font-medium">
-                                {item.requester}
-                            </span>
-                        </p>
-                        <ArrowDown
-                            className="size-4 text-primary"
-                            aria-hidden="true"
-                        />
-                        <p>
-                            <span className="text-muted-foreground">Para </span>
-                            <span className="font-medium">
-                                {item.recipient}
-                            </span>
-                            {item.recipientRegistration && (
-                                <span className="ml-2 text-muted-foreground">
-                                    {item.recipientRegistration}
+                    {item.counterpart ? (
+                        <SwapShifts item={item} />
+                    ) : (
+                        <ShiftCard shift={item.shift} />
+                    )}
+                    {!item.counterpart && (
+                        <div className="grid gap-1">
+                            <p>
+                                <span className="text-muted-foreground">
+                                    De{' '}
                                 </span>
-                            )}
-                        </p>
-                    </div>
+                                <span className="font-medium">
+                                    {item.requester}
+                                </span>
+                            </p>
+                            <ArrowDown
+                                className="size-4 text-primary"
+                                aria-hidden="true"
+                            />
+                            <p>
+                                <span className="text-muted-foreground">
+                                    Para{' '}
+                                </span>
+                                <span className="font-medium">
+                                    {item.recipient}
+                                </span>
+                                {item.recipientRegistration && (
+                                    <span className="ml-2 text-muted-foreground">
+                                        {item.recipientRegistration}
+                                    </span>
+                                )}
+                            </p>
+                        </div>
+                    )}
+                    {item.status === 'pending_coordinator' && (
+                        <ul className="grid gap-1" aria-label="Aprovações">
+                            {item.approvals.map((approval) => (
+                                <li key={approval.unit}>
+                                    <span className="text-muted-foreground">
+                                        {approval.unit}:{' '}
+                                    </span>
+                                    <span className="font-medium">
+                                        {approval.approved
+                                            ? 'aprovado'
+                                            : 'aguardando aprovação'}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                     {item.note && <p>Mensagem: {item.note}</p>}
                     {item.decisionReason && (
                         <p>Motivo: {item.decisionReason}</p>
@@ -141,6 +170,33 @@ function List({ items, empty }: { items: Item[]; empty: string }) {
                 </li>
             ))}
         </ul>
+    );
+}
+
+/** The two shifts of a swap, each with the person who gives it up. */
+function SwapShifts({ item }: { item: Item }) {
+    return (
+        <div className="grid gap-2">
+            <p>
+                <span className="text-muted-foreground">Plantão de </span>
+                <span className="font-medium">{item.requester}</span>
+            </p>
+            <ShiftCard shift={item.shift} />
+            <ArrowDownUp
+                className="size-4 justify-self-center text-primary"
+                aria-label="troca com"
+            />
+            <p>
+                <span className="text-muted-foreground">Plantão de </span>
+                <span className="font-medium">{item.recipient}</span>
+                {item.recipientRegistration && (
+                    <span className="ml-2 text-muted-foreground">
+                        {item.recipientRegistration}
+                    </span>
+                )}
+            </p>
+            {item.counterpart && <ShiftCard shift={item.counterpart} />}
+        </div>
     );
 }
 
@@ -186,7 +242,11 @@ function Actions({ item }: { item: Item }) {
                     action={ShiftRequestController.decide.form(item.id)}
                     field="approve"
                     value="1"
-                    label="Aprovar transferência"
+                    label={
+                        item.type === 'swap'
+                            ? 'Aprovar troca'
+                            : 'Aprovar transferência'
+                    }
                 />
                 <Form
                     {...ShiftRequestController.decide.form(item.id)}
@@ -219,7 +279,9 @@ function Actions({ item }: { item: Item }) {
                                 className="min-h-11 justify-self-start"
                             >
                                 {processing && <Spinner />}
-                                Recusar transferência
+                                {item.type === 'swap'
+                                    ? 'Recusar troca'
+                                    : 'Recusar transferência'}
                             </Button>
                         </>
                     )}

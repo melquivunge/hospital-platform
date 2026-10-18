@@ -104,7 +104,10 @@ class ShiftController extends Controller
             ->where('status', ShiftStatus::Published)
             ->where('ends_at', '>', now()->startOfDay()->subDay())
             ->with(['unit:id,name,timezone', 'sector:id,name', 'jobFunction:id,name'])
-            ->withExists(['requests as transfer_pending' => fn (Builder $query) => $query->whereIn('status', RequestStatus::pending())])
+            ->withExists([
+                'requests as request_pending' => fn (Builder $query) => $query->whereIn('status', RequestStatus::pending()),
+                'counterpartRequests as counterpart_pending' => fn (Builder $query) => $query->whereIn('status', RequestStatus::pending()),
+            ])
             ->orderBy('starts_at')
             ->limit(200)
             ->get()
@@ -112,7 +115,7 @@ class ShiftController extends Controller
                 ...self::summary($shift, $shift->unit->timezone ?? 'UTC'),
                 'unit' => $shift->unit->name,
                 'upcoming' => $shift->starts_at->isFuture(),
-                'transferPending' => (bool) $shift->getAttribute('transfer_pending'),
+                'requestPending' => (bool) $shift->getAttribute('request_pending') || (bool) $shift->getAttribute('counterpart_pending'),
             ])
             ->values();
 
