@@ -53,7 +53,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #27 | Entrega 3: contrato, ADR-0003 e plano | Mesclado |
 | #28 | Etapa 3.1: fundação clínica | Mesclado |
 | #29 | Etapa 3.2: pacientes | Mesclado |
-| — | Etapa 3.3: unificação de cadastros (branch `feat/patient-merge`) | Em revisão |
+| #30 | Etapa 3.3: unificação de cadastros | Mesclado |
+| — | Etapa 3.4a: grade de agenda (branch `feat/schedule-grid`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -81,7 +82,11 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Na busca, o duplicado some e o CPF ou CNS dele leva ao principal; abrir o duplicado redireciona para o principal, que lista "Cadastros unificados neste".
   - Desfazer exige motivo e gera nova decisão auditada (`patient.merge_undone`).
   - Escopo (decisão técnica, a confirmar): o gestor de qualquer unidade unifica cadastros da rede inteira, porque o paciente pertence à rede. Sem cadeias: um cadastro que é principal de outra unificação não vira duplicado sem desfazer a anterior. Cadastro unificado não é editado (redireciona para o principal). A fila é calculada a cada visita (limite conhecido para cadastros muito grandes).
-  - Locks nos dois cadastros em ordem de id. Corrida real (6 rodadas, A→B contra B→A): uma vence, a outra é recusada, sem ciclo nem travamento.
+  - Locks nos dois cadastros em ordem de id.
+- **3.4a (grade de agenda; a 3.4 foi dividida em 3.4a e 3.4b):**
+  - Tela "Agendas" para o gestor da unidade e o administrador de rede, com seletor de unidade. Grade semanal por profissional habilitado na unidade (dia, início, fim e duração fixa da consulta, no horário da unidade) e bloqueios de período com motivo.
+  - Regras imutáveis: para mudar, remove-se e adiciona-se outra. Restrição no banco: o mesmo profissional não tem faixas sobrepostas no mesmo dia da semana, nem em unidades diferentes. Tudo auditado (`schedule.*`). Sem dados de paciente, então as tabelas não têm RLS.
+  - Próxima: **3.4b**, agendamento pela recepção (vagas da grade menos bloqueios, encaixe, cancelamento, remarcação e faltas, com restrição contra dois agendamentos no mesmo horário). Corrida real (6 rodadas, A→B contra B→A): uma vence, a outra é recusada, sem ciclo nem travamento.
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
   - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`). Locks na mesma ordem dos demais fluxos (profissional → plantões por id → pedidos). Corrida real entre revogação e cancelamento do plantão (cliente sintético "Rede Corrida", 12 rodadas nas duas ordens): sem deadlock, um resultado coerente por rodada, um único evento de auditoria por pedido.
@@ -269,7 +274,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 277 testes passando (etapa 3.3), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 280 testes passando (etapa 3.4a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

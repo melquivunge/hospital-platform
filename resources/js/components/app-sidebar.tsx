@@ -3,6 +3,7 @@ import {
     ArrowLeftRight,
     BriefcaseMedical,
     CalendarCheck,
+    CalendarClock,
     CalendarDays,
     GitMerge,
     ChartColumn,
@@ -36,6 +37,7 @@ import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
 import { index as reports } from '@/routes/reports';
 import { index as requests } from '@/routes/requests';
+import { index as schedules } from '@/routes/schedules';
 import { index as professionals } from '@/routes/professionals';
 import { index as shifts, mine as myShifts } from '@/routes/shifts';
 import { index as units } from '@/routes/units';
@@ -69,11 +71,15 @@ export function AppSidebar() {
         canViewRequests,
         canViewPatients,
         canMergePatients,
+        canManageSchedules,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
         ...(canViewPatients
             ? [{ title: 'Pacientes', href: patients(), icon: UsersRound }]
+            : []),
+        ...(canManageSchedules
+            ? [{ title: 'Agendas', href: schedules(), icon: CalendarClock }]
             : []),
         ...(canMergePatients
             ? [
