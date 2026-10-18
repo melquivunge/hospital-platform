@@ -34,6 +34,16 @@ class UnitPolicy
         );
     }
 
+    /**
+     * Presence points: the unit manager or a network admin (user decision, 18/10/2026).
+     */
+    public function managePresence(User $user, Unit $unit): bool
+    {
+        $membership = self::membershipFor($user, $unit->tenant_id);
+
+        return $membership !== null && ($membership->hasRole(Role::NetworkAdmin) || $membership->hasRole(Role::UnitManager, $unit->id));
+    }
+
     public function update(User $user, Unit $unit): bool
     {
         return self::membershipFor($user, $unit->tenant_id)?->hasRole(Role::NetworkAdmin) ?? false;

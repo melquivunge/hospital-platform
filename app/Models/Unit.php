@@ -58,4 +58,12 @@ class Unit extends Model
     {
         return $this->hasMany(Sector::class);
     }
+
+    /**
+     * @return HasMany<AttendancePoint, $this>
+     */
+    public function attendancePoints(): HasMany
+    {
+        return $this->hasMany(AttendancePoint::class);
+    }
 }

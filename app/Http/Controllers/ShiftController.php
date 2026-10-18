@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceEvent;
 use App\Models\JobFunction;
 use App\Models\Professional;
 use App\Models\Shift;
@@ -103,7 +104,7 @@ class ShiftController extends Controller
             ->where('professional_id', $professional->id)
             ->where('status', ShiftStatus::Published)
             ->where('ends_at', '>', now()->startOfDay()->subDay())
-            ->with(['unit:id,name,timezone', 'sector:id,name', 'jobFunction:id,name'])
+            ->with(['unit:id,name,timezone', 'sector:id,name', 'jobFunction:id,name', 'attendanceEvents' => fn ($query) => $query->where('result', 'accepted')])
             ->withExists([
                 'requests as request_pending' => fn (Builder $query) => $query->whereIn('status', RequestStatus::pending()),
                 'counterpartRequests as counterpart_pending' => fn (Builder $query) => $query->whereIn('status', RequestStatus::pending()),
@@ -115,6 +116,9 @@ class ShiftController extends Controller
                 ...self::summary($shift, $shift->unit->timezone ?? 'UTC'),
                 'unit' => $shift->unit->name,
                 'upcoming' => $shift->starts_at->isFuture(),
+                'checkIn' => self::attendanceTime($shift, 'check_in'),
+                'checkOut' => self::attendanceTime($shift, 'check_out'),
+                'ended' => $shift->ends_at->isPast(),
                 'requestPending' => (bool) $shift->getAttribute('request_pending') || (bool) $shift->getAttribute('counterpart_pending'),
             ])
             ->values();
@@ -158,7 +162,39 @@ class ShiftController extends Controller
             'canCancel' => $canManage && ($shift->status === ShiftStatus::Draft || ($shift->status === ShiftStatus::Published && $shift->starts_at->isFuture())),
             'canSelect' => $canManage && $shift->status === ShiftStatus::Published && ($shift->professional_id === null || $shift->announced_at !== null) && $shift->starts_at->isFuture(),
             'applications' => $canManage ? self::applications($shift) : [],
+            'attendance' => self::attendance($shift),
         ]);
+    }
+
+    /**
+     * Local time of the accepted entry/exit (eager-loaded accepted events).
+     */
+    private static function attendanceTime(Shift $shift, string $kind): ?string
+    {
+        $event = $shift->attendanceEvents->firstWhere('kind', $kind);
+
+        return $event?->received_at->setTimezone($shift->unit->timezone ?? 'UTC')->format('H:i');
+    }
+
+    /**
+     * Attempts and records for readers of the schedule: point and distance, never raw coordinates.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function attendance(Shift $shift): array
+    {
+        $timezone = $shift->unit->timezone ?? 'UTC';
+
+        return array_values($shift->attendanceEvents()->with('point:id,name')->orderBy('id')->get()->map(fn (AttendanceEvent $event) => [
+            'id' => $event->id,
+            'kind' => $event->kind === 'check_in' ? 'Entrada' : 'Saída',
+            'accepted' => $event->accepted(),
+            'reason' => $event->reasonMessage(),
+            'at' => $event->received_at->setTimezone($timezone)->format('d/m/Y H:i'),
+            'point' => $event->point?->name,
+            'distance' => $event->distance_m === null ? null : (int) round((float) $event->distance_m),
+            'accuracy' => $event->accuracy_m === null ? null : (int) round((float) $event->accuracy_m),
+        ])->all());
     }
 
     /**

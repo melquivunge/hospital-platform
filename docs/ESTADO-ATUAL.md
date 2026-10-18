@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação, com identidade visual própria. Próximo passo: etapa 8 (presença e ajuste administrativo).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação e presença por localização, com identidade visual própria. Próximo passo: etapa 8b (ocorrências e ajuste administrativo).
 
 ## Onde está cada coisa
 
@@ -42,14 +42,23 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #16 | Etapa 6b: vagas abertas, candidatura e escolha justificada | Mesclado |
 | #17 | Etapa 6c: anúncio do próprio plantão para substituição | Mesclado |
 | #18 | Etapa 7a: transferência direta | Mesclado |
-| — | Etapa 7b: troca entre dois plantões (branch `feat/shift-swap`) | Em revisão |
+| #19 | Etapa 7b: troca entre dois plantões | Mesclado |
+| — | Etapa 8a: presença por localização (branch `feat/attendance`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca).
-- **Próximo:** etapa 8 (presença e ajuste administrativo), depois 9. Ao fazer a 8, integrar o bloqueio de anúncio, transferência e troca após check-in (hoje o limite é o início do plantão).
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca, PR #19), 8a (presença por localização).
+- **Próximo:** 8b (ocorrências: tentativa negada ou falha relatada pelo profissional, análise e encerramento administrativo da saída pelo coordenador, com horário informado e justificativa, sem alterar o original), depois a etapa 9.
+- **Decisões do usuário (18/10/2026) para a etapa 8:** duas janelas configuradas pela rede/unidade (entrada a partir de X min antes do início, até o fim; saída até Y min depois do fim); pontos de presença cadastrados pelo gestor da unidade e pelo administrador de rede.
+- **8a (presença por localização):**
+  - Regras no catálogo (sem valor padrão): precisão máxima, antecedência da entrada e prazo da saída. Pontos por unidade (nome, coordenadas, raio), imutáveis: para mudar, cadastra-se outro e desativa-se o antigo; o ponto usado fica registrado em cada decisão.
+  - Em "Meus plantões", "Registrar entrada/saída" lê a localização uma vez (sem rastreamento). O servidor aceita só se a unidade estiver configurada, dentro da janela, com medição recente (tolerância técnica de 2 min, não regra de produto), precisão dentro do limite e distância + precisão dentro do raio de um ponto. Tentativas recusadas ficam guardadas com o motivo; `attendance_events` é só de inserção; repetir a mesma tentativa devolve o primeiro resultado; limite de 20 tentativas por minuto.
+  - Entrada registrada expira transferências e trocas pendentes, encerra o anúncio e bloqueia anunciar, transferir, trocar e cancelar o plantão.
+  - O coordenador vê no detalhe do plantão as tentativas com ponto, distância e precisão, sem coordenadas. Coordenadas dos pontos só para quem os gere.
+  - Sem ponto ativo, a saída por localização fica impossível; a saída ajustada pelo coordenador vem na 8b.
+  - Ainda pendente antes de operação real: teste em aparelho físico via HTTPS e política de retenção de coordenadas (PRODUCT.md).
 - **7b (troca):**
   - Em "Meus plantões", "Trocar com um colega" lista plantões futuros de colegas com acesso, na mesma UF, em que os dois lados têm habilitação aprovada (sem valores). Mesmo fluxo da transferência (`shift_requests`, tipo `swap`, `counterpart_shift_id`).
   - Cada lado precisa ser elegível no plantão que recebe, comparando com a UF do plantão que deixa. Conflito avaliado na escala resultante (sem os plantões trocados) já no pedido, no aceite e em cada aprovação; a restrição do banco garante na aplicação.

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Governance\PolicyKey;
 use App\Professionals\Eligibility;
 use App\Scheduling\ApplicationStatus;
 use App\Scheduling\RequestStatus;
@@ -189,6 +190,10 @@ class Shift extends Model
                 throw ValidationException::withMessages(['reason' => 'O plantão já começou e não pode ser cancelado.']);
             }
 
+            if ($shift->hasCheckIn()) {
+                throw ValidationException::withMessages(['reason' => 'A entrada já foi registrada: o plantão não pode ser cancelado.']);
+            }
+
             $from = $shift->status;
             $shift->forceFill([
                 'status' => ShiftStatus::Cancelled,
@@ -245,6 +250,10 @@ class Shift extends Model
                 throw ValidationException::withMessages(['shift' => 'Cancele o anúncio antes de transferir o plantão.']);
             }
 
+            if ($shift->hasCheckIn()) {
+                throw ValidationException::withMessages(['shift' => 'A entrada já foi registrada: o plantão não pode ser transferido.']);
+            }
+
             if (ShiftRequest::pendingFor($shift->id)->exists()) {
                 throw ValidationException::withMessages(['shift' => 'Já existe uma solicitação pendente para este plantão.']);
             }
@@ -295,6 +304,10 @@ class Shift extends Model
 
             if ($shift->announced_at !== null || $other->announced_at !== null) {
                 throw ValidationException::withMessages(['shift' => 'Plantões anunciados para substituição não entram em troca.']);
+            }
+
+            if ($shift->hasCheckIn() || $other->hasCheckIn()) {
+                throw ValidationException::withMessages(['shift' => 'A entrada já foi registrada em um dos plantões: a troca não é possível.']);
             }
 
             if (ShiftRequest::pendingFor($shift->id)->exists() || ShiftRequest::pendingFor($other->id)->exists()) {
@@ -482,7 +495,8 @@ class Shift extends Model
         $holds = fn (?self $candidate, int $professionalId) => $candidate !== null
             && $candidate->status === ShiftStatus::Published
             && $candidate->professional_id === $professionalId
-            && $candidate->announced_at === null;
+            && $candidate->announced_at === null
+            && ! $candidate->hasCheckIn();
 
         if (! $holds($shift, $request->requester_professional_id) || ($request->isSwap() && ! $holds($other, $request->recipient_professional_id))) {
             throw ValidationException::withMessages(['request' => 'Os plantões mudaram desde a solicitação. Recuse e peça uma nova solicitação.']);
@@ -542,6 +556,157 @@ class Shift extends Model
         if ($professional->membership_id === null || ! Membership::query()->whereKey($professional->membership_id)->whereNull('revoked_at')->exists()) {
             throw ValidationException::withMessages([$field => 'Este profissional ainda não tem acesso à plataforma para aceitar.']);
         }
+    }
+
+    /**
+     * Presence by location (step 8a, PRODUCT.md "Presença com limite geográfico"). The server decides:
+     * the reading must be recent, accurate enough (unit policy) and inside a point's radius counting the
+     * accuracy (distance + accuracy <= radius), within the configured window. Rejected attempts are kept
+     * with their reason; repeating the same idempotency key returns the first result. The policy
+     * versions and the point used are recorded with every decision.
+     *
+     * @param  array{latitude: float, longitude: float, accuracy: float, measured_at: CarbonImmutable}  $reading
+     */
+    public function recordAttendance(Professional $professional, string $kind, array $reading, string $idempotencyKey): AttendanceEvent
+    {
+        return self::writing(function () use ($professional, $kind, $reading, $idempotencyKey) {
+            self::lockProfessionals([$professional->id]);
+            $shift = self::query()->lockForUpdate()->findOrFail($this->id);
+
+            // The professional lock serializes attempts of the same person; the unique key backs it.
+            $repeated = AttendanceEvent::query()->where('user_id', Auth::id())->where('idempotency_key', $idempotencyKey)->first();
+
+            if ($repeated !== null) {
+                if ($repeated->shift_id !== $shift->id || $repeated->kind !== $kind) {
+                    throw ValidationException::withMessages(['attendance' => 'Tentativa repetida com outro conteúdo. Recarregue a página.']);
+                }
+
+                return $repeated;
+            }
+
+            if ($shift->status !== ShiftStatus::Published || $shift->professional_id !== $professional->id) {
+                throw ValidationException::withMessages(['attendance' => 'Este plantão não está com você.']);
+            }
+
+            $accepted = fn (string $eventKind) => $shift->attendanceEvents()->where('kind', $eventKind)->where('result', 'accepted')->exists();
+
+            if ($kind === 'check_in' && $accepted('check_in')) {
+                throw ValidationException::withMessages(['attendance' => 'A entrada já foi registrada.']);
+            }
+
+            if ($kind === 'check_out' && ! $accepted('check_in')) {
+                throw ValidationException::withMessages(['attendance' => 'Registre a entrada antes da saída.']);
+            }
+
+            if ($kind === 'check_out' && $accepted('check_out')) {
+                throw ValidationException::withMessages(['attendance' => 'A saída já foi registrada.']);
+            }
+
+            $now = CarbonImmutable::now();
+            $decision = self::attendanceDecision($shift, $kind, $reading, $now);
+
+            $event = $shift->attendanceEvents()->create([
+                'professional_id' => $professional->id,
+                'user_id' => Auth::id(),
+                'kind' => $kind,
+                'result' => $decision['reason'] === null ? 'accepted' : 'rejected',
+                'reason' => $decision['reason'],
+                'latitude' => $reading['latitude'],
+                'longitude' => $reading['longitude'],
+                'accuracy_m' => $reading['accuracy'],
+                'measured_at' => $reading['measured_at'],
+                'received_at' => $now,
+                'point_id' => $decision['point']?->id,
+                'distance_m' => $decision['distance'],
+                'policy_version_ids' => $decision['policies'],
+                'idempotency_key' => $idempotencyKey,
+            ]);
+
+            // Presence started: no more replacement, transfer or swap (PRODUCT.md, limite temporal).
+            if ($kind === 'check_in' && $event->accepted()) {
+                ShiftRequest::pendingFor($shift->id)
+                    ->update(['status' => RequestStatus::Expired, 'decided_at' => $now, 'decision_reason' => 'Entrada registrada.']);
+
+                if ($shift->announced_at !== null) {
+                    $shift->forceFill(['announced_at' => null])->save();
+                    $shift->applications()->where('status', ApplicationStatus::Active)
+                        ->update(['status' => ApplicationStatus::NotSelected, 'decided_at' => $now]);
+                }
+            }
+
+            return $event;
+        });
+    }
+
+    /**
+     * @return HasMany<AttendanceEvent, $this>
+     */
+    public function attendanceEvents(): HasMany
+    {
+        return $this->hasMany(AttendanceEvent::class);
+    }
+
+    public function hasCheckIn(): bool
+    {
+        return $this->attendanceEvents()->where('kind', 'check_in')->where('result', 'accepted')->exists();
+    }
+
+    /**
+     * @param  array{latitude: float, longitude: float, accuracy: float, measured_at: CarbonImmutable}  $reading
+     * @return array{reason: string|null, point: AttendancePoint|null, distance: float|null, policies: array<string, array{int, int|null}>}
+     */
+    private static function attendanceDecision(self $shift, string $kind, array $reading, CarbonImmutable $now): array
+    {
+        $unit = $shift->unit()->firstOrFail();
+        $policies = [];
+        $values = [];
+
+        foreach ([PolicyKey::AttendanceMaxAccuracy, PolicyKey::AttendanceCheckInLead, PolicyKey::AttendanceCheckOutGrace] as $key) {
+            $effective = PolicyVersion::effective($key, $unit, $now);
+
+            if ($effective !== null) {
+                $values[$key->value] = $effective->value;
+                $policies[$key->value] = [$effective->network->id, $effective->local?->id];
+            }
+        }
+
+        $points = AttendancePoint::query()->where('unit_id', $unit->id)->whereNull('deactivated_at')->get();
+        $result = fn (?string $reason, ?AttendancePoint $point = null, ?float $distance = null) => ['reason' => $reason, 'point' => $point, 'distance' => $distance, 'policies' => $policies];
+
+        $maxAccuracy = $values[PolicyKey::AttendanceMaxAccuracy->value] ?? null;
+        $lead = $values[PolicyKey::AttendanceCheckInLead->value] ?? null;
+        $grace = $values[PolicyKey::AttendanceCheckOutGrace->value] ?? null;
+
+        if ($points->isEmpty() || $maxAccuracy === null || $lead === null || $grace === null) {
+            return $result('not_configured');
+        }
+
+        $opensAt = $kind === 'check_in' ? $shift->starts_at->subMinutes($lead) : $shift->starts_at;
+        $closesAt = $kind === 'check_in' ? $shift->ends_at : $shift->ends_at->addMinutes($grace);
+
+        if ($now < $opensAt || $now > $closesAt) {
+            return $result('outside_window');
+        }
+
+        // ponytail: technical anti-replay tolerance (2 min old, 1 min ahead for clock skew), not a product rule.
+        if ($reading['measured_at'] < $now->subMinutes(2) || $reading['measured_at'] > $now->addMinute()) {
+            return $result('stale_measurement');
+        }
+
+        if ($reading['accuracy'] > $maxAccuracy) {
+            return $result('low_accuracy');
+        }
+
+        // The point whose radius best fits the reading; accepted only if distance + accuracy fits.
+        $best = $points
+            ->map(fn (AttendancePoint $point) => [$point, $point->distanceTo($reading['latitude'], $reading['longitude'])])
+            ->sortBy(fn (array $candidate) => $candidate[1] + $reading['accuracy'] - $candidate[0]->radius_m)
+            ->first();
+        [$point, $distance] = $best;
+
+        return $distance + $reading['accuracy'] <= $point->radius_m
+            ? $result(null, $point, round($distance, 1))
+            : $result('outside_radius', $point, round($distance, 1));
     }
 
     /**
@@ -687,6 +852,10 @@ class Shift extends Model
 
             if ($shift->announced_at !== null) {
                 throw ValidationException::withMessages(['shift' => 'Este plantão já está anunciado.']);
+            }
+
+            if ($shift->hasCheckIn()) {
+                throw ValidationException::withMessages(['shift' => 'A entrada já foi registrada: o plantão não pode ser anunciado.']);
             }
 
             if (ShiftRequest::pendingFor($shift->id)->exists()) {
