@@ -103,12 +103,17 @@ export default function Reports(props: Props) {
     const apply = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
+        const field = (name: string) => {
+            const value = data.get(name);
+
+            return typeof value === 'string' ? value : '';
+        };
         router.get(
             index({
                 query: {
-                    unit: String(data.get('unit')),
-                    from: String(data.get('from')),
-                    to: String(data.get('to')),
+                    unit: field('unit'),
+                    from: field('from'),
+                    to: field('to'),
                 },
             }).url,
             {},
