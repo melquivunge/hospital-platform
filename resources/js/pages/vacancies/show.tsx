@@ -4,7 +4,7 @@ import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { formatDay, PeriodLabel, timeRange } from '@/pages/shifts/index';
+import { formatDay, PeriodLabel, timeRange } from '@/components/shift-display';
 import type { Vacancy } from '@/pages/vacancies/index';
 import { index } from '@/routes/vacancies';
 

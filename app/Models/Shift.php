@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Professionals\Eligibility;
 use App\Scheduling\ApplicationStatus;
+use App\Scheduling\RequestStatus;
 use App\Scheduling\ShiftStatus;
 use App\Tenancy\BelongsToTenant;
 use Carbon\CarbonImmutable;
@@ -199,6 +200,150 @@ class Shift extends Model
             AuditEvent::record('shift.cancelled', $shift->tenant_id, $shift, ['from' => $from->value, 'reason' => $reason]);
             $shift->applications()->where('status', ApplicationStatus::Active)
                 ->update(['status' => ApplicationStatus::NotSelected, 'decided_at' => now(), 'decided_by_user_id' => Auth::id()]);
+            $shift->requests()->whereIn('status', RequestStatus::pending())
+                ->update(['status' => RequestStatus::Cancelled, 'decided_at' => now(), 'decided_by_user_id' => Auth::id(), 'decision_reason' => 'Plantão cancelado.']);
+        });
+    }
+
+    /**
+     * @return HasMany<ShiftRequest, $this>
+     */
+    public function requests(): HasMany
+    {
+        return $this->hasMany(ShiftRequest::class);
+    }
+
+    /**
+     * Direct transfer (step 7a): the responsible asks a colleague to take the shift. Nothing changes until
+     * the colleague accepts and the unit's coordinator approves. The recipient's eligibility is checked
+     * now, on acceptance and again on approval (base-unit UF, as for vacancies).
+     */
+    public function requestTransfer(Professional $requester, Professional $recipient, ?string $note): ShiftRequest
+    {
+        return self::writing(function () use ($requester, $recipient, $note) {
+            self::lockProfessionals([$requester->id, $recipient->id]);
+            $shift = $this->lockedIn(ShiftStatus::Published);
+
+            if ($shift->professional_id !== $requester->id) {
+                throw ValidationException::withMessages(['shift' => 'Só o responsável pode transferir este plantão.']);
+            }
+
+            if ($recipient->id === $requester->id) {
+                throw ValidationException::withMessages(['recipient_id' => 'Escolha outro profissional.']);
+            }
+
+            if ($shift->announced_at !== null) {
+                throw ValidationException::withMessages(['shift' => 'Cancele o anúncio antes de transferir o plantão.']);
+            }
+
+            if ($shift->requests()->whereIn('status', RequestStatus::pending())->exists()) {
+                throw ValidationException::withMessages(['shift' => 'Já existe uma solicitação pendente para este plantão.']);
+            }
+
+            if ($recipient->membership_id === null || ! Membership::query()->whereKey($recipient->membership_id)->whereNull('revoked_at')->exists()) {
+                throw ValidationException::withMessages(['recipient_id' => 'Este profissional ainda não tem acesso à plataforma para aceitar.']);
+            }
+
+            self::assertAssignable($shift->assignmentOf($recipient->id));
+            $request = $shift->requests()->create([
+                'type' => 'transfer',
+                'requester_professional_id' => $requester->id,
+                'recipient_professional_id' => $recipient->id,
+                'status' => RequestStatus::PendingRecipient,
+                'note' => $note,
+                'requested_by_user_id' => Auth::id(),
+            ]);
+            AuditEvent::record('shift.transfer_requested', $shift->tenant_id, $shift, ['request_id' => $request->id, 'from' => $requester->id, 'to' => $recipient->id]);
+
+            return $request;
+        });
+    }
+
+    public function respondToTransfer(ShiftRequest $request, Professional $recipient, bool $accept): void
+    {
+        self::writing(function () use ($request, $recipient, $accept) {
+            self::lockProfessionals([$recipient->id]);
+            $shift = self::query()->lockForUpdate()->findOrFail($this->id);
+            $current = $shift->requests()->lockForUpdate()->whereKey($request->id)->firstOrFail();
+
+            if ($current->recipient_professional_id !== $recipient->id || $current->status !== RequestStatus::PendingRecipient) {
+                throw ValidationException::withMessages(['request' => 'Esta solicitação não está mais aguardando sua resposta.']);
+            }
+
+            if ($accept) {
+                self::assertAssignable($shift->assignmentOf($recipient->id));
+            }
+
+            $current->forceFill(['status' => $accept ? RequestStatus::PendingCoordinator : RequestStatus::Refused, 'recipient_decided_at' => now()])->save();
+            AuditEvent::record($accept ? 'shift.transfer_accepted' : 'shift.transfer_refused', $shift->tenant_id, $shift, ['request_id' => $current->id]);
+        });
+    }
+
+    public function cancelTransfer(ShiftRequest $request, Professional $requester): void
+    {
+        self::writing(function () use ($request, $requester) {
+            self::lockProfessionals([$requester->id]);
+            $shift = self::query()->lockForUpdate()->findOrFail($this->id);
+            $current = $shift->requests()->lockForUpdate()->whereKey($request->id)->firstOrFail();
+
+            if ($current->requester_professional_id !== $requester->id || ! in_array($current->status, RequestStatus::pending(), true)) {
+                throw ValidationException::withMessages(['request' => 'Esta solicitação não pode mais ser cancelada.']);
+            }
+
+            $current->forceFill(['status' => RequestStatus::Cancelled, 'decided_at' => now(), 'decided_by_user_id' => Auth::id()])->save();
+            AuditEvent::record('shift.transfer_cancelled', $shift->tenant_id, $shift, ['request_id' => $current->id]);
+        });
+    }
+
+    /**
+     * Coordinator's decision. Approval re-checks that the shift still belongs to the requester, the
+     * recipient's eligibility and conflicts, then moves the shift. Participants never decide.
+     */
+    public function decideTransfer(ShiftRequest $request, bool $approve, ?string $reason): void
+    {
+        self::writing(function () use ($request, $approve, $reason) {
+            self::lockProfessionals([$request->requester_professional_id, $request->recipient_professional_id]);
+            $shift = self::query()->lockForUpdate()->findOrFail($this->id);
+            $current = $shift->requests()->lockForUpdate()->whereKey($request->id)->firstOrFail();
+
+            if ($current->status !== RequestStatus::PendingCoordinator) {
+                throw ValidationException::withMessages(['request' => 'Esta solicitação não está mais aguardando a coordenação.']);
+            }
+
+            if (self::belongsToActor($current->requester_professional_id) || self::belongsToActor($current->recipient_professional_id)) {
+                throw ValidationException::withMessages(['request' => 'Você participa desta transferência e não pode decidir. Outro coordenador precisa decidir.']);
+            }
+
+            $decision = ['decided_at' => now(), 'decided_by_user_id' => Auth::id(), 'decision_reason' => $reason];
+
+            if (! $approve) {
+                $current->forceFill([...$decision, 'status' => RequestStatus::Refused])->save();
+                AuditEvent::record('shift.transfer_rejected', $shift->tenant_id, $shift, ['request_id' => $current->id, 'reason' => $reason]);
+
+                return;
+            }
+
+            if ($shift->status !== ShiftStatus::Published || $shift->professional_id !== $current->requester_professional_id || $shift->announced_at !== null) {
+                throw ValidationException::withMessages(['request' => 'O plantão mudou desde a solicitação. Recuse e peça uma nova solicitação.']);
+            }
+
+            $eligibility = self::assertAssignable($shift->assignmentOf($current->recipient_professional_id));
+            $shift->forceFill([
+                'professional_id' => $current->recipient_professional_id,
+                'eligibility_version' => $eligibility?->eligibilityVersion,
+                'qualification_id' => $eligibility?->qualificationId,
+            ])->save();
+            $current->forceFill([...$decision, 'status' => RequestStatus::Completed])->save();
+            // A winner from an earlier vacancy round no longer holds the shift.
+            $shift->applications()->where('status', ApplicationStatus::Selected)->update(['status' => ApplicationStatus::Replaced]);
+
+            AuditEvent::record('shift.transferred', $shift->tenant_id, $shift, array_filter([
+                'request_id' => $current->id,
+                'from' => $current->requester_professional_id,
+                'to' => $current->recipient_professional_id,
+                'reason' => $reason,
+                'eligibility_version' => $shift->eligibility_version,
+            ], fn ($value) => $value !== null));
         });
     }
 
@@ -345,6 +490,10 @@ class Shift extends Model
 
             if ($shift->announced_at !== null) {
                 throw ValidationException::withMessages(['shift' => 'Este plantão já está anunciado.']);
+            }
+
+            if ($shift->requests()->whereIn('status', RequestStatus::pending())->exists()) {
+                throw ValidationException::withMessages(['shift' => 'Há uma transferência pendente para este plantão.']);
             }
 
             $shift->forceFill(['announced_at' => now()])->save();

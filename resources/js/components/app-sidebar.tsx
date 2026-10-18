@@ -8,6 +8,7 @@ import {
     Building2,
     LayoutGrid,
     Megaphone,
+    Repeat,
     SlidersHorizontal,
     Stethoscope,
     Users,
@@ -30,6 +31,7 @@ import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
+import { index as requests } from '@/routes/requests';
 import { index as professionals } from '@/routes/professionals';
 import { index as shifts, mine as myShifts } from '@/routes/shifts';
 import { index as units } from '@/routes/units';
@@ -60,6 +62,7 @@ export function AppSidebar() {
         canViewShifts,
         canImport,
         canViewMyShifts,
+        canViewRequests,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
@@ -72,6 +75,9 @@ export function AppSidebar() {
                   },
                   { title: 'Vagas', href: vacancies(), icon: Megaphone },
               ]
+            : []),
+        ...(canViewRequests
+            ? [{ title: 'Solicitações', href: requests(), icon: Repeat }]
             : []),
         ...(canViewShifts
             ? [{ title: 'Escala', href: shifts(), icon: CalendarDays }]

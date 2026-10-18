@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada e anúncio do próprio plantão para substituição, com identidade visual própria. Próximo passo: etapa 7 (trocas e transferências).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição e transferência direta com aceite e aprovação, com identidade visual própria. Próximo passo: etapa 7b (troca entre dois plantões).
 
 ## Onde está cada coisa
 
@@ -40,14 +40,22 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #14 | Etapa 5b: importação CSV de plantões | Mesclado |
 | #15 | Etapa 6a: acesso do profissional e "Meus plantões" | Mesclado |
 | #16 | Etapa 6b: vagas abertas, candidatura e escolha justificada | Mesclado |
-| — | Etapa 6c: anúncio do próprio plantão para substituição (branch `feat/shift-announcement`) | Em revisão |
+| #17 | Etapa 6c: anúncio do próprio plantão para substituição | Mesclado |
+| — | Etapa 7a: transferência direta (branch `feat/shift-transfer`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição).
-- **Próximo:** etapa 7 (trocas e transferências), depois 8 e 9.
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta).
+- **Próximo:** 7b (troca entre dois plantões, com aprovação das duas unidades quando forem hospitais diferentes), depois 8 e 9. A integração com check-in (bloqueio após presença) depende da etapa 8.
+- **7a (transferência direta):**
+  - Em "Meus plantões", "Transferir a um colega" escolhe um colega com acesso ativo e habilitação aprovada na unidade e função. Fluxo: aguardando o colega → aguardando a coordenação → concluída; recusa, cancelamento e expiração são terminais (`shift_requests`).
+  - Aprova o coordenador da unidade do plantão (ou o administrador de rede); quem participa não decide. Recusa da coordenação exige motivo. A UF de referência é a da unidade-base do destinatário.
+  - Elegibilidade conferida no pedido, no aceite e na aprovação; a aprovação trava os dois profissionais, depois o plantão e o pedido, revalida conflito e troca o responsável. Um pedido pendente por plantão (índice único); não convive com anúncio; cancelar o plantão encerra os pedidos.
+  - Expiração ao atingir o início, aplicada ao abrir Solicitações ou Meus plantões e antes de cada ação, com motivo e auditoria (`shift.transfer_expired`).
+  - Página "Solicitações" (referência IMG_0918): minhas solicitações (enviadas e recebidas) e, para coordenadores, "Para aprovar".
+  - Correção junto: os helpers de exibição de plantão saíram de `pages/shifts/index.tsx` para `components/shift-display.tsx`; importar uma página a partir de outra podia tirar a página do manifesto do Vite (verificado: no build local, a Escala sumia do manifesto).
 - **6c (anúncio para substituição):**
   - Em "Meus plantões", o responsável anuncia um plantão publicado e futuro ("Anunciar para substituição") ou cancela o anúncio. Ele continua responsável até a escolha (regra do PRODUCT.md).
   - O plantão anunciado aparece em "Vagas" para os demais profissionais habilitados, marcado como "Substituição", sem o nome de quem anunciou. Quem anunciou não se candidata ao próprio plantão.

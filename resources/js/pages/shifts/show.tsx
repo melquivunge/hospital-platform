@@ -8,14 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { edit, index } from '@/routes/shifts';
-import type { ShiftSummary } from '@/pages/shifts/index';
+import type { ShiftSummary } from '@/components/shift-display';
 import {
     formatDay,
     formatMoney,
     PeriodLabel,
     StatusBadge,
     timeRange,
-} from '@/pages/shifts/index';
+} from '@/components/shift-display';
 
 type Shift = ShiftSummary & {
     unit: { id: number; name: string; timezone: string | null };

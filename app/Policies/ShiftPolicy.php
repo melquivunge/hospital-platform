@@ -78,6 +78,28 @@ class ShiftPolicy
             ->all());
     }
 
+    /**
+     * Unit ids whose schedule the member manages (coordinator or network admin).
+     *
+     * @return list<int>|null null means every unit of the tenant
+     */
+    public static function managedUnitIds(Membership $membership): ?array
+    {
+        if ($membership->revoked_at !== null) {
+            return [];
+        }
+
+        if ($membership->hasRole(Role::NetworkAdmin)) {
+            return null;
+        }
+
+        return array_values($membership->roleAssignments
+            ->filter(fn (RoleAssignment $assignment) => $assignment->role === Role::ShiftCoordinator)
+            ->map(fn (RoleAssignment $assignment) => (int) $assignment->unit_id)
+            ->unique()
+            ->all());
+    }
+
     private static function readsUnit(Membership $membership, int $unitId): bool
     {
         $ids = self::readableUnitIds($membership);
