@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) e importação CSV de profissionais, com identidade visual própria. Próximo passo: etapa 5b (importação de plantões em rascunho).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) e importação CSV de profissionais e plantões, com identidade visual própria. Próximo passo: etapa 6 (vagas e candidaturas, com acesso do profissional por convite).
 
 ## Onde está cada coisa
 
@@ -36,14 +36,15 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #10 | Etapa 3b: funções, habilitações e elegibilidade | Mesclado |
 | #11 | Etapa 4a: plantões, publicação e cancelamento | Mesclado |
 | #12 | Etapa 4b: agenda e itens das referências | Mesclado |
-| — | Etapa 5a: importação CSV de profissionais (branch `feat/import-professionals`) | Em revisão |
+| #13 | Etapa 5a: importação CSV de profissionais | Mesclado |
+| — | Etapa 5b: importação CSV de plantões (branch `feat/import-shifts`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais).
-- **Próximo:** 5b (plantões por CSV, criados como rascunho), depois as etapas 6 a 9.
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões).
+- **Próximo:** etapa 6 (vagas e candidaturas), depois as etapas 7 a 9.
 - **Decisão do usuário para a etapa 6 (17/10/2026):** o profissional ganha acesso por convite na tela dele, usando o e-mail do cadastro. Isso cria o vínculo com o papel Profissional e o liga ao cadastro.
 
 ### Etapa 5a: como funciona a importação
@@ -62,6 +63,10 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Os limites de colunas e de tamanho de campo protegem contra arquivos abusivos.
   - Valores que começam como fórmula (`=`, `+`, `-`, `@`) são rejeitados.
   - A auditoria registra o envio, a confirmação e a conclusão do lote.
+- **5b (plantões):**
+  - **Colunas:** `source_id`, `unit`, `sector`, `function`, `start`, `end` (data, hora e fuso, por exemplo `2026-11-10T07:00-03:00`) e `professional_source_id` (vazio = vaga aberta).
+  - **Profissional:** encontrado só pela identidade de importação da mesma origem, nunca pelo nome. Unidade, setor, função ou profissional desconhecidos deixam a linha pendente, com o motivo.
+  - **Aplicação:** cria sempre rascunho, pelo `Shift::createDraft`, com as mesmas regras da tela (elegibilidade, sobreposição, plantão já iniciado). Linha que viola alguma regra vira conflito, com o motivo. Nunca publica.
 - **Testes:** dentro do container, a fila efetiva é `database` (a variável do Docker vence o `phpunit.xml`). Por isso os testes interceptam o envio e executam o job explicitamente.
 
 ### Etapa 4a: decisões do usuário (17/10/2026) e como funciona
@@ -161,7 +166,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 181 testes passando (etapa 5a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 185 testes passando (etapa 5b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

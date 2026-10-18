@@ -41,6 +41,7 @@ export default function ImportShow({
 }: {
     batch: {
         id: number;
+        type: 'professionals' | 'shifts';
         source_system: string;
         filename: string;
         status: 'previewed' | 'applying' | 'applied';
@@ -151,7 +152,9 @@ export default function ImportShow({
                                     Identificador
                                 </th>
                                 <th scope="col" className="px-4 py-3">
-                                    Nome
+                                    {batch.type === 'shifts'
+                                        ? 'Início'
+                                        : 'Nome'}
                                 </th>
                                 <th scope="col" className="px-4 py-3">
                                     Resultado

@@ -49,6 +49,7 @@ class ProfessionalImportTest extends TestCase
         $csv = implode("\r\n", [$header ?? self::HEADER, ...$lines]);
 
         return $this->actingAs(($as ?? $this->admin)->user)->post(route('imports.store'), [
+            'type' => 'professionals',
             'source_system' => $source,
             'file' => UploadedFile::fake()->createWithContent('profissionais.csv', $csv),
         ]);
