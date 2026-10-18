@@ -22,6 +22,7 @@ declare module '@inertiajs/core' {
             canImport: boolean;
             canViewMyShifts: boolean;
             canViewRequests: boolean;
+            unreadNotifications: number;
             [key: string]: unknown;
         };
     }

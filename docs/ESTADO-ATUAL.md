@@ -1,6 +1,6 @@
 # Estado atual do projeto
 
-Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes de começar uma nova sessão.
+Atualizado em 18/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes de começar uma nova sessão.
 
 ## Em uma frase
 
@@ -44,14 +44,21 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #18 | Etapa 7a: transferência direta | Mesclado |
 | #19 | Etapa 7b: troca entre dois plantões | Mesclado |
 | #20 | Etapa 8a: presença por localização | Mesclado |
-| — | Etapa 8b: ocorrências e ajuste administrativo (branch `feat/attendance-occurrences`) | Em revisão |
+| #21 | Etapa 8b: ocorrências e ajuste administrativo | Mesclado |
+| — | Etapa 9a: notificações internas (branch `feat/notifications`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca, PR #19), 8a (presença por localização, PR #20), 8b (ocorrências).
-- **Próximo:** etapa 9 (notificações a partir de `audit_events`, relatórios e exportação CSV/PDF, revisão integrada da jornada).
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca, PR #19), 8a (presença por localização, PR #20), 8b (ocorrências, PR #21), 9a (notificações, em revisão).
+- **Próximo:** etapa 9b (relatórios e exportação CSV/PDF) e 9c (revisão integrada da jornada).
+- **9a (notificações internas, V1-12):**
+  - Tela "Notificações" no menu, com o número de não lidas; "Marcar todas como lidas". Cada item leva à tela relacionada (Meus plantões, Solicitações ou o plantão). Horário mostrado no fuso do navegador de quem lê.
+  - Derivadas de `audit_events` (gravado na mesma transação da mudança) pelo job `DeliverNotifications`, despachado depois do commit. Um cursor (`notification_cursors`) com lock de linha serializa as entregas; o índice único (usuário, evento) impede duplicar. Eventos dos últimos 5 minutos são relidos para pegar transações confirmadas fora da ordem dos ids. Falha da notificação não desfaz a operação nem vira erro para o usuário; um evento com defeito é reportado e pulado, sem travar o cursor.
+  - Destinatários: só envolvidos (responsável, colega do pedido, escolhido e substituído) e coordenadores da unidade (das duas unidades na troca entre hospitais). Unidade sem coordenador ativo: avisa os administradores de rede, que também decidem (decisão técnica, a confirmar pelo usuário). Acesso revogado na hora da entrega não recebe. O responsável de "plantão publicado" é o do momento do evento.
+  - A migração inicia o cursor no último evento existente: o histórico anterior não vira notificação.
+  - Em aberto (produto): visibilidade da justificativa da escolha para o candidato.
 - **8b (ocorrências):**
   - Em "Meus plantões", "Relatar problema na presença" abre uma ocorrência de entrada ou saída com descrição (uma aberta por tipo e plantão). Estados: aberta → deferida ou indeferida (o passo "em análise" foi omitido por não mudar nenhuma regra).
   - O coordenador da unidade (ou admin de rede) decide no detalhe do plantão, com justificativa obrigatória; ocorrências abertas aparecem em "Solicitações". Quem é participante não decide.
@@ -215,7 +222,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 189 testes passando (etapa 6a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 248 testes passando (etapa 9a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

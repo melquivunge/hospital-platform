@@ -8,6 +8,7 @@ use App\Models\Membership;
 use App\Models\PolicyVersion;
 use App\Models\Professional;
 use App\Models\Shift;
+use App\Models\UserNotification;
 use App\Policies\ShiftPolicy;
 use App\Policies\UnitPolicy;
 use App\Tenancy\CurrentTenant;
@@ -64,6 +65,8 @@ class HandleInertiaRequests extends Middleware
             // Linked professionals see their requests; coordinators and network admins see approvals.
             'canViewRequests' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null
                 && (ShiftPolicy::managedUnitIds($membership) !== [] || Professional::query()->where('membership_id', $membership->id)->exists()),
+            'unreadNotifications' => fn () => $request->user() === null || app(CurrentTenant::class)->id() === null ? 0
+                : UserNotification::query()->where('user_id', $request->user()->id)->whereNull('read_at')->count(),
             'canImport' => fn () => $request->user() !== null
                 && $request->user()->can('create', ImportBatch::class),
             'canViewShifts' => fn () => $request->user() !== null

@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Jobs\DeliverNotifications;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use LogicException;
+use Throwable;
 
 /**
  * Append-only trail of access changes and decisions (V1-14). Never store secrets or coordinates in context.
@@ -57,7 +60,7 @@ class AuditEvent extends Model
      */
     public static function record(string $action, ?int $tenantId, ?Model $subject = null, array $context = []): self
     {
-        return self::create([
+        $event = self::create([
             'tenant_id' => $tenantId,
             'actor_user_id' => Auth::id(),
             'action' => $action,
@@ -66,5 +69,18 @@ class AuditEvent extends Model
             'context' => $context ?: null,
             'occurred_at' => now(),
         ]);
+
+        // Notifications are derived after the change commits (step 9a); a rollback delivers nothing.
+        // Registered after the insert: outside a transaction afterCommit runs at once.
+        // A failed dispatch must not turn a committed change into an error; the next event catches up.
+        DB::afterCommit(function () {
+            try {
+                DeliverNotifications::dispatch();
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        });
+
+        return $event;
     }
 }
