@@ -1,5 +1,5 @@
 import { Link, router } from '@inertiajs/react';
-import { LogOut, Settings } from 'lucide-react';
+import { LogOut, Settings, UserRound } from 'lucide-react';
 import {
     DropdownMenuGroup,
     DropdownMenuItem,
@@ -9,7 +9,8 @@ import {
 import { UserInfo } from '@/components/user-info';
 import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import { logout } from '@/routes';
-import { edit } from '@/routes/profile';
+import { edit as appearance } from '@/routes/appearance';
+import { edit as profile } from '@/routes/profile';
 import type { User } from '@/types';
 
 type Props = {
@@ -27,7 +28,7 @@ export function UserMenuContent({ user }: Props) {
     return (
         <>
             <DropdownMenuLabel className="p-0 font-normal">
-                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                <div className="flex items-center gap-3 px-2 py-2 text-left text-sm">
                     <UserInfo user={user} showEmail={true} />
                 </div>
             </DropdownMenuLabel>
@@ -35,8 +36,19 @@ export function UserMenuContent({ user }: Props) {
             <DropdownMenuGroup>
                 <DropdownMenuItem asChild>
                     <Link
-                        className="block w-full cursor-pointer"
-                        href={edit()}
+                        className="flex min-h-10 w-full cursor-pointer items-center rounded-lg"
+                        href={profile()}
+                        prefetch
+                        onClick={cleanup}
+                    >
+                        <UserRound className="mr-2" />
+                        Meu perfil
+                    </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                    <Link
+                        className="flex min-h-10 w-full cursor-pointer items-center rounded-lg"
+                        href={appearance()}
                         prefetch
                         onClick={cleanup}
                     >
@@ -48,7 +60,7 @@ export function UserMenuContent({ user }: Props) {
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
                 <Link
-                    className="block w-full cursor-pointer"
+                    className="flex min-h-10 w-full cursor-pointer items-center rounded-lg"
                     href={logout()}
                     as="button"
                     onClick={handleLogout}
