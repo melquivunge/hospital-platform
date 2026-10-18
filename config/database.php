@@ -97,6 +97,25 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // ADR-0003: the application works as app_runtime (no superuser, no BYPASSRLS), so row-level
+            // security on clinical tables applies; set when the connection opens.
+            'server_options' => ['role' => 'app_runtime'],
+        ],
+
+        // Migrations only (ADR-0003): same login, without assuming the runtime role, so it owns the tables.
+        'pgsql_owner' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_URL'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 
         'sqlsrv' => [

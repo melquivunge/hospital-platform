@@ -1,0 +1,32 @@
+<?php
+
+namespace App\Clinical;
+
+use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
+
+/**
+ * Row-level security for clinical tables (ADR-0003). Every clinical table is listed here and protected
+ * in its migration; a test fails if one is missing the forced policy.
+ */
+final class ClinicalSchema
+{
+    /** @var list<string> */
+    public const TABLES = [];
+
+    /**
+     * Only rows of the client in the session are visible or writable; without a client, none is.
+     */
+    public static function protect(string $table, ?string $connection = null): void
+    {
+        if (preg_match('/^[a-z_]+$/', $table) !== 1) {
+            throw new InvalidArgumentException("Invalid table name: {$table}");
+        }
+
+        $tenant = "NULLIF(current_setting('app.tenant_id', true), '')::bigint";
+        $db = DB::connection($connection);
+        $db->statement("ALTER TABLE {$table} ENABLE ROW LEVEL SECURITY");
+        $db->statement("ALTER TABLE {$table} FORCE ROW LEVEL SECURITY");
+        $db->statement("CREATE POLICY tenant_isolation ON {$table} USING (tenant_id = {$tenant}) WITH CHECK (tenant_id = {$tenant})");
+    }
+}

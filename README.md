@@ -39,6 +39,7 @@ Obrigatório antes de qualquer ambiente com dados reais. A aplicação recusa in
 - `SESSION_SECURE_COOKIE=true` (padrão quando a variável não existe; o `.env` local desliga explicitamente).
 - Proxies confiáveis configurados com IPs específicos, nunca `*`, para `X-Forwarded-*` não ser falsificável (Laravel `trustProxies` e, se houver proxy antes do Nginx, `set_real_ip_from`). Ainda não configurado: sem isso, atrás de um balanceador todos os clientes compartilham o IP do proxy e os limites por IP de login e de recuperação de senha viram globais.
 - Credenciais de banco e e-mail exclusivas do ambiente, guardadas fora do repositório; backup e restauração testados.
+- Banco (ADR-0003): migrations com o dono das tabelas (`php artisan migrate --database=pgsql_owner`); a aplicação e os workers com um login próprio, membro só do papel `app_runtime` (sem superusuário e sem `BYPASSRLS`). Em desenvolvimento e CI, o mesmo login assume o papel. Se houver pooler de conexões, conferir que `app.tenant_id` não vaza entre requisições.
 - Cabeçalhos de segurança (CSP, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) presentes na resposta final, mesmo atrás de proxy/CDN. Ao alterar o script inline de tema em `resources/views/app.blade.php`, atualizar o hash em `docker/nginx/default.conf`; `SecurityConfigTest` falha se divergirem.
 
 ### Limites conhecidos da V1 (revisão integrada, etapa 9c)

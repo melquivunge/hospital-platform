@@ -17,6 +17,20 @@ abstract class TestCase extends BaseTestCase
         }
     }
 
+    /**
+     * Schema commands run as the table owner (ADR-0003); RefreshDatabase reaches them through here.
+     *
+     * @param  array<string, mixed>  $parameters
+     */
+    public function artisan($command, $parameters = [])
+    {
+        if (str_starts_with($command, 'migrate')) {
+            $parameters += ['--database' => 'pgsql_owner'];
+        }
+
+        return parent::artisan($command, $parameters);
+    }
+
     protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void
     {
         if (! Features::enabled($feature)) {

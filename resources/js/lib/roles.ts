@@ -5,6 +5,7 @@ export const roleLabels: Record<string, string> = {
     shift_coordinator: 'Coordenador de plantões',
     professional: 'Profissional',
     importer: 'Importador',
+    reception: 'Recepção',
     auditor: 'Auditor',
 };
 
@@ -15,6 +16,8 @@ export const roleDescriptions: Record<string, string> = {
     shift_coordinator: 'Cria e publica escalas e decide mudanças na unidade.',
     professional: 'Consulta os próprios plantões e faz solicitações.',
     importer: 'Prepara importações de dados na unidade.',
+    reception:
+        'Cadastra pacientes, agenda consultas e confirma chegadas na unidade.',
     auditor: 'Consulta trilhas e relatórios, sem alterar registros.',
 };
 

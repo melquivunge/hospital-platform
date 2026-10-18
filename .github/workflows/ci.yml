@@ -44,6 +44,8 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - name: Runtime database role (ADR-0003)
+        run: PGPASSWORD=ci-disposable-only psql -h 127.0.0.1 -U hospital -d hospital_test -c "CREATE ROLE app_runtime NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"
       - run: cp .env.example .env
       - run: composer install --no-interaction --prefer-dist
       - run: php artisan key:generate

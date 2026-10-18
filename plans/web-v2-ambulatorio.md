@@ -14,8 +14,8 @@ Mesmo monólito Laravel 13 + React/Inertia + PostgreSQL. Auditoria só de inser�
 - `CurrentTenant::set()` define `app.tenant_id` na conexão.
 - Um helper de migration cria tabela clínica já com RLS forçado e a política padrão.
 - Teste de guarda: toda tabela clínica tem RLS forçado. Teste negativo: com `withoutTenantScope()`, outro cliente continua sem ver as linhas.
-- Papel **Recepção** por unidade. **Convênios da rede**, mantidos pelo administrador (não clínico, fora do RLS).
-- **Saída:** uma tabela clínica de prova bloqueada pelo banco entre clientes; recepção atribuível em Pessoas; convênios cadastráveis.
+- Papel **Recepção** por unidade.
+- **Saída:** uma tabela clínica de prova bloqueada pelo banco entre clientes; recepção atribuível em Pessoas. (Convênios foram para a 3.5, onde são usados.)
 
 ### 3.2 Pacientes
 - Cadastro provisório ou completo, com nome, data de nascimento, sexo e contato.
@@ -40,6 +40,7 @@ Mesmo monólito Laravel 13 + React/Inertia + PostgreSQL. Auditoria só de inser�
 
 ### 3.5 Recepção
 - Confirmação de chegada e fila do dia por unidade e profissional.
+- **Convênios da rede**, mantidos pelo administrador (não clínico, fora do RLS).
 - Modalidade (particular, convênio ou SUS) e, para convênio, carteira e validade.
 - **Saída:** a fila reflete chegadas, faltas e cancelamentos.
 
