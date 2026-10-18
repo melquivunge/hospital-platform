@@ -9,12 +9,13 @@ import type { ShiftSummary } from '@/components/shift-display';
 import { formatDay, PeriodLabel, timeRange } from '@/components/shift-display';
 import { index as requests } from '@/routes/requests';
 import { mine } from '@/routes/shifts';
+import { create as createSwap } from '@/routes/shifts/swap';
 import { create as createTransfer } from '@/routes/shifts/transfer';
 
 type MyShift = ShiftSummary & {
     unit: string;
     upcoming: boolean;
-    transferPending: boolean;
+    requestPending: boolean;
 };
 
 /** Professional's own published shifts, grouped by local start day (reference IMG_0911). */
@@ -102,10 +103,10 @@ export default function MyShifts({
  * responsible until the coordinator decides.
  */
 function AnnounceForm({ shift }: { shift: MyShift }) {
-    if (shift.transferPending) {
+    if (shift.requestPending) {
         return (
             <p className="border-t pt-3 font-medium text-primary">
-                Transferência pendente.{' '}
+                Solicitação pendente (transferência ou troca).{' '}
                 <Link href={requests()} className="underline">
                     Acompanhar em Solicitações
                 </Link>
@@ -145,15 +146,26 @@ function AnnounceForm({ shift }: { shift: MyShift }) {
                                 : 'Anunciar para substituição'}
                         </Button>
                         {!shift.announced && (
-                            <Button
-                                variant="outline"
-                                asChild
-                                className="min-h-11"
-                            >
-                                <Link href={createTransfer(shift.id)}>
-                                    Transferir a um colega
-                                </Link>
-                            </Button>
+                            <>
+                                <Button
+                                    variant="outline"
+                                    asChild
+                                    className="min-h-11"
+                                >
+                                    <Link href={createTransfer(shift.id)}>
+                                        Transferir a um colega
+                                    </Link>
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    asChild
+                                    className="min-h-11"
+                                >
+                                    <Link href={createSwap(shift.id)}>
+                                        Trocar com um colega
+                                    </Link>
+                                </Button>
+                            </>
                         )}
                     </div>
                 </>

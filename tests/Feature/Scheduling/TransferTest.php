@@ -114,7 +114,7 @@ class TransferTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->has('colleagues', 1)->where('colleagues.0.name', 'Bruno Sintético'));
         $this->requestToBruno();
         $this->assertSame($this->ana->id, $this->shift->fresh()?->professional_id);
-        $this->get(route('shifts.mine'))->assertInertia(fn (Assert $page) => $page->where('shifts.0.transferPending', true));
+        $this->get(route('shifts.mine'))->assertInertia(fn (Assert $page) => $page->where('shifts.0.requestPending', true));
 
         $this->actingAs($this->brunoAccess->user)->get(route('requests.index'))
             ->assertInertia(fn (Assert $page) => $page->has('mine', 1)->where('mine.0.canRespond', true)->where('mine.0.direction', 'received')->where('isCoordinator', false));
@@ -163,7 +163,7 @@ class TransferTest extends TestCase
         $this->requestToBruno();
         $this->post(route('shifts.transfer.store', $this->shift), ['recipient_id' => $this->bruno->id])
             ->assertSessionHasErrors(['shift' => 'Já existe uma solicitação pendente para este plantão.']);
-        $this->post(route('shifts.announce', $this->shift))->assertSessionHasErrors(['shift' => 'Há uma transferência pendente para este plantão.']);
+        $this->post(route('shifts.announce', $this->shift))->assertSessionHasErrors(['shift' => 'Há uma solicitação pendente para este plantão.']);
 
         $this->post(route('requests.cancel', $this->request()));
         $this->post(route('shifts.announce', $this->shift))->assertSessionHasNoErrors();
@@ -277,7 +277,7 @@ class TransferTest extends TestCase
         $this->actingAs($this->brunoAccess->user)->post(route('requests.respond', $this->request()), ['accept' => true]);
         $this->travelTo($this->shift->starts_at->addMinute());
 
-        $this->actingAs($this->anaAccess->user)->get(route('shifts.mine'))->assertInertia(fn (Assert $page) => $page->where('shifts.0.transferPending', false));
+        $this->actingAs($this->anaAccess->user)->get(route('shifts.mine'))->assertInertia(fn (Assert $page) => $page->where('shifts.0.requestPending', false));
         $this->assertSame(RequestStatus::Expired, $this->request()->status);
         $this->assertSame('O plantão começou antes da conclusão.', $this->request()->decision_reason);
         $this->assertTrue(AuditEvent::where('action', 'shift.transfer_expired')->exists());

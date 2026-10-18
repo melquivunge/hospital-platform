@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição e transferência direta com aceite e aprovação, com identidade visual própria. Próximo passo: etapa 7b (troca entre dois plantões).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação, com identidade visual própria. Próximo passo: etapa 8 (presença e ajuste administrativo).
 
 ## Onde está cada coisa
 
@@ -41,14 +41,20 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #15 | Etapa 6a: acesso do profissional e "Meus plantões" | Mesclado |
 | #16 | Etapa 6b: vagas abertas, candidatura e escolha justificada | Mesclado |
 | #17 | Etapa 6c: anúncio do próprio plantão para substituição | Mesclado |
-| — | Etapa 7a: transferência direta (branch `feat/shift-transfer`) | Em revisão |
+| #18 | Etapa 7a: transferência direta | Mesclado |
+| — | Etapa 7b: troca entre dois plantões (branch `feat/shift-swap`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta).
-- **Próximo:** 7b (troca entre dois plantões, com aprovação das duas unidades quando forem hospitais diferentes), depois 8 e 9. A integração com check-in (bloqueio após presença) depende da etapa 8.
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca).
+- **Próximo:** etapa 8 (presença e ajuste administrativo), depois 9. Ao fazer a 8, integrar o bloqueio de anúncio, transferência e troca após check-in (hoje o limite é o início do plantão).
+- **7b (troca):**
+  - Em "Meus plantões", "Trocar com um colega" lista plantões futuros de colegas com acesso, na mesma UF, em que os dois lados têm habilitação aprovada (sem valores). Mesmo fluxo da transferência (`shift_requests`, tipo `swap`, `counterpart_shift_id`).
+  - Cada lado precisa ser elegível no plantão que recebe, comparando com a UF do plantão que deixa. Conflito avaliado na escala resultante (sem os plantões trocados) já no pedido, no aceite e em cada aprovação; a restrição do banco garante na aplicação.
+  - Aprovação: uma, se os dois plantões são da mesma unidade; das duas unidades, se são hospitais diferentes (quem gere as duas registra as duas, se não participar). Qualquer recusa encerra. A troca aplica os dois lados ou nenhum e é auditada como `shift.swapped`.
+  - Respostas, cancelamentos e decisões de transferência e troca são os mesmos métodos (`Shift::respondToRequest`, `cancelRequest`, `decideRequest`), com lock de profissionais → plantões em ordem de id → pedido.
 - **7a (transferência direta):**
   - Em "Meus plantões", "Transferir a um colega" escolhe um colega com acesso ativo e habilitação aprovada na unidade e função. Fluxo: aguardando o colega → aguardando a coordenação → concluída; recusa, cancelamento e expiração são terminais (`shift_requests`).
   - Aprova o coordenador da unidade do plantão (ou o administrador de rede); quem participa não decide. Recusa da coordenação exige motivo. A UF de referência é a da unidade-base do destinatário.

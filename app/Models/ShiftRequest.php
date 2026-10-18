@@ -12,8 +12,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Request to change who holds a shift (step 7a: direct transfer). Writes go through Shift so they share
- * its lock order: professionals, then the shift, then the request.
+ * Request to change who holds shifts: direct transfer (step 7a) or swap of two shifts (step 7b). Writes go
+ * through Shift so they share its lock order: professionals, then the shifts in id order, then the request.
  *
  * @property int $id
  * @property int $tenant_id
@@ -28,9 +28,14 @@ use Illuminate\Support\Facades\DB;
  * @property Carbon|null $decided_at
  * @property int|null $decided_by_user_id
  * @property string|null $decision_reason
+ * @property int|null $counterpart_shift_id
+ * @property int|null $origin_approved_by_user_id
+ * @property Carbon|null $origin_approved_at
+ * @property int|null $counterpart_approved_by_user_id
+ * @property Carbon|null $counterpart_approved_at
  * @property Carbon $created_at
  */
-#[Fillable(['type', 'shift_id', 'requester_professional_id', 'recipient_professional_id', 'status', 'note', 'requested_by_user_id'])]
+#[Fillable(['type', 'shift_id', 'counterpart_shift_id', 'requester_professional_id', 'recipient_professional_id', 'status', 'note', 'requested_by_user_id'])]
 class ShiftRequest extends Model
 {
     use BelongsToTenant;
@@ -44,7 +49,10 @@ class ShiftRequest extends Model
             'status' => RequestStatus::class,
             'recipient_decided_at' => 'datetime',
             'decided_at' => 'datetime',
+            'origin_approved_at' => 'datetime',
+            'counterpart_approved_at' => 'datetime',
             'shift_id' => 'integer',
+            'counterpart_shift_id' => 'integer',
             'requester_professional_id' => 'integer',
             'recipient_professional_id' => 'integer',
         ];
@@ -61,7 +69,9 @@ class ShiftRequest extends Model
         DB::transaction(function () {
             $started = self::query()
                 ->whereIn('status', RequestStatus::pending())
-                ->whereHas('shift', fn (Builder $query) => $query->where('starts_at', '<=', now()))
+                ->where(fn (Builder $query) => $query
+                    ->whereHas('shift', fn (Builder $shift) => $shift->where('starts_at', '<=', now()))
+                    ->orWhereHas('counterpart', fn (Builder $shift) => $shift->where('starts_at', '<=', now())))
                 ->with('shift')
                 ->orderBy('id')
                 ->lock('FOR UPDATE SKIP LOCKED')
@@ -69,9 +79,34 @@ class ShiftRequest extends Model
 
             foreach ($started as $request) {
                 $request->forceFill(['status' => RequestStatus::Expired, 'decided_at' => now(), 'decision_reason' => 'O plantão começou antes da conclusão.'])->save();
-                AuditEvent::record('shift.transfer_expired', $request->tenant_id, $request->shift, ['request_id' => $request->id]);
+                AuditEvent::record("shift.{$request->type}_expired", $request->tenant_id, $request->shift, ['request_id' => $request->id]);
             }
         }, 3);
+    }
+
+    /**
+     * Pending requests that involve the shift on either side.
+     *
+     * @return Builder<self>
+     */
+    public static function pendingFor(int $shiftId): Builder
+    {
+        return self::query()
+            ->whereIn('status', RequestStatus::pending())
+            ->where(fn (Builder $query) => $query->where('shift_id', $shiftId)->orWhere('counterpart_shift_id', $shiftId));
+    }
+
+    public function isSwap(): bool
+    {
+        return $this->type === 'swap';
+    }
+
+    /**
+     * @return BelongsTo<Shift, $this>
+     */
+    public function counterpart(): BelongsTo
+    {
+        return $this->belongsTo(Shift::class, 'counterpart_shift_id');
     }
 
     /**
