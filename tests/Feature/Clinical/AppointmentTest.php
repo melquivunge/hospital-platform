@@ -4,6 +4,7 @@ namespace Tests\Feature\Clinical;
 
 use App\Models\Appointment;
 use App\Models\AuditEvent;
+use App\Models\Insurer;
 use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\Patient;
@@ -171,6 +172,59 @@ class AppointmentTest extends TestCase
         $this->post(route('appointments.store', $this->unit), $this->booking(['patient_id' => $duplicate->id, 'starts_at' => '2026-11-16T09:00']))->assertSessionHasNoErrors();
         $this->post(route('appointments.store', $this->unit), $this->booking(['starts_at' => '2026-11-16T09:20', 'rescheduled_from_id' => $booked->id, 'reason' => 'Unificado']))->assertSessionHasNoErrors();
         $this->assertSame([$duplicate->id, $this->patient->id, $this->patient->id], Appointment::withoutTenantScope()->orderBy('id')->pluck('patient_id')->all());
+    }
+
+    public function test_arrival_records_the_modality_on_the_day_and_the_queue_reflects_it(): void
+    {
+        foreach (['08:20', '08:40', '09:00'] as $time) {
+            $this->post(route('appointments.store', $this->unit), $this->booking(['starts_at' => "2026-11-16T{$time}"]))->assertSessionHasNoErrors();
+        }
+        [$first, $second, $third] = Appointment::withoutTenantScope()->orderBy('starts_at')->get()->all();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $insurer = Insurer::query()->create(['name' => 'Saúde Boa', 'ans_code' => '123456']);
+        $inactive = Insurer::query()->create(['name' => 'Antigo', 'active' => false]);
+        app(CurrentTenant::class)->set(null);
+
+        // Only on the day of the consultation.
+        $this->post(route('appointments.arrive', $first), ['modality' => 'private'])->assertSessionHasErrors('modality');
+        $this->travelTo('2026-11-16 10:30:00');
+
+        $this->post(route('appointments.arrive', $first), ['modality' => 'private'])->assertSessionHasNoErrors();
+        $this->post(route('appointments.arrive', $first), ['modality' => 'sus'])->assertSessionHasErrors('modality');
+
+        $card = ['modality' => 'insurance', 'insurer_id' => $insurer->id, 'insurance_card_number' => '0012 3456 7890', 'insurance_card_valid_until' => '2027-03-31'];
+        $this->post(route('appointments.arrive', $second), ['modality' => 'insurance'])->assertSessionHasErrors(['insurer_id', 'insurance_card_number', 'insurance_card_valid_until']);
+        $this->post(route('appointments.arrive', $second), [...$card, 'insurance_card_valid_until' => '2026-11-15'])->assertSessionHasErrors('insurance_card_valid_until');
+        $this->post(route('appointments.arrive', $second), [...$card, 'insurer_id' => $inactive->id])->assertSessionHasErrors('insurer_id');
+        $this->post(route('appointments.arrive', $second), $card)->assertSessionHasNoErrors();
+        $second = Appointment::withoutTenantScope()->findOrFail($second->id);
+        $this->assertSame(['arrived', 'insurance', $insurer->id, '0012 3456 7890', '2027-03-31'], [$second->status, $second->modality, $second->insurer_id, $second->insurance_card_number, $second->insurance_card_valid_until?->toDateString()]);
+        $this->assertStringNotContainsString('7890', (string) json_encode(AuditEvent::where('action', 'appointment.arrived')->pluck('context')));
+
+        // After arrival there is no cancelling nor no-show.
+        $this->post(route('appointments.cancel', $first), ['reason' => 'Engano'])->assertSessionHasErrors('reason');
+        $this->post(route('appointments.no-show', $first))->assertSessionHasErrors('starts_at');
+        $this->post(route('appointments.cancel', $third), ['reason' => 'Desmarcou por telefone'])->assertSessionHasNoErrors();
+
+        $this->get(route('appointments.queue'))->assertInertia(fn (Assert $page) => $page->component('appointments/queue')
+            ->has('appointments', 3)->has('insurers', 1)
+            ->where('appointments.0.status', 'arrived')->where('appointments.0.modality', 'private')->where('appointments.0.arrivedAt', '07:30')
+            ->where('appointments.1.insurer', 'Saúde Boa')
+            ->where('appointments.2.status', 'cancelled')->where('appointments.2.cancelReason', 'Desmarcou por telefone'));
+    }
+
+    public function test_only_the_units_reception_sees_the_queue_and_confirms_arrival(): void
+    {
+        $this->post(route('appointments.store', $this->unit), $this->booking())->assertSessionHasNoErrors();
+        $appointment = Appointment::withoutTenantScope()->sole();
+        $this->travelTo('2026-11-16 10:30:00');
+
+        $this->actingAs($this->manager->user)->get(route('appointments.queue'))->assertForbidden();
+        $this->post(route('appointments.arrive', $appointment), ['modality' => 'private'])->assertForbidden();
+        $elsewhere = Membership::factory()->for($this->unit->tenant)->create();
+        $elsewhere->grant(Role::Reception, $this->other);
+        $this->actingAs($elsewhere->user)->post(route('appointments.arrive', $appointment), ['modality' => 'private'])->assertForbidden();
+        $this->get(route('appointments.queue'))->assertInertia(fn (Assert $page) => $page->has('appointments', 0));
     }
 
     public function test_only_the_units_reception_books(): void

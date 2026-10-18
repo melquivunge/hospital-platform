@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Http\Controllers\AppointmentController;
 use App\Models\ImportBatch;
+use App\Models\Insurer;
 use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\Patient;
@@ -63,6 +64,8 @@ class HandleInertiaRequests extends Middleware
                 && $request->user()->can('viewAny', Professional::class),
             'canManageJobFunctions' => fn () => $request->user() !== null
                 && $request->user()->can('manage', JobFunction::class),
+            'canManageInsurers' => fn () => $request->user() !== null
+                && $request->user()->can('manage', Insurer::class),
             'canViewMyShifts' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null
                 && Professional::query()->where('membership_id', $membership->id)->exists(),
             // Linked professionals see their requests; coordinators and network admins see approvals.

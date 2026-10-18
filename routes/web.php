@@ -7,6 +7,7 @@ use App\Http\Controllers\AttendancePointController;
 use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\InsurerController;
 use App\Http\Controllers\JobFunctionController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PatientController;
@@ -63,6 +64,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('appointments', [AppointmentController::class, 'index'])->name('appointments.index');
     Route::post('units/{unit}/appointments', [AppointmentController::class, 'store'])->middleware('throttle:60,1')->name('appointments.store');
     Route::post('appointments/{appointment}/cancel', [AppointmentController::class, 'cancel'])->middleware('throttle:60,1')->name('appointments.cancel');
+    Route::get('appointments/queue', [AppointmentController::class, 'queue'])->name('appointments.queue');
+    Route::post('appointments/{appointment}/arrive', [AppointmentController::class, 'arrive'])->middleware('throttle:60,1')->name('appointments.arrive');
     Route::post('appointments/{appointment}/no-show', [AppointmentController::class, 'noShow'])->middleware('throttle:60,1')->name('appointments.no-show');
     Route::get('patient-merges', [PatientMergeController::class, 'index'])->name('patient-merges.index');
     Route::post('patient-merges', [PatientMergeController::class, 'store'])->middleware('throttle:30,1')->name('patient-merges.store');
@@ -89,6 +92,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::put('shifts/{shift}', [ShiftController::class, 'update'])->name('shifts.update');
     Route::post('shifts/{shift}/publish', [ShiftController::class, 'publish'])->name('shifts.publish');
     Route::post('shifts/{shift}/cancel', [ShiftController::class, 'cancel'])->name('shifts.cancel');
+    Route::get('insurers', [InsurerController::class, 'index'])->name('insurers.index');
+    Route::post('insurers', [InsurerController::class, 'store'])->name('insurers.store');
+    Route::put('insurers/{insurer}', [InsurerController::class, 'update'])->name('insurers.update');
     Route::get('job-functions', [JobFunctionController::class, 'index'])->name('job-functions.index');
     Route::post('job-functions', [JobFunctionController::class, 'store'])->name('job-functions.store');
     Route::put('job-functions/{jobFunction}', [JobFunctionController::class, 'update'])->name('job-functions.update');
