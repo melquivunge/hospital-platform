@@ -61,6 +61,8 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas: 29 combinações de perfil e tela (administrador, coordenadora e profissional) em 360, 768 e 1440 px, sem erro 5xx ou de JavaScript, sem rolagem horizontal, com um `h1` por página, todos os controles com nome acessível e foco visível nas primeiras paradas do teclado. O verificador foi validado antes numa página com esses defeitos plantados.
   - Dependências: `composer audit` e `npm audit` sem vulnerabilidades; `composer validate` ok. Não existe `npm run test:e2e` nos manifests: a jornada é coberta pelo `JourneyTest` e pela verificação no navegador.
   - Limites de produção consolidados no README ("Limites conhecidos da V1").
+  - Revisão independente da integração (sem bloqueadores). Corrigido: aprovação de transferência ou troca e escolha de candidato agora recusam profissional cujo acesso foi revogado no meio do fluxo; pedidos encerrados pelo cancelamento do plantão ou pela entrada registrada ganham evento próprio na auditoria (`shift.*_cancelled` / `shift.*_expired`), e os envolvidos passam a ser notificados.
+  - Em aberto (produto): revogar o acesso não tira a pessoa dos plantões futuros já atribuídos; a candidatura escolhida continua "selecionada" num plantão cancelado (só exibição); o PRODUCT.md diz que o plantão que atravessa a meia-noite fica visível "até o checkout", mas a agenda usa o fim previsto.
 - **Decisões do usuário (18/10/2026) para a 9b:** indicadores de cobertura, solicitações, presença e horas por profissional; PDF gerado no servidor; acesso igual ao da Escala (coordenador, gestor, admin de rede e auditor, cada um nas suas unidades).
 - **9b-1 (relatórios e CSV, V1-11):**
   - Tela "Relatórios" (menu de quem vê a Escala): unidade e período (até 92 dias; inválido volta ao mês atual). Tudo conta os plantões da unidade que **começam** no período, no fuso da unidade, e cada grupo fecha com o total: publicados = preenchidos + anunciados + vagas abertas (mais rascunhos e cancelados); solicitações pela situação atual (a troca conta nas duas unidades que a aprovam, uma vez em cada); presença dos publicados já iniciados com responsável (com/sem entrada, saída registrada, saída ajustada, ocorrências abertas); horas por profissional.
@@ -237,7 +239,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 259 testes passando (etapa 9c), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 261 testes passando (etapa 9c), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

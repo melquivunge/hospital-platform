@@ -249,6 +249,22 @@ class TransferTest extends TestCase
         $this->assertSame('Plantão cancelado.', $this->request()->decision_reason);
     }
 
+    public function test_closed_by_cancellation_is_audited_and_a_revoked_colleague_never_receives_the_shift(): void
+    {
+        $this->requestToBruno();
+        $this->actingAs($this->brunoAccess->user)->post(route('requests.respond', $this->request()), ['accept' => true])->assertSessionHasNoErrors();
+        $this->brunoAccess->revoke();
+
+        $this->actingAs($this->coordinator->user)->post(route('requests.decide', $this->request()), ['approve' => true])
+            ->assertSessionHasErrors(['request' => 'Um dos profissionais perdeu o acesso à plataforma. Recuse a solicitação.']);
+        $this->assertSame($this->ana->id, $this->shift->fresh()?->professional_id);
+        $this->assertSame(RequestStatus::PendingCoordinator, $this->request()->status);
+
+        $this->post(route('shifts.cancel', $this->shift), ['reason' => 'Setor fechado'])->assertSessionHasNoErrors();
+        $this->assertEquals(['request_id' => $this->request()->id, 'reason' => 'Plantão cancelado.'],
+            AuditEvent::where('action', 'shift.transfer_cancelled')->sole()->context);
+    }
+
     public function test_requests_page_needs_a_linked_professional_or_a_coordinator(): void
     {
         $auditor = Membership::factory()->for($this->unit->tenant)->withRole(Role::Auditor)->create();

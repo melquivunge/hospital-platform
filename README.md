@@ -54,6 +54,7 @@ Pendentes antes de operação real, além do checklist acima:
 - **Isolamento:** sem RLS no PostgreSQL ([ADR-0002](docs/adr/0002-no-postgres-rls-in-v1.md)); reavaliar antes da produção.
 - **Repositório:** proteção remota da `main` inativa (exige plano pago do GitHub); hoje só os hooks locais protegem.
 - **Idioma:** o conteúdo das telas de segurança e aparência e o e-mail de redefinição de senha ainda estão em inglês.
+- **Revogação de acesso:** não tira a pessoa dos plantões futuros já atribuídos (decisão de produto pendente); pedidos e escolhas em andamento já são barrados.
 - **Capacidade:** sem metas de disponibilidade, recuperação, tempo de resposta e volume; nenhuma garantia de escala foi validada.
 
 ## Verificações

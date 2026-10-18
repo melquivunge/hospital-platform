@@ -206,6 +206,10 @@ class Shift extends Model
             AuditEvent::record('shift.cancelled', $shift->tenant_id, $shift, ['from' => $from->value, 'reason' => $reason]);
             $shift->applications()->where('status', ApplicationStatus::Active)
                 ->update(['status' => ApplicationStatus::NotSelected, 'decided_at' => now(), 'decided_by_user_id' => Auth::id()]);
+            // One event per closed request: the trail keeps it and the people involved are notified.
+            foreach (ShiftRequest::pendingFor($shift->id)->get() as $request) {
+                AuditEvent::record("shift.{$request->type}_cancelled", $shift->tenant_id, $shift, ['request_id' => $request->id, 'reason' => 'Plantão cancelado.']);
+            }
             ShiftRequest::pendingFor($shift->id)
                 ->update(['status' => RequestStatus::Cancelled, 'decided_at' => now(), 'decided_by_user_id' => Auth::id(), 'decision_reason' => 'Plantão cancelado.']);
         });
@@ -404,8 +408,11 @@ class Shift extends Model
                 return;
             }
 
-            // Never record an approval on a stale request.
+            // Never record an approval on a stale request, nor hand a shift to someone whose access was revoked meanwhile.
             self::assertRequestStillValid($shift, $other, $current);
+            foreach (array_filter([$current->recipient_professional_id, $other === null ? null : $current->requester_professional_id]) as $receiver) {
+                self::assertActiveAccess(Professional::query()->findOrFail($receiver), 'request', 'Um dos profissionais perdeu o acesso à plataforma. Recuse a solicitação.');
+            }
             [$recipientEligibility, $requesterEligibility] = self::assertRequestEligible($shift, $other, $current->requester_professional_id, $current->recipient_professional_id);
 
             // One approval covers both sides of a swap inside the same unit.
@@ -551,10 +558,10 @@ class Shift extends Model
         }
     }
 
-    private static function assertActiveAccess(Professional $professional, string $field): void
+    private static function assertActiveAccess(Professional $professional, string $field, string $message = 'Este profissional ainda não tem acesso à plataforma para aceitar.'): void
     {
         if ($professional->membership_id === null || ! Membership::query()->whereKey($professional->membership_id)->whereNull('revoked_at')->exists()) {
-            throw ValidationException::withMessages([$field => 'Este profissional ainda não tem acesso à plataforma para aceitar.']);
+            throw ValidationException::withMessages([$field => $message]);
         }
     }
 
@@ -628,6 +635,9 @@ class Shift extends Model
 
             // Presence started: no more replacement, transfer or swap (PRODUCT.md, limite temporal).
             if ($kind === 'check_in' && $event->accepted()) {
+                foreach (ShiftRequest::pendingFor($shift->id)->get() as $request) {
+                    AuditEvent::record("shift.{$request->type}_expired", $shift->tenant_id, $shift, ['request_id' => $request->id, 'reason' => 'Entrada registrada.']);
+                }
                 ShiftRequest::pendingFor($shift->id)
                     ->update(['status' => RequestStatus::Expired, 'decided_at' => $now, 'decision_reason' => 'Entrada registrada.']);
 
@@ -894,6 +904,7 @@ class Shift extends Model
                 throw ValidationException::withMessages(['application' => 'Você anunciou este plantão e não pode escolher o substituto. Outro coordenador precisa decidir.']);
             }
 
+            self::assertActiveAccess(Professional::query()->findOrFail($current->professional_id), 'application', 'Este candidato perdeu o acesso à plataforma e não pode ser escolhido.');
             $eligibility = self::assertAssignable($shift->assignmentOf($current->professional_id));
             $shift->forceFill([
                 'professional_id' => $current->professional_id,
