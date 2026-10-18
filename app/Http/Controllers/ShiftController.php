@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\JobFunction;
 use App\Models\Professional;
 use App\Models\Shift;
+use App\Models\ShiftApplication;
 use App\Models\Unit;
 use App\Policies\ShiftPolicy;
 use App\Policies\UnitPolicy;
+use App\Professionals\Eligibility;
 use App\Professionals\QualificationStatus;
+use App\Scheduling\ApplicationStatus;
 use App\Scheduling\ShiftStatus;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -141,7 +144,59 @@ class ShiftController extends Controller
             'canEdit' => $canManage && $shift->status === ShiftStatus::Draft,
             'canPublish' => $canManage && $shift->status === ShiftStatus::Draft,
             'canCancel' => $canManage && ($shift->status === ShiftStatus::Draft || ($shift->status === ShiftStatus::Published && $shift->starts_at->isFuture())),
+            'canSelect' => $canManage && $shift->status === ShiftStatus::Published && $shift->professional_id === null && $shift->starts_at->isFuture(),
+            'applications' => $canManage ? self::applications($shift) : [],
         ]);
+    }
+
+    /**
+     * Coordinator's justified choice among the candidates of an open vacancy (step 6b).
+     */
+    public function select(Request $request, ShiftApplication $application): RedirectResponse
+    {
+        $shift = $application->shift()->firstOrFail();
+        Gate::authorize('update', $shift);
+
+        $request->validate(['reason' => ['required', 'string', 'max:1000']], attributes: ['reason' => 'justificativa']);
+        $shift->selectCandidate($application, $request->string('reason')->trim()->value());
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Candidato escolhido. O plantão agora tem responsável.']);
+
+        return to_route('shifts.show', $shift);
+    }
+
+    /**
+     * Candidates with their current eligibility (informative: selection checks it again under lock).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function applications(Shift $shift): array
+    {
+        $sector = $shift->sector()->firstOrFail();
+        $function = $shift->jobFunction()->firstOrFail();
+
+        return $shift->applications()
+            ->with('professional:id,tenant_id,name,council,council_number,council_uf,base_unit_id')
+            ->orderBy('created_at')
+            ->get()
+            ->map(function (ShiftApplication $application) use ($shift, $sector, $function) {
+                $professional = $application->professional;
+                $reasons = $application->status === ApplicationStatus::Active
+                    ? Eligibility::check($professional, $sector, $function, $shift->starts_at, $shift->ends_at)->reasons
+                    : [];
+
+                return [
+                    'id' => $application->id,
+                    'professional' => $professional->name,
+                    'registration' => $professional->council === null ? null : "{$professional->council} {$professional->council_number}/{$professional->council_uf}",
+                    'status' => $application->status->value,
+                    'statusLabel' => $application->status->label(),
+                    'appliedAt' => $application->created_at->setTimezone($shift->unit->timezone ?? 'UTC')->format('d/m/Y H:i'),
+                    'reason' => $application->decision_reason,
+                    'blocks' => array_map(fn ($reason) => $reason->message(), $reasons),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     public function edit(Shift $shift): Response
