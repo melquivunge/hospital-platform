@@ -7,6 +7,7 @@ import {
     FileUp,
     Building2,
     LayoutGrid,
+    Megaphone,
     SlidersHorizontal,
     Stethoscope,
     Users,
@@ -32,6 +33,7 @@ import { index as policies } from '@/routes/policies';
 import { index as professionals } from '@/routes/professionals';
 import { index as shifts, mine as myShifts } from '@/routes/shifts';
 import { index as units } from '@/routes/units';
+import { index as vacancies } from '@/routes/vacancies';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -68,6 +70,7 @@ export function AppSidebar() {
                       href: myShifts(),
                       icon: CalendarCheck,
                   },
+                  { title: 'Vagas', href: vacancies(), icon: Megaphone },
               ]
             : []),
         ...(canViewShifts

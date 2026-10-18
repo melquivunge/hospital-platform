@@ -118,7 +118,9 @@ function formatMonth(date: string) {
     });
 }
 
-export function timeRange(shift: ShiftSummary) {
+export function timeRange(
+    shift: Pick<ShiftSummary, 'date' | 'start' | 'end' | 'endDate'>,
+) {
     const nextDay = shift.endDate !== shift.date;
 
     return `${shift.start} – ${shift.end}${nextDay ? ` (${formatDay(shift.endDate)})` : ''}`;

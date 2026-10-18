@@ -11,6 +11,7 @@ use App\Http\Controllers\QualificationController;
 use App\Http\Controllers\SectorController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\UnitController;
+use App\Http\Controllers\VacancyController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login')->name('home');
@@ -29,6 +30,11 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('imports/{batch}', [ImportController::class, 'show'])->name('imports.show');
     Route::post('imports/{batch}/confirm', [ImportController::class, 'confirm'])->name('imports.confirm');
     Route::get('my-shifts', [ShiftController::class, 'mine'])->name('shifts.mine');
+    Route::get('vacancies', [VacancyController::class, 'index'])->name('vacancies.index');
+    Route::get('vacancies/{shift}', [VacancyController::class, 'show'])->name('vacancies.show');
+    Route::post('vacancies/{shift}/apply', [VacancyController::class, 'apply'])->name('vacancies.apply');
+    Route::post('vacancies/{shift}/withdraw', [VacancyController::class, 'withdraw'])->name('vacancies.withdraw');
+    Route::post('shift-applications/{application}/select', [ShiftController::class, 'select'])->name('shift-applications.select');
     Route::post('professionals/{professional}/invite', [ProfessionalController::class, 'invite'])->name('professionals.invite');
     Route::get('shifts', [ShiftController::class, 'index'])->name('shifts.index');
     Route::get('units/{unit}/shifts/create', [ShiftController::class, 'create'])->name('units.shifts.create');

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Professionals\Eligibility;
+use App\Scheduling\ApplicationStatus;
 use App\Scheduling\ShiftStatus;
 use App\Tenancy\BelongsToTenant;
 use Carbon\CarbonImmutable;
@@ -10,6 +11,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -192,7 +194,124 @@ class Shift extends Model
             ])->save();
 
             AuditEvent::record('shift.cancelled', $shift->tenant_id, $shift, ['from' => $from->value, 'reason' => $reason]);
+            $shift->applications()->where('status', ApplicationStatus::Active)
+                ->update(['status' => ApplicationStatus::NotSelected, 'decided_at' => now(), 'decided_by_user_id' => Auth::id()]);
         });
+    }
+
+    /**
+     * @return HasMany<ShiftApplication, $this>
+     */
+    public function applications(): HasMany
+    {
+        return $this->hasMany(ShiftApplication::class);
+    }
+
+    /**
+     * Application to an open vacancy (V1-07). Eligibility is checked now and again on selection.
+     */
+    public function apply(Professional $professional): ShiftApplication
+    {
+        return self::writing(function () use ($professional) {
+            self::lockProfessionals([$professional->id]);
+            $shift = $this->lockedOpenVacancy();
+
+            // The professional lock serializes this check for the same person; the partial index backs it.
+            if ($shift->applications()->where('professional_id', $professional->id)->where('status', ApplicationStatus::Active)->exists()) {
+                throw ValidationException::withMessages(['application' => 'Você já se candidatou a esta vaga.']);
+            }
+
+            $eligibility = self::assertAssignable($shift->assignmentOf($professional->id));
+            $application = $shift->applications()->create([
+                'professional_id' => $professional->id,
+                'status' => ApplicationStatus::Active,
+                'eligibility_version' => $eligibility?->eligibilityVersion,
+            ]);
+            AuditEvent::record('shift.application_created', $shift->tenant_id, $shift, ['application_id' => $application->id, 'professional_id' => $professional->id]);
+
+            return $application;
+        });
+    }
+
+    public function withdraw(Professional $professional): void
+    {
+        self::writing(function () use ($professional) {
+            self::lockProfessionals([$professional->id]);
+            $shift = self::query()->lockForUpdate()->findOrFail($this->id);
+            $application = $shift->applications()->where('professional_id', $professional->id)->where('status', ApplicationStatus::Active)->first()
+                ?? throw ValidationException::withMessages(['application' => 'Você não tem candidatura ativa nesta vaga.']);
+
+            $application->forceFill(['status' => ApplicationStatus::Withdrawn, 'withdrawn_at' => now()])->save();
+            AuditEvent::record('shift.application_withdrawn', $shift->tenant_id, $shift, ['application_id' => $application->id, 'professional_id' => $professional->id]);
+        });
+    }
+
+    /**
+     * Justified choice among candidates (PRODUCT.md, "Plantões: seleção e responsabilidade"). A second
+     * concurrent choice finds the vacancy filled; a candidate who withdrew or lost eligibility is never
+     * replaced automatically. Nobody selects themselves.
+     */
+    public function selectCandidate(ShiftApplication $application, string $reason): void
+    {
+        self::writing(function () use ($application, $reason) {
+            self::lockProfessionals([$application->professional_id]);
+            $shift = $this->lockedOpenVacancy();
+            $current = $shift->applications()->lockForUpdate()->whereKey($application->id)->first();
+
+            if ($current?->status !== ApplicationStatus::Active) {
+                throw ValidationException::withMessages(['application' => 'Esta candidatura não está mais ativa. Recarregue a página.']);
+            }
+
+            $membershipId = Professional::query()->whereKey($current->professional_id)->value('membership_id');
+
+            if ($membershipId !== null && Membership::query()->whereKey($membershipId)->value('user_id') === Auth::id()) {
+                throw ValidationException::withMessages(['application' => 'Você não pode escolher a si mesmo. Outro coordenador precisa decidir.']);
+            }
+
+            $eligibility = self::assertAssignable($shift->assignmentOf($current->professional_id));
+            $shift->forceFill([
+                'professional_id' => $current->professional_id,
+                'eligibility_version' => $eligibility?->eligibilityVersion,
+                'qualification_id' => $eligibility?->qualificationId,
+            ])->save();
+
+            $decision = ['decided_at' => now(), 'decided_by_user_id' => Auth::id()];
+            $current->forceFill([...$decision, 'status' => ApplicationStatus::Selected, 'decision_reason' => $reason])->save();
+            $shift->applications()->where('status', ApplicationStatus::Active)->update([...$decision, 'status' => ApplicationStatus::NotSelected]);
+
+            AuditEvent::record('shift.assigned', $shift->tenant_id, $shift, [
+                'professional_id' => $current->professional_id,
+                'application_id' => $current->id,
+                'reason' => $reason,
+                'eligibility_version' => $shift->eligibility_version,
+                'qualification_id' => $shift->qualification_id,
+            ]);
+        });
+    }
+
+    /**
+     * @return array{sector_id: int, job_function_id: int, professional_id: int, starts_at: CarbonInterface, ends_at: CarbonInterface}
+     */
+    private function assignmentOf(int $professionalId): array
+    {
+        return [
+            'sector_id' => $this->sector_id,
+            'job_function_id' => $this->job_function_id,
+            'professional_id' => $professionalId,
+            'starts_at' => $this->starts_at,
+            'ends_at' => $this->ends_at,
+        ];
+    }
+
+    private function lockedOpenVacancy(): self
+    {
+        $shift = $this->lockedIn(ShiftStatus::Published);
+
+        if ($shift->professional_id !== null) {
+            throw ValidationException::withMessages(['shift' => 'Esta vaga já foi preenchida.']);
+        }
+
+        return $shift;
     }
 
     /**

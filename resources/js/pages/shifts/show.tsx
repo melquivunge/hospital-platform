@@ -22,16 +22,31 @@ type Shift = ShiftSummary & {
     cancelReason: string | null;
 };
 
+type Application = {
+    id: number;
+    professional: string;
+    registration: string | null;
+    status: 'active' | 'withdrawn' | 'selected' | 'not_selected';
+    statusLabel: string;
+    appliedAt: string;
+    reason: string | null;
+    blocks: string[];
+};
+
 export default function ShiftShow({
     shift,
     canEdit,
     canPublish,
     canCancel,
+    canSelect,
+    applications,
 }: {
     shift: Shift;
     canEdit: boolean;
     canPublish: boolean;
     canCancel: boolean;
+    canSelect: boolean;
+    applications: Application[];
 }) {
     return (
         <>
@@ -83,6 +98,76 @@ export default function ShiftShow({
                         </Detail>
                     )}
                 </dl>
+
+                {(canSelect || applications.length > 0) && (
+                    <section aria-labelledby="candidates" className="mb-6">
+                        <h2
+                            id="candidates"
+                            className="mb-1 text-base font-semibold"
+                        >
+                            Candidatos
+                        </h2>
+                        <p className="mb-3 text-sm text-muted-foreground">
+                            Escolha um candidato e registre a justificativa. A
+                            elegibilidade e os conflitos são verificados de novo
+                            na escolha; os demais candidatos são encerrados.
+                        </p>
+                        {applications.length === 0 ? (
+                            <p className="rounded-lg border bg-card px-4 py-6 text-center text-sm">
+                                Nenhuma candidatura ainda.
+                            </p>
+                        ) : (
+                            <ul className="grid gap-3">
+                                {applications.map((application) => (
+                                    <li
+                                        key={application.id}
+                                        className="grid gap-2 rounded-lg border bg-card p-4 text-sm"
+                                    >
+                                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                            <p className="font-medium">
+                                                {application.professional}
+                                                {application.registration && (
+                                                    <span className="ml-2 font-normal text-muted-foreground">
+                                                        {
+                                                            application.registration
+                                                        }
+                                                    </span>
+                                                )}
+                                            </p>
+                                            <span className="text-muted-foreground">
+                                                {application.statusLabel} ·{' '}
+                                                {application.appliedAt}
+                                            </span>
+                                        </div>
+                                        {application.reason && (
+                                            <p>
+                                                Justificativa:{' '}
+                                                {application.reason}
+                                            </p>
+                                        )}
+                                        {application.blocks.length > 0 && (
+                                            <ul className="list-inside list-disc text-destructive">
+                                                {application.blocks.map(
+                                                    (block) => (
+                                                        <li key={block}>
+                                                            {block}
+                                                        </li>
+                                                    ),
+                                                )}
+                                            </ul>
+                                        )}
+                                        {canSelect &&
+                                            application.status === 'active' && (
+                                                <SelectForm
+                                                    application={application}
+                                                />
+                                            )}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+                )}
 
                 {canPublish && (
                     <Form
@@ -162,6 +247,54 @@ export default function ShiftShow({
                 )}
             </Page>
         </>
+    );
+}
+
+function SelectForm({ application }: { application: Application }) {
+    const field = `reason-${application.id}`;
+
+    return (
+        <Form
+            {...ShiftController.select.form(application.id)}
+            options={{ preserveScroll: true }}
+            resetOnSuccess
+            className="grid gap-2 border-t pt-3"
+        >
+            {({ processing, errors }) => {
+                const error =
+                    errors.reason ??
+                    errors.application ??
+                    errors.professional_id ??
+                    errors.shift ??
+                    errors.starts_at;
+
+                return (
+                    <>
+                        <Label htmlFor={field}>Justificativa da escolha</Label>
+                        <Input
+                            id={field}
+                            name="reason"
+                            required
+                            maxLength={1000}
+                            aria-invalid={!!error}
+                            aria-describedby={
+                                error ? `${field}-error` : undefined
+                            }
+                            className="h-11"
+                        />
+                        <InputError id={`${field}-error`} message={error} />
+                        <Button
+                            type="submit"
+                            disabled={processing}
+                            className="min-h-11 justify-self-start"
+                        >
+                            {processing && <Spinner />}
+                            Escolher {application.professional}
+                        </Button>
+                    </>
+                );
+            }}
+        </Form>
     );
 }
 
