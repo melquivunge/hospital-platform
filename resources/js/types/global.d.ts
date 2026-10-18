@@ -28,6 +28,7 @@ declare module '@inertiajs/core' {
             canManageSchedules: boolean;
             canBookAppointments: boolean;
             canManageInsurers: boolean;
+            canAttend: boolean;
             [key: string]: unknown;
         };
     }

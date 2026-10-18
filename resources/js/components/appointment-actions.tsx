@@ -8,12 +8,16 @@ import { Label } from '@/components/ui/label';
 export type AppointmentStatus =
     | 'scheduled'
     | 'arrived'
+    | 'in_progress'
+    | 'completed'
     | 'cancelled'
     | 'no_show';
 
 export const appointmentStatusLabels: Record<AppointmentStatus, string> = {
     scheduled: 'Agendado',
     arrived: 'Chegou',
+    in_progress: 'Em atendimento',
+    completed: 'Atendido',
     cancelled: 'Cancelado',
     no_show: 'Faltou',
 };
@@ -23,7 +27,7 @@ export function AppointmentStatusBadge({
 }: {
     status: AppointmentStatus;
 }) {
-    const open = status === 'scheduled' || status === 'arrived';
+    const open = status !== 'cancelled' && status !== 'no_show';
 
     return (
         <span

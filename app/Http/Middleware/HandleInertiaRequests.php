@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Clinical\ClinicalAccess;
 use App\Http\Controllers\AppointmentController;
 use App\Models\ImportBatch;
 use App\Models\Insurer;
@@ -64,6 +65,7 @@ class HandleInertiaRequests extends Middleware
                 && $request->user()->can('viewAny', Professional::class),
             'canManageJobFunctions' => fn () => $request->user() !== null
                 && $request->user()->can('manage', JobFunction::class),
+            'canAttend' => fn () => $request->user() !== null && ClinicalAccess::professional($request->user()) !== null,
             'canManageInsurers' => fn () => $request->user() !== null
                 && $request->user()->can('manage', Insurer::class),
             'canViewMyShifts' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null

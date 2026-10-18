@@ -70,7 +70,9 @@ export default function Queue({
         );
     const waiting = appointments.filter((item) => item.status === 'scheduled');
     const arrived = appointments
-        .filter((item) => item.status === 'arrived')
+        .filter((item) =>
+            ['arrived', 'in_progress', 'completed'].includes(item.status),
+        )
         .sort((a, b) => (a.arrivedAt ?? '').localeCompare(b.arrivedAt ?? ''));
     const closed = appointments.filter(
         (item) => item.status === 'cancelled' || item.status === 'no_show',

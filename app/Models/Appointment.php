@@ -6,11 +6,12 @@ use App\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
  * Consultation booked by the reception (step 3.4b): scheduled → cancelled (with reason) or no-show
- * (after the time), or arrived (step 3.5, with the visit's modality). The visit itself comes in step 3.6.
+ * (after the time), or arrived (step 3.5, with the visit's modality) → in progress → completed (the visit, step 3.6a).
  *
  * @property int $id
  * @property int $tenant_id
@@ -51,6 +52,22 @@ class Appointment extends Model
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);
+    }
+
+    /**
+     * @return BelongsTo<Unit, $this>
+     */
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class);
+    }
+
+    /**
+     * @return HasOne<Visit, $this>
+     */
+    public function visit(): HasOne
+    {
+        return $this->hasOne(Visit::class);
     }
 
     /**
