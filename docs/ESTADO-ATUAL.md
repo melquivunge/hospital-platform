@@ -4,7 +4,7 @@ Atualizado em 18/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: entrega 4, etapa 4.1 (leitos), plano em plans/web-v3-internacao.md.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: entrega 4, etapa 4.2 (chegada e classificação de risco), plano em plans/web-v3-internacao.md.
 
 ## Onde está cada coisa
 
@@ -61,7 +61,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #35 | Etapa 3.6b: acesso de emergência e trilha de acessos | Mesclado |
 | #36 | Etapa 3.7: documentos anexos | Mesclado |
 | #37 | Entrega 4: contrato, ADR-0004 e plano | Mesclado |
-| — | Etapa 3.8: revisão integrada da entrega 3 (branch `chore/delivery-3-integrated-review`) | Em revisão |
+| #38 | Etapa 3.8: revisão integrada da entrega 3 | Mesclado |
+| — | Etapa 4.1: leitos (branch `feat/beds`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -137,6 +138,14 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 3 nos três perfis (recepção, profissional, administração) em 360, 768 e 1440 px: 33 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 3 no README.
   - Revisão de segurança independente da entrega inteira: nenhum caminho fora do RLS ou do `ClinicalAccess`, sem vazamento em props, mensagens ou auditoria, sem ciclo de locks, conta revogada perde tudo. **Duas decisões de produto pendentes** (no README): prazo para atendimento esquecido aberto e teto diário de acessos de emergência. Demais achados registrados como limites (unificação amplia o acesso por contrato; concessão vale 4 horas mesmo com habilitação revogada; mensagem de CPF já cadastrado).
+- **4.1 (leitos):**
+  - Tela "Leitos" (mapa por setor, contadores por estado, estado em texto e cor) para gestor da unidade, administrador de rede e os papéis novos **Gestão de leitos** e **Higienização**, por unidade.
+  - Gestor e administrador cadastram leitos (quarto, código único por setor, tipo enfermaria/apartamento/UTI, restrição de sexo, isolamento, leito extra de superlotação) e desativam leito livre ou bloqueado. Um setor passa a ser de internação quando tem leitos.
+  - Gestão de leitos bloqueia (com motivo), libera e envia para higienização; a higienização (e a gestão de leitos) marca como pronto. Cada mudança é uma atualização condicional (`WHERE status = esperado`) e gera uma linha em `bed_events` (só inserção, gatilho). Sem dado de paciente ainda: não é tabela clínica.
+  - Corrida real (duas pessoas da gestão de leitos no mesmo leito, 6 rodadas): uma ação vence, a outra é recusada com mensagem.
+  - Navegador (1440 e 390 px): cadastro, bloqueio com motivo, liberação, higienização e pronto; sem erro de JavaScript ou 5xx.
+  - Revisão independente (aprovada, sem crítico/alto). Corrigido: a desativação entra no histórico do leito; o rollback remove antes as atribuições dos papéis novos (ida e volta testada no banco local); limites de requisição em todas as ações; testes de conta revogada, gestor de outra unidade e administrador (configura, não opera).
+  - Próxima: **4.2** (chegada e classificação de risco).
 - **Entrega 4 (urgência, internação e leitos) em definição** (18/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4". Decisões do usuário: jornada primeiro (prescrição e farmácia na entrega 4b), escala de risco própria de 5 níveis (sem Manchester), papel Gestão de leitos, transferência dentro da rede; acesso na internação pelo médico responsável e pela equipe do setor ([ADR-0004](adr/0004-ward-team-record-access.md), aceita); "Não identificado" unificável depois; compatibilidade do leito com aviso e justificativa; sumário de alta obrigatório exceto óbito e evasão; tempo-alvo com destaque visual; censo diário. Plano em `plans/web-v3-internacao.md` (3.8, depois 4.1 a 4.8). ADR-0004 e plano aceitos e **implementação autorizada** pelo usuário (18/10/2026), uma etapa por vez, começando pela 3.8.
 
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
@@ -326,7 +335,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 308 testes passando (etapa 3.7), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 312 testes passando (etapa 4.1), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

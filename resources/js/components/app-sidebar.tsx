@@ -1,6 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeftRight,
+    BedDouble,
     BriefcaseMedical,
     CalendarCheck,
     CalendarPlus,
@@ -38,6 +39,7 @@ import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
 import { index as patientMerges } from '@/routes/patient-merges';
 import { index as appointments, queue } from '@/routes/appointments';
+import { index as beds } from '@/routes/beds';
 import { index as clinicalAccess } from '@/routes/clinical-access';
 import { index as insurers } from '@/routes/insurers';
 import { index as visits } from '@/routes/visits';
@@ -85,6 +87,7 @@ export function AppSidebar() {
         canManageInsurers,
         canAttend,
         canViewClinicalAccess,
+        canViewBeds,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
@@ -162,6 +165,9 @@ export function AppSidebar() {
                       icon: BriefcaseMedical,
                   },
               ]
+            : []),
+        ...(canViewBeds
+            ? [{ title: 'Leitos', href: beds(), icon: BedDouble }]
             : []),
         ...(canViewClinicalAccess
             ? [
