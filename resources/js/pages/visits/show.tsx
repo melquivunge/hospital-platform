@@ -1,22 +1,18 @@
 import { Form, Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import VisitController from '@/actions/App/Http/Controllers/VisitController';
+import type {
+    RecordNote,
+    RecordPatient,
+    SignedNote,
+} from '@/components/clinical-record';
+import { patientDescription, RecordEntry } from '@/components/clinical-record';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
-import { formatBirthDate, sexLabels } from '@/components/patient-display';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/visits';
-
-type Signed = {
-    id: number;
-    body: string;
-    signedAt: string | null;
-    author: string | null;
-};
-
-type RecordNote = Signed & { unit: string | null; addenda: Signed[] };
 
 type Draft = { id: number; body: string; addendumOf: number | null };
 
@@ -31,12 +27,7 @@ export default function VisitShow({
     drafts,
 }: {
     visit: { id: number; openedAt: string | null };
-    patient: {
-        name: string;
-        civilName: string | null;
-        birthDate: string | null;
-        sex: keyof typeof sexLabels | null;
-    };
+    patient: RecordPatient;
     record: RecordNote[];
     drafts: Draft[];
 }) {
@@ -50,14 +41,7 @@ export default function VisitShow({
                 <PageHeader
                     eyebrow={`Atendimento desde ${visit.openedAt}`}
                     title={patient.name}
-                    description={[
-                        patient.civilName && `Nome civil: ${patient.civilName}`,
-                        patient.birthDate &&
-                            `Nascimento: ${formatBirthDate(patient.birthDate)}`,
-                        patient.sex && sexLabels[patient.sex],
-                    ]
-                        .filter(Boolean)
-                        .join(' · ')}
+                    description={patientDescription(patient)}
                     actions={
                         <Form {...VisitController.close.form(visit.id)}>
                             {({ processing }) => (
@@ -106,25 +90,7 @@ export default function VisitShow({
                         ) : (
                             <ol className="grid gap-4">
                                 {record.map((note) => (
-                                    <li
-                                        key={note.id}
-                                        className="grid gap-3 rounded-lg border p-4"
-                                    >
-                                        <NoteBody
-                                            note={note}
-                                            detail={note.unit}
-                                        />
-                                        {note.addenda.map((addendum) => (
-                                            <div
-                                                key={addendum.id}
-                                                className="grid gap-2 border-l-2 border-primary/40 pl-4"
-                                            >
-                                                <NoteBody
-                                                    note={addendum}
-                                                    detail="Adendo"
-                                                />
-                                            </div>
-                                        ))}
+                                    <RecordEntry key={note.id} note={note}>
                                         {!drafts.some(
                                             (draft) =>
                                                 draft.addendumOf === note.id,
@@ -134,7 +100,7 @@ export default function VisitShow({
                                                 addendumOf={note}
                                             />
                                         )}
-                                    </li>
+                                    </RecordEntry>
                                 ))}
                             </ol>
                         )}
@@ -145,25 +111,13 @@ export default function VisitShow({
     );
 }
 
-function NoteBody({ note, detail }: { note: Signed; detail: string | null }) {
-    return (
-        <article className="grid gap-1 text-sm">
-            <p className="text-xs text-muted-foreground">
-                {note.signedAt} · {note.author}
-                {detail && ` · ${detail}`}
-            </p>
-            <p className="whitespace-pre-wrap">{note.body}</p>
-        </article>
-    );
-}
-
 /** A new draft: the note of this visit, or (inside a disclosure) an addendum to a signed note. */
 function NewNote({
     visitId,
     addendumOf,
 }: {
     visitId: number;
-    addendumOf?: Signed;
+    addendumOf?: SignedNote;
 }) {
     const id = addendumOf ? `addendum-${addendumOf.id}` : 'new-note';
     const form = (

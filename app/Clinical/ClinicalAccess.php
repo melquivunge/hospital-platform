@@ -2,6 +2,7 @@
 
 namespace App\Clinical;
 
+use App\Models\EmergencyAccess;
 use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\User;
@@ -11,8 +12,8 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * The single place that decides who reads a patient's record (ADR-0003): a professional with an open visit
- * of the patient in any unit of the network. Emergency access arrives in step 3.6b. Managers, admins and the
- * reception never read it for their role. Every read is written to the insert-only trail.
+ * of the patient in any unit of the network, or a valid emergency grant (read-only, step 3.6b). Managers, admins
+ * and the reception never read it for their role. Every read is written to the insert-only trail.
  */
 final class ClinicalAccess
 {
@@ -49,11 +50,23 @@ final class ClinicalAccess
             ->whereIn('patient_id', self::recordIds($patient))->orderBy('id')->first();
     }
 
-    public static function recordRead(User $user, Patient $patient, Visit $visit): void
+    /**
+     * A valid emergency grant of this user for the patient (step 3.6b): read-only, 4 hours.
+     */
+    public static function activeEmergency(User $user, Patient $patient): ?EmergencyAccess
+    {
+        return EmergencyAccess::query()->where('user_id', $user->id)->whereIn('patient_id', self::recordIds($patient))
+            ->where('expires_at', '>', now())->latest('expires_at')->first();
+    }
+
+    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess $basis): void
     {
         DB::table('clinical_reads')->insert([
             'tenant_id' => $patient->tenant_id, 'user_id' => $user->id, 'patient_id' => $patient->merged_into_id ?? $patient->id,
-            'reason' => 'visit', 'visit_id' => $visit->id, 'read_at' => now(),
+            'reason' => $basis instanceof Visit ? 'visit' : 'emergency',
+            'visit_id' => $basis instanceof Visit ? $basis->id : null,
+            'emergency_access_id' => $basis instanceof EmergencyAccess ? $basis->id : null,
+            'read_at' => now(),
         ]);
     }
 }

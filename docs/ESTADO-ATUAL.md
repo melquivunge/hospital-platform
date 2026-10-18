@@ -57,7 +57,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #31 | Etapa 3.4a: grade de agenda | Mesclado |
 | #32 | Etapa 3.4b: agendamento pela recepção | Mesclado |
 | #33 | Etapa 3.5: chegada, fila do dia e convênios | Mesclado |
-| — | Etapa 3.6a: atendimento, evolução e trilha de leitura (branch `feat/clinical-visit`) | Em revisão |
+| #34 | Etapa 3.6a: atendimento, evolução e trilha de leitura | Mesclado |
+| — | Etapa 3.6b: acesso de emergência e trilha de acessos (branch `feat/emergency-access`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -112,7 +113,14 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Corrida real (duas abas abrindo o mesmo atendimento, 6 rodadas): sempre um atendimento e um evento de auditoria.
   - Navegador (1440 e 390 px): rascunho, encerramento recusado com rascunho pendente, senha errada, assinatura, adendo e encerramento; sem erro de JavaScript ou 5xx. O teste no navegador achou um defeito corrigido: rascunho de outro atendimento do mesmo paciente aparecia e bloqueava o encerramento.
   - Revisão de segurança independente (sem crítico). Corrigido: rascunho gravado com o atendimento travado (corrida real encerrar × salvar rascunho, 6 rodadas: nunca fica rascunho em atendimento encerrado); rascunho de um atendimento só se edita ou assina com ele aberto; um rascunho de evolução por autor e atendimento (índice no banco); gatilhos ampliados: evolução nasce rascunho, autor e data de criação não mudam, atendimento encerrado não reabre nem troca paciente, profissional ou agendamento, e esvaziar as três tabelas é recusado; senha errada na assinatura: 5 tentativas a cada 15 minutos por usuário (só as erradas contam) e cada falha vai para a auditoria (`clinical_note.sign_failed`). O rollback da migration devolve agendamentos em atendimento ou atendidos para "chegou".
-  - Próxima: **3.6b** (acesso de emergência com justificativa e validade de 4 horas, aviso ao gestor, consulta da trilha de leituras pela auditoria).
+- **3.6b (acesso de emergência e trilha de acessos):**
+  - Botão "Prontuário" na ficha do paciente (profissional com conta ligada): com atendimento aberto vai ao atendimento; sem ele, pede **acesso de emergência**: unidade onde está atendendo e justificativa (mínimo 20 caracteres). Concedido na hora, **só leitura, por 4 horas**; renovar é nova concessão com nova justificativa. `emergency_accesses` é clínica (RLS), só de inserção (gatilho) e o banco exige validade de exatamente 4 horas.
+  - `ClinicalAccess` aceita a concessão válida; cada leitura em emergência vai para `clinical_reads` apontando para a concessão. Evolução continua exigindo atendimento aberto.
+  - O gestor da unidade (sem gestor, o administrador de rede) recebe a notificação "Acesso de emergência a um prontuário", sem dado do paciente. A auditoria (`clinical.emergency_access`) guarda só ids; a justificativa fica na tabela clínica.
+  - Tela "Acessos ao prontuário" (últimos 30 dias): gestor vê as concessões das suas unidades, administrador de rede as da rede, auditor as concessões e todas as leituras (quem, quando, paciente com CPF mascarado, motivo). Nunca conteúdo clínico.
+  - Navegador (1440 e 390 px): pedido com justificativa, prontuário só leitura com o aviso de validade, notificação e trilha para o administrador; sem erro de JavaScript ou 5xx.
+  - Revisão de segurança independente (sem IDOR, quebra de isolamento ou desvio de autorização). Corrigido: com atendimento aberto ou concessão válida, novo pedido não cria concessão nem notifica (e o limite é de 3 pedidos a cada 10 minutos); o formulário avisa para não escrever diagnóstico nem sintomas na justificativa, que a gestão e a auditoria leem; a trilha avisa quando a lista foi cortada (200 por bloco); a migration volta e é reaplicada com dados (a trilha só de inserção mantém as leituras antigas). Decisão registrada: gestão e auditoria veem o nome do paciente com CPF mascarado, para saber de quem é o prontuário acessado. Limite conhecido: o horário da concessão vem da aplicação (o banco exige só as 4 horas de validade).
+  - Próxima: **3.7** (documentos anexos).
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
   - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`). Locks na mesma ordem dos demais fluxos (profissional → plantões por id → pedidos). Corrida real entre revogação e cancelamento do plantão (cliente sintético "Rede Corrida", 12 rodadas nas duas ordens): sem deadlock, um resultado coerente por rodada, um único evento de auditoria por pedido.
@@ -300,7 +308,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 297 testes passando (etapa 3.6a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 303 testes passando (etapa 3.6b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

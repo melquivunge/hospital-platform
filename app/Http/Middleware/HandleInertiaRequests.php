@@ -17,6 +17,7 @@ use App\Models\UserNotification;
 use App\Policies\ShiftPolicy;
 use App\Policies\UnitPolicy;
 use App\Tenancy\CurrentTenant;
+use App\Tenancy\Role;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -66,6 +67,8 @@ class HandleInertiaRequests extends Middleware
             'canManageJobFunctions' => fn () => $request->user() !== null
                 && $request->user()->can('manage', JobFunction::class),
             'canAttend' => fn () => $request->user() !== null && ClinicalAccess::professional($request->user()) !== null,
+            'canViewClinicalAccess' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null
+                && ($membership->hasRole(Role::Auditor) || $membership->hasRole(Role::NetworkAdmin) || Professional::managedUnitIds($membership) !== []),
             'canManageInsurers' => fn () => $request->user() !== null
                 && $request->user()->can('manage', Insurer::class),
             'canViewMyShifts' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null
