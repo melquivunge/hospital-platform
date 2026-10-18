@@ -4,6 +4,7 @@ import {
     BriefcaseMedical,
     CalendarCheck,
     CalendarDays,
+    ChartColumn,
     FileUp,
     Building2,
     LayoutGrid,
@@ -29,6 +30,7 @@ import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
+import { index as reports } from '@/routes/reports';
 import { index as requests } from '@/routes/requests';
 import { index as professionals } from '@/routes/professionals';
 import { index as shifts, mine as myShifts } from '@/routes/shifts';
@@ -78,7 +80,10 @@ export function AppSidebar() {
             ? [{ title: 'Solicitações', href: requests(), icon: Repeat }]
             : []),
         ...(canViewShifts
-            ? [{ title: 'Escala', href: shifts(), icon: CalendarDays }]
+            ? [
+                  { title: 'Escala', href: shifts(), icon: CalendarDays },
+                  { title: 'Relatórios', href: reports(), icon: ChartColumn },
+              ]
             : []),
         ...(canViewProfessionals
             ? [
