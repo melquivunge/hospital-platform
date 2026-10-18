@@ -402,7 +402,7 @@ As questões abertas deste contrato foram respondidas; todas as propostas foram 
 
 ## Contrato da entrega 4 — urgência, internação e leitos
 
-Método: ECC Product Capability. Data: 18/10/2026. Estado: **definição, sem autorização de implementação.** As decisões marcadas como "do usuário" foram tomadas nesta data; o restante é proposta para revisão.
+Método: ECC Product Capability. Data: 18/10/2026. Estado: **aprovado; implementação autorizada pelo usuário em 18/10/2026, uma etapa por vez.**
 
 ### Capacidade
 
@@ -461,7 +461,7 @@ As questões abertas deste contrato foram respondidas; todas as propostas foram 
 
 | Tema | Decisão |
 |---|---|
-| Acesso ao prontuário na internação | Médico responsável e equipe assistencial do setor onde o paciente está internado (habilitação aprovada no setor), enquanto ele estiver lá; cada leitura registrada ([ADR-0004](docs/adr/0004-ward-team-record-access.md), proposta) |
+| Acesso ao prontuário na internação | Médico responsável e equipe assistencial do setor onde o paciente está internado (habilitação aprovada no setor), enquanto ele estiver lá; cada leitura registrada ([ADR-0004](docs/adr/0004-ward-team-record-access.md), aceita) |
 | Paciente não identificado | Cadastro "Não identificado" com sexo, idade aparente e descrição; a identidade vem depois pela unificação manual existente |
 | Compatibilidade do leito | Restrição de sexo ou isolamento avisa e pede justificativa registrada; a gestão de leitos decide, sem bloqueio |
 | Sumário de alta | Obrigatório e assinado para alta por melhora, a pedido e transferência; óbito e evasão com registro de horário e autor (declaração de óbito fora do sistema) |
@@ -471,5 +471,5 @@ As questões abertas deste contrato foram respondidas; todas as propostas foram 
 ### Encaminhamento ECC
 
 - **Esclarecimento de produto:** concluído (decisões complementares acima).
-- **Arquitetura:** reaproveita as ADRs 0001 e 0003; o acesso pela equipe do setor é a [ADR-0004](docs/adr/0004-ward-team-record-access.md), proposta, aguardando aceite.
-- **Plano em etapas:** `plans/web-v3-internacao.md`. **Implementação ainda não autorizada.**
+- **Arquitetura:** reaproveita as ADRs 0001 e 0003; o acesso pela equipe do setor é a [ADR-0004](docs/adr/0004-ward-team-record-access.md), aceita pelo usuário.
+- **Plano em etapas:** `plans/web-v3-internacao.md`. **Implementação autorizada pelo usuário em 18/10/2026**, começando pela 3.8.

@@ -1,7 +1,7 @@
 # ADR-0004: acesso ao prontuário pela equipe do setor de internação
 
 Data: 18/10/2026
-Estado: proposta (aguarda aceite do usuário)
+Estado: aceita pelo usuário (18/10/2026)
 
 ## Contexto
 

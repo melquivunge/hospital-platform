@@ -1,7 +1,7 @@
 # Plano — entrega 4: urgência, internação e leitos
 
-Data: 18/10/2026. Estado: **proposta, aguardando aprovação do usuário para implementação** (uma etapa por PR, CI verde, revisão; merge só com autorização).
-Contrato: ../PRODUCT.md, seção "Contrato da entrega 4". Arquitetura: ../docs/adr/0003-rls-on-clinical-tables.md e ../docs/adr/0004-ward-team-record-access.md (proposta). Regras de trabalho: ../AGENTS.md.
+Data: 18/10/2026. Estado: **aprovado pelo usuário para implementação em 18/10/2026**, uma etapa por vez (uma etapa por PR, CI verde, revisão; merge só com autorização).
+Contrato: ../PRODUCT.md, seção "Contrato da entrega 4". Arquitetura: ../docs/adr/0003-rls-on-clinical-tables.md e ../docs/adr/0004-ward-team-record-access.md. Regras de trabalho: ../AGENTS.md.
 
 ## Princípios herdados
 
