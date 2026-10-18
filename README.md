@@ -57,6 +57,23 @@ Pendentes antes de operação real, além do checklist acima:
 - **Idioma:** o conteúdo das telas de segurança e aparência e o e-mail de redefinição de senha ainda estão em inglês.
 - **Capacidade:** sem metas de disponibilidade, recuperação, tempo de resposta e volume; nenhuma garantia de escala foi validada.
 
+### Limites conhecidos da entrega 3 (revisão integrada, etapa 3.8)
+
+Pendentes antes de uso com pacientes reais, além dos limites da V1:
+
+- **Banco:** a aplicação precisa de um login próprio, membro só de `app_runtime` (sem dono, sem superusuário, sem `BYPASSRLS`). O RLS protege contra erro de escopo da aplicação, não contra injeção de SQL com o login do dono ([ADR-0003](docs/adr/0003-rls-on-clinical-tables.md)). Revisar o pooler de conexões, porque a variável de cliente é por sessão.
+- **Backup:** incluir os documentos clínicos (`storage/app/private/clinical/{cliente}/`) no backup conjunto com o banco. Se o processo cair entre gravar o arquivo e registrá-lo, sobra um arquivo sem linha; uma varredura periódica resolve.
+- **Validade legal:** a assinatura de evolução usa a senha, sem ICP-Brasil, e não equivale a assinatura digital qualificada. Prazo de guarda do prontuário e base legal de tratamento (LGPD) ainda precisam de validação com especialista. Nada clínico é excluído.
+- **Acesso de emergência:** o horário da concessão vem do relógio da aplicação; o banco exige só a validade de 4 horas.
+- **Trilha de acessos:** a tela mostra os últimos 30 dias, até 200 linhas por bloco; para auditorias maiores, criar filtros e paginação.
+- **Documentos:** PDF com conteúdo extra embutido é aceito, porque é sempre entregue como download (`nosniff`, `sandbox`); nunca o exibir dentro do navegador sem reprocessamento. Limite de 20 por atendimento.
+- **Agenda:** horários montados no relógio da unidade; um fuso com horário de verão deslocaria a consulta na hora pulada. A fila do dia aberta depois da meia-noite precisa ser recarregada.
+- **Decisões de produto pendentes (revisão integrada 3.8):** atendimento esquecido aberto mantém a leitura do prontuário sem prazo (definir expiração ou aviso à gestão); o acesso de emergência não tem teto diário por pessoa (hoje só o limite de 3 pedidos a cada 10 minutos, a notificação ao gestor e a trilha).
+- **Unificação:** juntar cadastros amplia o acesso ao prontuário dos dois (um prontuário por pessoa, por contrato). Desfazer não separa o que foi escrito enquanto estavam unificados, e a trilha de leitura registra o cadastro principal da época. Unificar só com evidência de identidade.
+- **Concessão de emergência:** vale pelas 4 horas mesmo se a habilitação do profissional for revogada nesse intervalo (a conta revogada perde o acesso na hora).
+- **Cadastro:** a mensagem de CPF ou CNS já cadastrado confirma a existência do documento; é necessária para o cadastro único e fica protegida pelo limite de 30 tentativas por minuto.
+- **Dados de teste:** o cliente sintético "Rede Corrida Agenda" existe só no banco local (corridas e verificações).
+
 ## Verificações
 
 O CI executa testes PHP com PostgreSQL descartável, Pint, PHPStan, TypeScript, lint/formatação, build, auditorias de dependências e smoke test dos containers. As credenciais do serviço de teste em CI são descartáveis, sem relação com ambientes reais.
