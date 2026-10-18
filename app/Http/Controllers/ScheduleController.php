@@ -163,7 +163,7 @@ class ScheduleController extends Controller
      *
      * @return Collection<int, Professional>
      */
-    private static function professionals(Unit $unit): Collection
+    public static function professionals(Unit $unit): Collection
     {
         return Professional::query()->whereIn('id', Qualification::query()->where('unit_id', $unit->id)->where('status', QualificationStatus::Approved)->select('professional_id'))
             ->orderBy('name')->get(['id', 'name']);

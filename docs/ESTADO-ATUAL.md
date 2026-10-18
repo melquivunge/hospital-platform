@@ -54,7 +54,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #28 | Etapa 3.1: fundação clínica | Mesclado |
 | #29 | Etapa 3.2: pacientes | Mesclado |
 | #30 | Etapa 3.3: unificação de cadastros | Mesclado |
-| — | Etapa 3.4a: grade de agenda (branch `feat/schedule-grid`) | Em revisão |
+| #31 | Etapa 3.4a: grade de agenda | Mesclado |
+| — | Etapa 3.4b: agendamento pela recepção (branch `feat/appointments`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -86,7 +87,15 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
 - **3.4a (grade de agenda; a 3.4 foi dividida em 3.4a e 3.4b):**
   - Tela "Agendas" para o gestor da unidade e o administrador de rede, com seletor de unidade. Grade semanal por profissional habilitado na unidade (dia, início, fim e duração fixa da consulta, no horário da unidade) e bloqueios de período com motivo.
   - Regras imutáveis: para mudar, remove-se e adiciona-se outra. Restrição no banco: o mesmo profissional não tem faixas sobrepostas no mesmo dia da semana, nem em unidades diferentes. Tudo auditado (`schedule.*`). Sem dados de paciente, então as tabelas não têm RLS.
-  - Próxima: **3.4b**, agendamento pela recepção (vagas da grade menos bloqueios, encaixe, cancelamento, remarcação e faltas, com restrição contra dois agendamentos no mesmo horário). Corrida real (6 rodadas, A→B contra B→A): uma vence, a outra é recusada, sem ciclo nem travamento.
+- **3.4b (agendamento pela recepção):**
+  - Tela "Agendamentos" (menu da Recepção, por unidade): profissional, dia e os horários do dia (livre, ocupado, bloqueado, passou), no fuso da unidade. O paciente é escolhido na ficha dele ("Agendar consulta"), então nome ou documento não entram em URL; só o id. Depois de agendar, o paciente sai da seleção (evita agendar a mesma pessoa duas vezes sem querer).
+  - Horário normal só na fronteira de uma consulta da grade; **encaixe** explícito em qualquer minuto da faixa do profissional (no próprio dia, mesmo atrasado), marcado como tal. Bloqueios fecham os dois.
+  - Cancelar exige motivo; **remarcar** cancela o anterior com motivo e liga o novo (`rescheduled_from_id`, único); **falta** só depois do horário. Nada é apagado. Auditoria `appointment.created|cancelled|no_show` só com ids.
+  - `appointments` é tabela clínica (RLS forçado). Restrição de exclusão no banco: dois agendamentos vivos do mesmo profissional não se sobrepõem, salvo encaixe.
+  - Corrida real (cliente sintético "Rede Corrida Agenda", dois processos e conexões): a primeira rodada achou **deadlock** entre inserts checando a restrição de exclusão (40P01, erro 500 para uma recepção). Corrigido travando a linha do profissional no início da transação (mesma ordem dos outros fluxos: profissional primeiro). Depois: 8 rodadas de agendamento e 4 de remarcação, alternando quem começa: sempre um vencedor e o outro recusado com mensagem clara.
+  - Navegador (Playwright, 1440 e 390 px): agendar, encaixe, remarcar e cancelar com motivo; sem erro de JavaScript ou 5xx, sem rolagem horizontal.
+  - Revisão independente (sem crítico/alto). Corrigido: o paciente é relido com lock compartilhado dentro da transação e a remarcação também vai para o cadastro principal se houve unificação no meio; a habilitação do profissional é conferida de novo depois do lock; encaixe no fim da faixa termina com a faixa; erro de falta aparece na tela. Limite conhecido: os horários são montados no relógio da unidade, então um fuso com horário de verão deslocaria a consulta que cair na hora pulada (as unidades atuais não têm).
+  - Próxima: **3.5** (recepção: chegada, fila do dia, convênios e modalidade).
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
   - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`). Locks na mesma ordem dos demais fluxos (profissional → plantões por id → pedidos). Corrida real entre revogação e cancelamento do plantão (cliente sintético "Rede Corrida", 12 rodadas nas duas ordens): sem deadlock, um resultado coerente por rodada, um único evento de auditoria por pedido.
@@ -274,7 +283,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 280 testes passando (etapa 3.4a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 288 testes passando (etapa 3.4b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

@@ -1,5 +1,5 @@
-import { Head, Link } from '@inertiajs/react';
-import { Pencil } from 'lucide-react';
+import { Head, Link, usePage } from '@inertiajs/react';
+import { CalendarPlus, Pencil } from 'lucide-react';
 import { Page, PageHeader } from '@/components/page';
 import type { PatientSummary } from '@/components/patient-display';
 import {
@@ -8,6 +8,7 @@ import {
     StatusBadge,
 } from '@/components/patient-display';
 import { Button } from '@/components/ui/button';
+import { index as appointments } from '@/routes/appointments';
 import { edit, index } from '@/routes/patients';
 
 type Patient = PatientSummary & {
@@ -44,6 +45,7 @@ export default function PatientShow({
         cpf: string | null;
     }[];
 }) {
+    const { canBookAppointments } = usePage().props;
     const rows: [string, string | null][][] = [
         [
             ['Nome civil', patient.name],
@@ -83,6 +85,18 @@ export default function PatientShow({
                     actions={
                         <>
                             <StatusBadge status={patient.status} />
+                            {canBookAppointments && (
+                                <Button asChild className="min-h-11">
+                                    <Link
+                                        href={appointments({
+                                            query: { patient: patient.id },
+                                        })}
+                                    >
+                                        <CalendarPlus aria-hidden="true" />
+                                        Agendar consulta
+                                    </Link>
+                                </Button>
+                            )}
                             {canUpdate && (
                                 <Button
                                     asChild
