@@ -174,7 +174,7 @@ Não produzir código, selecionar tecnologia, prometer compatibilidade com forne
 | Regras centrais versus autonomia local | Configuração e permissões em todos os módulos | Modelo aprovado; catálogo de regras delegáveis ainda a detalhar |
 | Aprovações de plantão | Estados, responsabilidade e notificações | V1: coordenador aprova todas as mudanças; seleção entre vários candidatos exige justificativa |
 | Primeira jornada e sequência | Prioridade e limites da entrega | V1 aprovada: cadastros, permissões, importação de escalas e plantões; demais entregas a ordenar |
-| Identidade e deduplicação do paciente | Segurança e continuidade do histórico | Em aberto |
+| Identidade e deduplicação do paciente | Segurança e continuidade do histórico | Decidido em 18/10/2026: ver Contrato da entrega 3 |
 | Fontes legadas | Adaptadores e limites de preservação | Nenhum fornecedor identificado |
 | Metas operacionais e equipe | Arquitetura, custo e cronograma | Em aberto |
 
@@ -319,3 +319,83 @@ ECC Product Capability aplicado. Agente de pesquisa UX examinou as 18 imagens re
 ### Direção visual — 17/10/2026
 
 Usuário exige interface elegante, bonita e profissional. Direção em [docs/design/direction.md](docs/design/direction.md); acabamento deve ser verificado em navegador e não apenas por inspeção do código. 2c na branch feat/policy-catalog (17/10/2026): catálogo de regras versionado e só de inserção (precisão máxima da localização), herança rede → unidade com limites, valor efetivo resolvido na leitura (valor local nunca enfraquece o limite da rede), publicação direta com autor, motivo e vigência, conflito de versão; RLS não adotado na V1 (docs/adr/0002-no-postgres-rls-in-v1.md). Etapa 3 dividida em 3a e 3b. Decisões do usuário (17/10/2026): profissional independente da conta de acesso; habilitação por profissional + unidade + função, com status, validade e setores autorizados; cadastro com nome, registro no conselho, identificador externo e contato. 3a na branch feat/professionals: cadastro de profissionais com unidade-base obrigatória, troca de base com motivo e histórico na auditoria, gestor limitado às próprias unidades. 3b na branch feat/eligibility: funções da rede, habilitações por profissional + unidade + função com setores e validade local, aprovação na unidade de destino, versão de elegibilidade sob lock e serviço de elegibilidade com motivos (aprovação em A não habilita em B; pendência, suspensão, revogação e expiração bloqueiam). Etapa 4 dividida em 4a (plantões, publicação, cancelamento) e 4b (agenda e eventos). Decisões do usuário (17/10/2026): conflito conta rascunho e publicado; publicado só cancela; coordenador da unidade e administrador de rede montam a escala, gestor e auditor consultam. 4a na branch feat/shifts: restrição de exclusão contra sobreposição no banco, elegibilidade revalidada sob lock na criação e na publicação, horários no fuso da unidade. 4b na branch feat/schedule-calendar: agenda diária, semanal e mensal no fuso da unidade, com plantão que atravessa a meia-noite visível no dia em que termina; eventos para notificação ficam em audit_events (mesma transação), e o consumo fica para a etapa 9. Etapa 5 dividida em 5a (profissionais) e 5b (plantões). 5a na branch feat/import-professionals: importação CSV com prévia sem escrita operacional, resultado por linha (criada, idêntica, conflitante, rejeitada), identidade por cliente + origem + tipo + identificador, aplicação confirmada em segundo plano, retomável e sem duplicar, e arquivo original privado. 5b na branch feat/import-shifts: importação CSV de plantões como rascunho, com datas e fuso explícitos, referências resolvidas no mesmo cliente (profissional só pela identidade da mesma origem), as mesmas regras da escala e reimportação idempotente. Etapa 6 dividida em 6a (acesso do profissional), 6b (vagas abertas) e 6c (anúncio do próprio plantão). 6a na branch feat/professional-access: convite pelo e-mail do cadastro (decisão do usuário), papel Profissional na unidade-base, ligação única entre conta e profissional, e tela "Meus plantões" só com plantões publicados. 6b na branch feat/open-shift-applications: candidatura e retirada em vagas abertas, elegibilidade conferida na candidatura e na escolha, escolha pelo coordenador com justificativa obrigatória e atribuição atômica sob lock, um único escolhido por vaga, sem autoescolha nem substituição automática; demais candidatos encerrados. 6c na branch feat/shift-announcement: o responsável anuncia o próprio plantão e continua responsável até a escolha justificada do substituto pelo coordenador, que troca o responsável de forma atômica; quem anuncia não decide a própria substituição. Etapa 7 dividida em 7a (transferência direta) e 7b (troca). 7a na branch feat/shift-transfer: pedido do responsável a um colega habilitado, aceite do colega e aprovação do coordenador da unidade do plantão, sem decisão por participante; um pedido pendente por plantão; expiração ao atingir o início; troca de responsável atômica e revalidada. 7b na branch feat/shift-swap: troca entre dois plantões com aceite do colega, elegibilidade de cada lado comparada à UF do outro plantão, conflito avaliado na escala resultante, aprovação das duas unidades quando os hospitais são diferentes e aplicação dos dois lados ou nenhum. Etapa 8 dividida em 8a (presença por localização) e 8b (ocorrências e ajuste administrativo). Decisões do usuário (18/10/2026): duas janelas de horário configuradas pela rede/unidade (entrada a partir de X minutos antes do início; saída até Y minutos depois do fim) e pontos cadastrados pelo gestor da unidade e pelo administrador de rede. 8a na branch feat/attendance: pontos imutáveis por unidade, regras de precisão e janelas no catálogo sem valor padrão, decisão no servidor (distância + precisão no raio), tentativas recusadas preservadas, eventos só de inserção, e bloqueio de anúncio, transferência, troca e cancelamento após a entrada. 8b na branch feat/attendance-occurrences: ocorrências de entrada e saída relatadas pelo profissional e decididas com justificativa por coordenador não participante; saída deferida com horário informado encerra a presença administrativamente, identificada como ajustada, sem alterar os registros originais; entrada deferida não cria check-in; estado "em análise" omitido.
+
+## Contrato da entrega 3 — atendimento ambulatorial
+
+Método: ECC Product Capability. Data: 18/10/2026. Estado: **definição, sem autorização de implementação.** As decisões marcadas como "do usuário" foram tomadas nesta data; o restante é proposta para revisão.
+
+### Capacidade
+
+A recepção de uma unidade cadastra o paciente (mesmo sem documento), agenda e confirma a chegada para uma consulta com um profissional. O profissional abre o atendimento, registra a evolução clínica, anexa documentos e encerra. O prontuário fica disponível, com acesso restrito e auditado, para quem atende o paciente. Resultado esperado: um episódio ambulatorial completo e rastreável, base para internação e leitos (entrega 4), exames (entrega 5), faturamento (entrega 6) e portal do paciente (entrega 7).
+
+### Decisões do usuário (18/10/2026)
+
+- **Identidade:** CPF e Cartão Nacional de Saúde (CNS) são opcionais, mas únicos na rede quando informados. Quem chega sem documento recebe **cadastro provisório**, que é completado depois.
+- **Duplicidade:** na hora do cadastro, o sistema avisa sobre um possível duplicado. A **unificação é manual**, feita por perfil autorizado, com motivo, e preserva o histórico dos dois cadastros. Coincidência de nome nunca unifica sozinha (regra já existente).
+- **Acesso ao prontuário:** veem o prontuário os profissionais com **atendimento ativo do paciente na unidade**. Fora disso, existe **acesso de emergência** com justificativa obrigatória, auditado.
+- **Recorte:** agenda e recepção; atendimento e evolução; documentos anexos; modalidade do atendimento (particular, convênio ou SUS), **sem faturamento**.
+
+### Restrições e invariantes
+
+- Isolamento entre clientes e escopo por unidade, como na V1 (permissão aplicada no servidor; operação com identificador de outro cliente é negada).
+- Dado de saúde é dado pessoal sensível (LGPD): coleta mínima; nenhum dado clínico em logs técnicos, notificações, assuntos de e-mail ou URLs; exportações e relatórios gerais sem conteúdo clínico.
+- **Toda leitura de prontuário fica registrada** (quem, quando, qual paciente, por qual motivo: atendimento ou emergência). Hoje a auditoria registra só escritas; leitura auditada é requisito novo.
+- Evolução **assinada é imutável**: correção é um adendo assinado que referencia a original. Nada clínico é apagado; retirar um documento anexado exige motivo e mantém o arquivo e o registro.
+- Unificação de pacientes não apaga cadastros: o duplicado fica marcado como unificado e aponta para o principal; atendimentos e documentos passam a aparecer no principal, com a origem preservada. Desfazer a unificação é proposta em aberto.
+- Arquivos: privados, nome aleatório, servidos só a quem pode ver o prontuário, com tipo e tamanho validados e conteúdo nunca interpretado (mesmos cuidados da foto de perfil e da importação).
+- Concorrência: um horário de agenda não recebe dois agendamentos sem encaixe explícito; duas pessoas abrindo o mesmo atendimento recebem estado atualizado, sem duplicar.
+
+### Atores e superfícies (proposta)
+
+| Ator | Superfície | Limite |
+|---|---|---|
+| Recepção (papel novo, por unidade) | Cadastro de paciente, agenda, confirmação de chegada, faltas, modalidade | Não vê evolução nem documentos clínicos |
+| Profissional assistente (profissional já cadastrado, com função assistencial na unidade) | Agenda própria, abrir e encerrar atendimento, evolução, adendo, documentos | Prontuário só com atendimento ativo ou emergência justificada |
+| Gestor da unidade | Agendas da unidade (grade, bloqueios), indicadores sem conteúdo clínico | Não vê prontuário por ser gestor |
+| Unificador (perfil a definir; proposta: gestor da unidade ou administrador de rede) | Revisar suspeitas e unificar cadastros | Não lê conteúdo clínico para unificar |
+| Administrador de rede | Unidades, papéis, tabela de convênios da rede | Não vê prontuário por ser administrador |
+| Auditor | Trilha de acessos e decisões, incluindo leituras de prontuário | Não vê conteúdo clínico |
+| Paciente | Fora desta entrega (portal na entrega 7) | — |
+
+### Estados e transições (proposta)
+
+- **Paciente:** provisório → completo (CPF ou CNS e dados mínimos informados); unificado (terminal, aponta para o principal).
+- **Agendamento:** agendado → chegou (recepção confirma) → em atendimento → concluído. Saídas: cancelado (com motivo, antes da chegada) e faltou (após o horário, sem chegada). Remarcar = cancelar + novo agendamento ligado ao anterior.
+- **Atendimento:** aberto (pelo profissional, a partir de uma chegada ou de um encaixe) → encerrado. Reabrir não existe: o que vier depois é adendo.
+- **Evolução:** rascunho (só o autor vê) → assinada (imutável). Adendo: rascunho → assinado, ligado à evolução.
+- **Documento:** anexado → retirado (com motivo; o arquivo permanece para a auditoria).
+- **Acesso de emergência:** solicitado com justificativa → concedido na hora por tempo limitado → expirado. Cada concessão gera evento e aparece para a gestão e a auditoria.
+
+### Interface e dados (proposta)
+
+- Novas entidades: paciente, identificador do paciente (CPF, CNS, origem), suspeita/unificação, grade e bloqueio de agenda por profissional e unidade, agendamento, atendimento, evolução e adendo, documento anexado, convênio da rede, acesso de emergência e registro de leitura do prontuário.
+- Paciente pertence ao **cliente (rede)**; atendimento pertence à **unidade**. Contrato vigente: "histórico compartilhável entre unidades autorizadas da mesma rede". A decisão de acesso deste contrato restringe a leitura a quem atende, em qualquer unidade da rede; a visão por unidade é tratada nas questões abertas.
+- Busca de paciente por nome, data de nascimento, CPF ou CNS, mostrando o mínimo necessário para identificar (sem conteúdo clínico).
+- Reaproveitar: auditoria só de inserção, notificações (sem conteúdo clínico), armazenamento privado, padrões de lock e idempotência da V1.
+
+### Não objetivos desta entrega
+
+Prescrição e administração de medicamentos, pedidos e resultados de exames, internação e leitos, urgência e classificação de risco, faturamento e autorização de convênio, assinatura digital ICP-Brasil, portal do paciente, integração com sistemas legados, importação de pacientes e documentos antigos, teleconsulta e aplicativos nativos.
+
+### Decisões complementares do usuário (18/10/2026)
+
+As questões abertas deste contrato foram respondidas; todas as propostas foram aceitas.
+
+| Tema | Decisão |
+|---|---|
+| Prontuário entre unidades | Quem tem atendimento ativo do paciente em qualquer unidade da rede vê o histórico dele em toda a rede |
+| Unificação | Gestor da unidade ou administrador de rede; desfazer é nova decisão, também auditada |
+| Acesso de emergência | Dura 4 horas; o gestor da unidade é notificado e a auditoria registra; renovar exige nova justificativa |
+| Assinatura da evolução | Confirmação com a senha no ato da assinatura, sem ICP-Brasil (limite conhecido) |
+| Retenção e exclusão | Nada clínico é excluído nesta entrega; prazo legal e base de tratamento validados com especialista antes de operação real |
+| Paciente menor ou tutelado | Campo de responsável legal no cadastro; o responsável não acessa nada até o portal (entrega 7) |
+| Agenda | Grade por profissional e unidade com duração fixa por consulta; encaixe permitido pela recepção e marcado como tal |
+| Convênios | Tabela da rede mantida pelo administrador; número da carteira e validade registrados no atendimento |
+| Isolamento no banco (RLS) | Reavaliar a ADR-0002 antes de criar tabelas clínicas |
+| Documentos | PDF, JPG e PNG, até 10 MB por arquivo |
+
+### Encaminhamento ECC
+
+- **Implementação autorizada pelo usuário em 18/10/2026**, uma etapa por vez: plano em `plans/web-v2-ambulatorio.md`.
+- **Esclarecimento de produto:** concluído (decisões complementares acima).
+- **Arquitetura:** RLS nas tabelas clínicas, leitura auditada e documentos por cliente ([ADR-0003](docs/adr/0003-rls-on-clinical-tables.md), aceita pelo usuário).
