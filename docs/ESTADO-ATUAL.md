@@ -58,7 +58,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #32 | Etapa 3.4b: agendamento pela recepção | Mesclado |
 | #33 | Etapa 3.5: chegada, fila do dia e convênios | Mesclado |
 | #34 | Etapa 3.6a: atendimento, evolução e trilha de leitura | Mesclado |
-| — | Etapa 3.6b: acesso de emergência e trilha de acessos (branch `feat/emergency-access`) | Em revisão |
+| #35 | Etapa 3.6b: acesso de emergência e trilha de acessos | Mesclado |
+| — | Etapa 3.7: documentos anexos (branch `feat/clinical-documents`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -120,7 +121,16 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Tela "Acessos ao prontuário" (últimos 30 dias): gestor vê as concessões das suas unidades, administrador de rede as da rede, auditor as concessões e todas as leituras (quem, quando, paciente com CPF mascarado, motivo). Nunca conteúdo clínico.
   - Navegador (1440 e 390 px): pedido com justificativa, prontuário só leitura com o aviso de validade, notificação e trilha para o administrador; sem erro de JavaScript ou 5xx.
   - Revisão de segurança independente (sem IDOR, quebra de isolamento ou desvio de autorização). Corrigido: com atendimento aberto ou concessão válida, novo pedido não cria concessão nem notifica (e o limite é de 3 pedidos a cada 10 minutos); o formulário avisa para não escrever diagnóstico nem sintomas na justificativa, que a gestão e a auditoria leem; a trilha avisa quando a lista foi cortada (200 por bloco); a migration volta e é reaplicada com dados (a trilha só de inserção mantém as leituras antigas). Decisão registrada: gestão e auditoria veem o nome do paciente com CPF mascarado, para saber de quem é o prontuário acessado. Limite conhecido: o horário da concessão vem da aplicação (o banco exige só as 4 horas de validade).
-  - Próxima: **3.7** (documentos anexos).
+- **3.7 (documentos anexos):**
+  - No atendimento aberto, o profissional anexa PDF, JPG ou PNG de até 10 MB. O tipo vem dos **bytes do arquivo** (`finfo`) e precisa bater com a extensão: página HTML salva como .pdf ou PNG renomeado são recusados. (O arquivo falso dos testes do Laravel informa o tipo pela extensão; por isso a verificação não usa a regra `mimetypes`.)
+  - Disco privado, em `clinical/{cliente}/` com nome aleatório; a linha guarda nome original limpo, tipo, tamanho e SHA-256. O banco exige que o caminho esteja sob o prefixo do próprio cliente, recusa apagar e só aceita registrar a retirada, uma vez.
+  - Download só com acesso clínico (atendimento aberto ou emergência válida), sempre como anexo (`nosniff`, CSP `sandbox`, sem cache); cada download vai para a trilha de leitura e para a auditoria (`clinical_document.downloaded`). Documento de outro cliente: 404.
+  - Retirar: só quem anexou, com o atendimento aberto e motivo; o arquivo fica guardado e a lista mostra "Retirado em ... : motivo". Na emergência, a lista é só leitura.
+  - Infraestrutura: PHP aceita 10 MB por arquivo e 12 MB por requisição (`docker/php/uploads.ini`); Nginx 12 MB.
+  - Navegador (1440 e 390 px): PDF pequeno e de 9,9 MB aceitos, HTML disfarçado e arquivo de 11 MB recusados com mensagem, download com nome e tamanho corretos, retirada com motivo; sem erro de JavaScript ou 5xx.
+  - Revisão de segurança independente (sem crítico/alto). Corrigido: retirar só com o atendimento do próprio documento aberto (um atendimento novo não reabre documentos antigos); arquivo ausente no disco dá 404 sem registrar leitura; até 20 documentos por atendimento. Decisões registradas: documento retirado não é baixado por ninguém (o arquivo fica no disco para a auditoria); arquivo poliglota (PDF com conteúdo extra) é aceito porque é sempre entregue como anexo, `nosniff` e `sandbox`. Limite conhecido: se o processo cair entre gravar o arquivo e confirmar a linha, sobra um arquivo sem registro (falhas comuns já o apagam); uma varredura periódica resolve se necessário.
+- **Entrega 3 concluída** com a 3.7 (após o merge). Próximo passo: decisão do usuário sobre a entrega seguinte (plano em `plans/`).
+
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
   - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`). Locks na mesma ordem dos demais fluxos (profissional → plantões por id → pedidos). Corrida real entre revogação e cancelamento do plantão (cliente sintético "Rede Corrida", 12 rodadas nas duas ordens): sem deadlock, um resultado coerente por rodada, um único evento de auditoria por pedido.
@@ -308,7 +318,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 303 testes passando (etapa 3.6b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 308 testes passando (etapa 3.7), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

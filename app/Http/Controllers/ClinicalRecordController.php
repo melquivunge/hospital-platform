@@ -56,6 +56,7 @@ class ClinicalRecordController extends Controller
             'patient' => VisitController::patientHeader($patient),
             'expiresAt' => $grant->expires_at->setTimezone($timezone)->format('d/m/Y H:i'),
             'record' => VisitController::signedRecord(ClinicalAccess::recordIds($patient), $timezone),
+            'documents' => ClinicalDocumentController::listing(ClinicalAccess::recordIds($patient), $timezone, $request->user()->id),
         ]);
     }
 

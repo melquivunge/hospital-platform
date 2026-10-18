@@ -2,6 +2,7 @@ FROM php:8.5-fpm-bookworm AS php-base
 RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev libicu-dev libzip-dev libonig-dev unzip \
     && docker-php-ext-install -j"$(nproc)" pdo_pgsql intl zip mbstring pcntl \
     && rm -rf /var/lib/apt/lists/*
+COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 WORKDIR /var/www/html
 
 FROM php-base AS build
