@@ -45,6 +45,22 @@ class PeopleManagementTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->component('people/index')->has('people', 2));
     }
 
+    public function test_reception_is_granted_per_unit(): void
+    {
+        Notification::fake();
+        $admin = $this->admin();
+        $unit = Unit::factory()->for($admin->tenant)->create();
+
+        $this->actingAs($admin->user)->post(route('people.store'), ['name' => 'Rita Recepção', 'email' => 'rita@example.test', 'role' => 'reception'])
+            ->assertSessionHasErrors('unit_id');
+        $this->post(route('people.store'), ['name' => 'Rita Recepção', 'email' => 'rita@example.test', 'role' => 'reception', 'unit_id' => $unit->id])
+            ->assertSessionHasNoErrors();
+
+        $membership = Membership::where('user_id', User::where('email', 'rita@example.test')->value('id'))->firstOrFail();
+        app(CurrentTenant::class)->set($admin->tenant);
+        $this->assertTrue($membership->hasRole(Role::Reception, $unit->id));
+    }
+
     public function test_inviting_a_new_person_creates_identity_role_and_sends_set_password_link(): void
     {
         Notification::fake();

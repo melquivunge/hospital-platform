@@ -9,7 +9,8 @@ A entrega 3 (PRODUCT.md, "Contrato da entrega 3") traz dados pessoais sensíveis
 ## Decisão
 
 - **RLS forçado (`ENABLE` + `FORCE ROW LEVEL SECURITY`) em toda tabela clínica**, com a política `tenant_id = current_setting('app.tenant_id', true)::bigint`. Sem cliente definido, nenhuma linha é visível ou gravável (fail-closed também no banco).
-- **Dois usuários de banco:** o dono das tabelas, usado só pelas migrations, e o usuário da aplicação e dos workers, sem `BYPASSRLS`, com permissões concedidas por padrão.
+- **Dois papéis de banco:** o dono das tabelas, usado só pelas migrations (`--database=pgsql_owner`), e o papel `app_runtime` (sem superusuário e sem `BYPASSRLS`), que a aplicação e os workers assumem ao abrir a conexão (`server_options` → `-c role=app_runtime`). As permissões vêm de uma migration, inclusive para tabelas futuras.
+- **Implementação na etapa 3.1:** o mesmo login assume o papel. Isso protege contra erro de escopo da aplicação, que é o risco desta ADR, mas uma injeção de SQL poderia voltar ao papel do dono. Na produção, a aplicação deve usar um login próprio, membro só de `app_runtime` (README, checklist de produção).
 - **O cliente vai ao banco junto com o contexto:** `CurrentTenant::set()` também define `app.tenant_id` na conexão; limpar o contexto zera a variável. Requisições, jobs e comandos já passam por esse ponto.
 - **Acesso clínico centralizado:** uma única classe de autorização decide se alguém lê o prontuário (atendimento ativo na rede ou emergência válida). Toda leitura grava um registro numa tabela só de inserção.
 - **Documentos clínicos** ficam no disco privado, sob um prefixo por cliente, e são servidos só depois da autorização clínica.

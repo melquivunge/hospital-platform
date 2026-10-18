@@ -27,6 +27,8 @@ class ResolveTenant
             ?? ($memberships->count() === 1 ? $memberships->first() : null);
 
         if ($selected === null && $mode === 'optional') {
+            app(CurrentTenant::class)->set(null);
+
             return $next($request);
         }
 

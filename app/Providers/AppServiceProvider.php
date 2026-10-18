@@ -4,8 +4,12 @@ namespace App\Providers;
 
 use App\Tenancy\CurrentTenant;
 use Carbon\CarbonImmutable;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -29,6 +33,21 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->ensureSafeProductionConfig();
         $this->configureDefaults();
+        $this->configureDatabaseRole();
+    }
+
+    /**
+     * ADR-0003: the application connection assumes `app_runtime` (config/database.php); migrations run with
+     * `--database=pgsql_owner`. A worker keeps its connection between jobs, so each job starts with no client.
+     */
+    protected function configureDatabaseRole(): void
+    {
+        // An asynchronous job starts and ends with no client; a sync job runs inside the request that
+        // dispatched it and keeps that request's client.
+        $reset = fn (JobProcessing|JobProcessed|JobFailed $event) => $event->connectionName === 'sync' || app(CurrentTenant::class)->set(null);
+        Queue::before($reset);
+        Queue::after($reset);
+        Queue::failing($reset);
     }
 
     /**

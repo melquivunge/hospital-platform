@@ -50,14 +50,22 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #24 | Etapa 9b: relatórios e exportação CSV/PDF | Mesclado |
 | #25 | Etapa 9c: revisão integrada | Mesclado |
 | #26 | Revogação libera plantões futuros | Mesclado |
-| — | Contrato da entrega 3, atendimento ambulatorial (branch `docs/entrega-3-contract`) | Em revisão |
+| #27 | Entrega 3: contrato, ADR-0003 e plano | Em revisão |
+| — | Etapa 3.1: fundação clínica (branch `feat/clinical-foundation`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
 - Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca, PR #19), 8a (presença por localização, PR #20), 8b (ocorrências, PR #21), 9a (notificações e barra superior, PR #22).
-- **Entrega 3 (atendimento ambulatorial) em definição** (18/10/2026, decisão do usuário de seguir a ordem aprovada): contrato no PRODUCT.md, seção "Contrato da entrega 3". Decididos: identidade (CPF/CNS opcionais e únicos, cadastro provisório), unificação manual, prontuário só para quem atende com emergência auditada, recorte (agenda e recepção, atendimento e evolução, documentos, modalidade sem faturamento). Questões abertas respondidas (todas as propostas aceitas), ADR-0003 aceita (RLS nas tabelas clínicas) e plano em `plans/web-v2-ambulatorio.md`. Implementação autorizada, uma etapa por vez; próxima: 3.1, fundação clínica.
+- **Entrega 3 (atendimento ambulatorial) em definição** (18/10/2026, decisão do usuário de seguir a ordem aprovada): contrato no PRODUCT.md, seção "Contrato da entrega 3". Decididos: identidade (CPF/CNS opcionais e únicos, cadastro provisório), unificação manual, prontuário só para quem atende com emergência auditada, recorte (agenda e recepção, atendimento e evolução, documentos, modalidade sem faturamento). Questões abertas respondidas (todas as propostas aceitas), ADR-0003 aceita (RLS nas tabelas clínicas) e plano em `plans/web-v2-ambulatorio.md`. Implementação autorizada, uma etapa por vez.
+- **3.1 (fundação clínica):**
+  - A aplicação e os workers rodam como o papel `app_runtime`, sem superusuário e sem `BYPASSRLS` (`server_options` na conexão `pgsql`); as migrations usam `pgsql_owner`. O papel é criado no init do Docker, no CI e, uma vez, no volume local; as permissões vêm da migration `create_app_runtime_role`.
+  - `CurrentTenant::set()` grava `app.tenant_id` na sessão do banco, e cada job começa sem cliente.
+  - `App\Clinical\ClinicalSchema::protect()` aplica RLS forçado com a política `tenant_isolation`; `ClinicalSchema::TABLES` lista as tabelas clínicas, e um teste exige que a lista e as políticas coincidam.
+  - Prova no banco: uma consulta crua sem escopo da aplicação não vê linhas de outro cliente, nem sem cliente definido, e gravar para outro cliente é recusado.
+  - Papel **Recepção** por unidade.
+  - Verificado: a suíte inteira e as 29 telas rodando como `app_runtime`, além do worker entregando notificações.
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
   - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`). Locks na mesma ordem dos demais fluxos (profissional → plantões por id → pedidos). Corrida real entre revogação e cancelamento do plantão (cliente sintético "Rede Corrida", 12 rodadas nas duas ordens): sem deadlock, um resultado coerente por rodada, um único evento de auditoria por pedido.
@@ -245,7 +253,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 263 testes passando (revogação libera plantões), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 267 testes passando (etapa 3.1), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
