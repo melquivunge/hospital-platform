@@ -7,7 +7,9 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 /**
  * Profile photo of the signed-in user. The browser crops and re-encodes it (which also drops EXIF
@@ -24,6 +26,7 @@ class ProfilePhotoController extends Controller
         return Storage::disk('local')->response($path, null, [
             'Cache-Control' => 'private, max-age=86400',
             'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
         ]);
     }
 
@@ -35,7 +38,17 @@ class ProfilePhotoController extends Controller
 
         $user = $request->user();
         $previous = $user->avatar_path;
-        $user->forceFill(['avatar_path' => $request->file('photo')->store('avatars', 'local')])->save();
+        $path = $request->file('photo')->store('avatars', 'local');
+        if ($path === false) {
+            throw new RuntimeException('Profile photo could not be stored.');
+        }
+        try {
+            $user->forceFill(['avatar_path' => $path])->save();
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete($path);
+
+            throw $exception;
+        }
         if ($previous !== null) {
             Storage::disk('local')->delete($previous);
         }

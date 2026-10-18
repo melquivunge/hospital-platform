@@ -34,7 +34,7 @@ class ProfilePhotoTest extends TestCase
         $first = $user->fresh()->avatar_path;
         Storage::disk('local')->assertExists($first);
         $this->get(route('profile.edit'))->assertInertia(fn (Assert $page) => $page->where('auth.user.avatar', $user->fresh()->avatar)->missing('auth.user.avatar_path'));
-        $this->get(route('profile.photo.show'))->assertOk()->assertHeader('Content-Type', 'image/png')->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->get(route('profile.photo.show'))->assertOk()->assertHeader('Content-Type', 'image/png')->assertHeader('X-Content-Type-Options', 'nosniff')->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox");
 
         $this->post(route('profile.photo.update'), ['photo' => $this->png(96)])->assertSessionHasNoErrors();
         Storage::disk('local')->assertMissing($first);
