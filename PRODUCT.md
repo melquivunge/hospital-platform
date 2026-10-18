@@ -377,24 +377,25 @@ A recepção de uma unidade cadastra o paciente (mesmo sem documento), agenda e 
 
 Prescrição e administração de medicamentos, pedidos e resultados de exames, internação e leitos, urgência e classificação de risco, faturamento e autorização de convênio, assinatura digital ICP-Brasil, portal do paciente, integração com sistemas legados, importação de pacientes e documentos antigos, teleconsulta e aplicativos nativos.
 
-### Questões abertas (bloqueiam a implementação)
+### Decisões complementares do usuário (18/10/2026)
 
-| Questão | Por que importa | Proposta |
-|---|---|---|
-| Quem unifica cadastros e se a unificação pode ser desfeita | Unificação errada mistura históricos | Gestor da unidade ou admin de rede; desfazer como nova decisão auditada |
-| Duração do acesso de emergência e quem é avisado | Equilíbrio entre cuidado urgente e privacidade | 4 horas; aviso à gestão da unidade e registro para a auditoria |
-| Prontuário entre unidades da rede | O contrato prevê histórico compartilhável; a decisão restringe a quem atende | Quem atende em qualquer unidade da rede vê o histórico da rede |
-| Assinatura da evolução | Valor legal do registro | V1 clínica: confirmação com senha no ato (sem ICP-Brasil), marcada como limite conhecido |
-| Retenção e exclusão | Prontuário tem prazo legal de guarda; LGPD exige base legal | Nunca excluir nesta entrega; prazo e base legal validados com especialista antes de operação real |
-| Paciente menor ou tutelado | Responsável legal e contato | Campo de responsável no cadastro; sem acesso do responsável até o portal |
-| Agenda | Duração da consulta, encaixe e limite de encaixes | Grade por profissional com duração fixa; encaixe permitido pela recepção, marcado como tal |
-| Convênios | Lista e campos (número da carteira, plano) | Tabela da rede mantida pelo admin; carteira e validade no atendimento |
-| Isolamento no banco (RLS) | Dados de saúde aumentam o risco de vazamento entre clientes | Reavaliar a ADR-0002 antes de criar tabelas clínicas |
-| Documentos | Tipos e tamanho | PDF, JPG e PNG até 10 MB por arquivo |
+As questões abertas deste contrato foram respondidas; todas as propostas foram aceitas.
+
+| Tema | Decisão |
+|---|---|
+| Prontuário entre unidades | Quem tem atendimento ativo do paciente em qualquer unidade da rede vê o histórico dele em toda a rede |
+| Unificação | Gestor da unidade ou administrador de rede; desfazer é nova decisão, também auditada |
+| Acesso de emergência | Dura 4 horas; o gestor da unidade é notificado e a auditoria registra; renovar exige nova justificativa |
+| Assinatura da evolução | Confirmação com a senha no ato da assinatura, sem ICP-Brasil (limite conhecido) |
+| Retenção e exclusão | Nada clínico é excluído nesta entrega; prazo legal e base de tratamento validados com especialista antes de operação real |
+| Paciente menor ou tutelado | Campo de responsável legal no cadastro; o responsável não acessa nada até o portal (entrega 7) |
+| Agenda | Grade por profissional e unidade com duração fixa por consulta; encaixe permitido pela recepção e marcado como tal |
+| Convênios | Tabela da rede mantida pelo administrador; número da carteira e validade registrados no atendimento |
+| Isolamento no banco (RLS) | Reavaliar a ADR-0002 antes de criar tabelas clínicas |
+| Documentos | PDF, JPG e PNG, até 10 MB por arquivo |
 
 ### Encaminhamento ECC
 
-- **Pronto para implementação: não.**
-- **Precisa de esclarecimento de produto:** as questões abertas acima.
-- **Precisa de revisão de arquitetura:** leitura auditada, armazenamento de documentos clínicos, RLS (ADR-0002) e modelo de paciente da rede com atendimento da unidade.
-- **Próximo passo:** com as questões respondidas, revisão de arquitetura (ADR) e plano em etapas (`plans/web-v2-ambulatorio.md`, via ECC Blueprint/Plan), seguindo a mesma regra da V1: uma etapa por PR, CI verde e revisão.
+- **Implementação autorizada pelo usuário em 18/10/2026**, uma etapa por vez: plano em `plans/web-v2-ambulatorio.md`.
+- **Esclarecimento de produto:** concluído (decisões complementares acima).
+- **Arquitetura:** RLS nas tabelas clínicas, leitura auditada e documentos por cliente ([ADR-0003](docs/adr/0003-rls-on-clinical-tables.md), aceita pelo usuário).
