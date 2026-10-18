@@ -106,6 +106,7 @@ class VisitController extends Controller
             'visit' => ['id' => $visit->id, 'openedAt' => $visit->opened_at->setTimezone($timezone)->format('d/m/Y H:i')],
             'patient' => self::patientHeader($patient),
             'record' => self::signedRecord($ids, $timezone),
+            'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
             // Drafts are seen only by their author.
             'drafts' => self::drafts($visit, $ids, $request->user()->id)->orderBy('id')->get(['id', 'body', 'addendum_of_id'])
                 ->map(fn (ClinicalNote $note) => ['id' => $note->id, 'body' => $note->body, 'addendumOf' => $note->addendum_of_id]),

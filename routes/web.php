@@ -4,6 +4,7 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AttendanceOccurrenceController;
 use App\Http\Controllers\AttendancePointController;
+use App\Http\Controllers\ClinicalDocumentController;
 use App\Http\Controllers\ClinicalRecordController;
 use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
@@ -70,6 +71,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('patients/{patient}/emergency', [ClinicalRecordController::class, 'create'])->name('clinical-record.emergency');
     Route::post('patients/{patient}/emergency', [ClinicalRecordController::class, 'store'])->middleware('throttle:3,10')->name('clinical-record.emergency.store');
     Route::get('clinical-access', [ClinicalRecordController::class, 'accessLog'])->name('clinical-access.index');
+    Route::post('visits/{visit}/documents', [ClinicalDocumentController::class, 'store'])->middleware('throttle:30,1')->name('clinical-documents.store');
+    Route::get('clinical-documents/{document}/download', [ClinicalDocumentController::class, 'download'])->middleware('throttle:60,1')->name('clinical-documents.download');
+    Route::post('clinical-documents/{document}/withdraw', [ClinicalDocumentController::class, 'withdraw'])->middleware('throttle:30,1')->name('clinical-documents.withdraw');
     Route::get('visits', [VisitController::class, 'index'])->name('visits.index');
     Route::post('appointments/{appointment}/visit', [VisitController::class, 'open'])->middleware('throttle:60,1')->name('visits.open');
     Route::get('visits/{visit}', [VisitController::class, 'show'])->name('visits.show');

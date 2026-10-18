@@ -7,6 +7,8 @@ import type {
     SignedNote,
 } from '@/components/clinical-record';
 import { patientDescription, RecordEntry } from '@/components/clinical-record';
+import type { ClinicalDocument } from '@/components/clinical-documents';
+import { ClinicalDocuments } from '@/components/clinical-documents';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
@@ -25,11 +27,13 @@ export default function VisitShow({
     patient,
     record,
     drafts,
+    documents,
 }: {
     visit: { id: number; openedAt: string | null };
     patient: RecordPatient;
     record: RecordNote[];
     drafts: Draft[];
+    documents: ClinicalDocument[];
 }) {
     const { errors } = usePage().props;
     const visitDraft = drafts.some((draft) => draft.addendumOf === null);
@@ -80,6 +84,11 @@ export default function VisitShow({
                         ))}
                         {!visitDraft && <NewNote visitId={visit.id} />}
                     </section>
+
+                    <ClinicalDocuments
+                        documents={documents}
+                        visitId={visit.id}
+                    />
 
                     <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
                         <h2 className="font-semibold">Prontuário</h2>
