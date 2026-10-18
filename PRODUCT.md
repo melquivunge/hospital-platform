@@ -399,3 +399,77 @@ As questões abertas deste contrato foram respondidas; todas as propostas foram 
 - **Implementação autorizada pelo usuário em 18/10/2026**, uma etapa por vez: plano em `plans/web-v2-ambulatorio.md`.
 - **Esclarecimento de produto:** concluído (decisões complementares acima).
 - **Arquitetura:** RLS nas tabelas clínicas, leitura auditada e documentos por cliente ([ADR-0003](docs/adr/0003-rls-on-clinical-tables.md), aceita pelo usuário).
+
+## Contrato da entrega 4 — urgência, internação e leitos
+
+Método: ECC Product Capability. Data: 18/10/2026. Estado: **definição, sem autorização de implementação.** As decisões marcadas como "do usuário" foram tomadas nesta data; o restante é proposta para revisão.
+
+### Capacidade
+
+O paciente chega à urgência de uma unidade, com ou sem cadastro, e é classificado por risco. É atendido no pronto-socorro e pode receber alta ou ser internado. A gestão de leitos aloca um leito. A equipe assistencial registra a evolução durante a internação, o paciente pode mudar de leito, de setor ou de hospital dentro da rede, e recebe alta com sumário. Resultado esperado: um episódio de urgência e internação rastreável de ponta a ponta e um mapa de leitos confiável, base para prescrição e farmácia (entrega 4b), exames e cirurgia (entrega 5) e faturamento (entrega 6).
+
+### Decisões do usuário (18/10/2026)
+
+- **Recorte (jornada primeiro):** a entrega 4 cobre urgência com classificação de risco, internação, leitos, transferência e alta. **Prescrição e farmácia formam a entrega 4b**, também antes de qualquer uso real (o roteiro exige o conjunto coordenado antes de um corte produtivo).
+- **Classificação de risco:** escala própria de **5 níveis** com cores, tempo-alvo de atendimento configurado pela rede e sinais vitais registrados. **Sem fluxogramas licenciados** (o Protocolo de Manchester exige licença).
+- **Leitos:** papel novo **Gestão de leitos**, por unidade (como o núcleo interno de regulação): aloca, transfere e bloqueia leitos. A liberação após a higienização é sinalizada no sistema.
+- **Transferência entre hospitais da mesma rede:** incluída. Transferência para fora da rede fica fora desta entrega.
+
+### Restrições e invariantes
+
+- Tudo o que vale na entrega 3 continua valendo: isolamento por cliente com RLS forçado nas tabelas clínicas ([ADR-0003](docs/adr/0003-rls-on-clinical-tables.md)), acesso clínico centralizado em `ClinicalAccess`, leitura auditada, evolução assinada imutável, nada clínico apagado e nenhum dado clínico em logs, notificações ou URLs.
+- **Um leito, um paciente:** o banco recusa duas ocupações simultâneas do mesmo leito e duas internações ativas do mesmo paciente.
+- **Um paciente internado tem sempre leito e médico responsável**; a troca de qualquer um dos dois é registrada com autor e horário, sem reescrever o histórico.
+- **Movimentação conserva o passado:** cada troca de leito, de setor ou de unidade é um registro novo; o leito anterior entra em higienização.
+- **Classificação não se apaga:** reclassificar gera um novo registro ligado ao anterior; o tempo de espera conta a partir da chegada.
+- Concorrência: duas pessoas alocando o mesmo leito ou internando o mesmo paciente ao mesmo tempo resultam em uma única ocupação, com estado atualizado para a outra (verificado com corrida real, como nas entregas anteriores).
+
+### Atores e superfícies (proposta)
+
+| Ator | Superfície | Limite |
+|---|---|---|
+| Recepção da urgência (papel Recepção existente) | Chegada do paciente, cadastro provisório ou "não identificado" | Não classifica nem vê o prontuário |
+| Classificação de risco (profissional de enfermagem) | Sinais vitais, queixa principal e nível de risco; reclassificação | Vê o prontuário só enquanto classifica (acesso pelo episódio) |
+| Profissional assistente da urgência | Fila por risco e espera, atendimento de urgência (reaproveita o atendimento e a evolução da entrega 3), decisão de alta ou internação | Prontuário pelo episódio ativo |
+| Gestão de leitos (papel novo, por unidade) | Mapa de leitos, alocação, reserva, bloqueio, transferência interna, aceite de transferência vinda de outra unidade | Não vê conteúdo clínico, só o necessário para alocar (nome, sexo, idade, isolamento, setor pedido) |
+| Equipe do setor de internação | Evolução, movimentação solicitada, sumário de alta | Ver questão aberta sobre o acesso na internação |
+| Higienização | Marca o leito como pronto | Só o estado do leito |
+| Gestor da unidade | Configuração de setores, quartos e leitos; indicadores de ocupação sem conteúdo clínico | Não vê prontuário por ser gestor |
+| Administrador de rede | Escala de risco e tempos-alvo da rede | Não vê prontuário por ser administrador |
+
+### Estados e transições (proposta)
+
+- **Episódio de urgência:** chegou → classificado (pode ser reclassificado) → em atendimento → alta da urgência, internação ou transferência. Evasão (saiu sem atendimento) com horário e autor.
+- **Leito:** livre → reservado → ocupado → em higienização → livre. Bloqueado (manutenção ou isolamento, com motivo) sai e volta para livre.
+- **Internação:** solicitada (pelo médico, com setor pedido) → leito alocado → internado → alta. Durante a internação: troca de leito, de setor ou de médico responsável.
+- **Transferência entre unidades:** solicitada → aceita pela gestão de leitos do destino (leito reservado) → saída registrada → recebimento registrado → concluída. Recusa e cancelamento preservam motivo e autoria (máquina já descrita neste documento).
+- **Alta:** tipo (melhora, a pedido, transferência, óbito, evasão) e sumário de alta assinado; o leito vai para higienização.
+
+### Interface e dados (proposta)
+
+- Novas entidades: setor de internação, quarto e leito com atributos (tipo, restrição de sexo, isolamento), estado do leito com histórico, episódio de urgência, classificação de risco (escala da rede, sinais vitais), internação, movimentação, transferência entre unidades, alta e sumário.
+- Reaproveitar: paciente e unificação (3.2–3.3), atendimento, evolução, adendo, documentos e trilha de leitura (3.6–3.7), modalidade e convênio (3.5), notificações internas e auditoria.
+- Tabelas com dados do paciente são clínicas (RLS); a estrutura de leitos (quarto, leito, atributos) não é.
+
+### Não objetivos desta entrega
+
+Prescrição e farmácia (entrega 4b), exames e cirurgia (entrega 5), faturamento e AIH (entrega 6), regulação estadual (CROSS, SISREG), transferência para fora da rede, escores de UTI, integração com monitores e equipamentos, painel de chamada por voz ou TV, assinatura ICP-Brasil, aplicativos nativos.
+
+### Decisões complementares do usuário (18/10/2026)
+
+As questões abertas deste contrato foram respondidas; todas as propostas foram aceitas.
+
+| Tema | Decisão |
+|---|---|
+| Acesso ao prontuário na internação | Médico responsável e equipe assistencial do setor onde o paciente está internado (habilitação aprovada no setor), enquanto ele estiver lá; cada leitura registrada ([ADR-0004](docs/adr/0004-ward-team-record-access.md), proposta) |
+| Paciente não identificado | Cadastro "Não identificado" com sexo, idade aparente e descrição; a identidade vem depois pela unificação manual existente |
+| Compatibilidade do leito | Restrição de sexo ou isolamento avisa e pede justificativa registrada; a gestão de leitos decide, sem bloqueio |
+| Sumário de alta | Obrigatório e assinado para alta por melhora, a pedido e transferência; óbito e evasão com registro de horário e autor (declaração de óbito fora do sistema) |
+| Tempo-alvo estourado | Destaque visual na fila da urgência, sem notificação |
+| Indicadores | Censo diário de leitos por unidade e setor (ocupados, livres, bloqueados, em higienização, taxa de ocupação, tempo médio de internação), sem conteúdo clínico |
+
+### Encaminhamento ECC
+
+- **Esclarecimento de produto:** concluído (decisões complementares acima).
+- **Arquitetura:** reaproveita as ADRs 0001 e 0003; o acesso pela equipe do setor é a [ADR-0004](docs/adr/0004-ward-team-record-access.md), proposta, aguardando aceite.
+- **Plano em etapas:** `plans/web-v3-internacao.md`. **Implementação ainda não autorizada.**

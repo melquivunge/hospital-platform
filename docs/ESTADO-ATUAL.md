@@ -4,7 +4,7 @@ Atualizado em 18/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: etapa 9 (notificações, relatórios e revisão integrada).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: aceite do plano da entrega 4 e da ADR-0004; depois a 3.8 (revisão integrada da entrega 3).
 
 ## Onde está cada coisa
 
@@ -59,7 +59,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #33 | Etapa 3.5: chegada, fila do dia e convênios | Mesclado |
 | #34 | Etapa 3.6a: atendimento, evolução e trilha de leitura | Mesclado |
 | #35 | Etapa 3.6b: acesso de emergência e trilha de acessos | Mesclado |
-| — | Etapa 3.7: documentos anexos (branch `feat/clinical-documents`) | Em revisão |
+| #36 | Etapa 3.7: documentos anexos | Mesclado |
+| — | Entrega 4: contrato, ADR-0004 e plano (branch `docs/entrega-4-contrato`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -129,7 +130,8 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Infraestrutura: PHP aceita 10 MB por arquivo e 12 MB por requisição (`docker/php/uploads.ini`); Nginx 12 MB.
   - Navegador (1440 e 390 px): PDF pequeno e de 9,9 MB aceitos, HTML disfarçado e arquivo de 11 MB recusados com mensagem, download com nome e tamanho corretos, retirada com motivo; sem erro de JavaScript ou 5xx.
   - Revisão de segurança independente (sem crítico/alto). Corrigido: retirar só com o atendimento do próprio documento aberto (um atendimento novo não reabre documentos antigos); arquivo ausente no disco dá 404 sem registrar leitura; até 20 documentos por atendimento. Decisões registradas: documento retirado não é baixado por ninguém (o arquivo fica no disco para a auditoria); arquivo poliglota (PDF com conteúdo extra) é aceito porque é sempre entregue como anexo, `nosniff` e `sandbox`. Limite conhecido: se o processo cair entre gravar o arquivo e confirmar a linha, sobra um arquivo sem registro (falhas comuns já o apagam); uma varredura periódica resolve se necessário.
-- **Entrega 3 concluída** com a 3.7 (após o merge). Próximo passo: decisão do usuário sobre a entrega seguinte (plano em `plans/`).
+- **Entrega 3:** etapas 3.1 a 3.7 mescladas (#28 a #36). **Falta a 3.8 (revisão integrada)**, prevista no plano da entrega 3 e esquecida no fechamento; entrou como primeira tarefa do plano da entrega 4.
+- **Entrega 4 (urgência, internação e leitos) em definição** (18/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4". Decisões do usuário: jornada primeiro (prescrição e farmácia na entrega 4b), escala de risco própria de 5 níveis (sem Manchester), papel Gestão de leitos, transferência dentro da rede; acesso na internação pelo médico responsável e pela equipe do setor ([ADR-0004](adr/0004-ward-team-record-access.md), proposta); "Não identificado" unificável depois; compatibilidade do leito com aviso e justificativa; sumário de alta obrigatório exceto óbito e evasão; tempo-alvo com destaque visual; censo diário. Plano em `plans/web-v3-internacao.md` (3.8, depois 4.1 a 4.8). **Implementação não autorizada ainda**; falta o aceite da ADR-0004 e do plano.
 
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
