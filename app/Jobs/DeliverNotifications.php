@@ -25,7 +25,7 @@ class DeliverNotifications implements ShouldQueue
 
     /** Actions that notify someone; the rest only advance the cursor. */
     private const ACTIONS = [
-        'shift.published', 'shift.cancelled', 'shift.assigned', 'shift.application_created',
+        'shift.published', 'shift.cancelled', 'shift.vacated', 'shift.assigned', 'shift.application_created',
         'shift.transfer_requested', 'shift.transfer_accepted', 'shift.transferred', 'shift.transfer_refused',
         'shift.transfer_rejected', 'shift.transfer_cancelled', 'shift.transfer_expired',
         'shift.swap_requested', 'shift.swap_accepted', 'shift.swapped', 'shift.swap_refused',
@@ -108,6 +108,7 @@ class DeliverNotifications implements ShouldQueue
                 [$holder($context['professional_id'] ?? null), 'Você foi escolhido para um plantão', '/my-shifts'],
                 [$holder($context['replaced_professional_id'] ?? null), 'Seu plantão anunciado foi assumido por um substituto', '/my-shifts'],
             ],
+            $event->action === 'shift.vacated' => [[$this->coordinatorsOf($tenant, $shift->unit_id), 'Plantão voltou a ser vaga: acesso do profissional revogado', $shiftUrl]],
             $event->action === 'shift.application_created' => [[$this->coordinatorsOf($tenant, $shift->unit_id), 'Nova candidatura a uma vaga', $shiftUrl]],
             in_array($event->action, ['shift.transfer_requested', 'shift.swap_requested'], true) => [[$holder($context['to'] ?? null), "Você recebeu um pedido de {$kind}", '/requests']],
             in_array($event->action, ['shift.transfer_accepted', 'shift.swap_accepted'], true) => [[$this->coordinatorsOf($tenant, $shift->unit_id, $context['request_id'] ?? null), ucfirst($kind).' aguardando aprovação', '/requests']],

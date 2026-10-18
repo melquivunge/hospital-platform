@@ -8,9 +8,11 @@ use App\Scheduling\ApplicationStatus;
 use App\Scheduling\RequestStatus;
 use App\Scheduling\ShiftStatus;
 use App\Tenancy\BelongsToTenant;
+use App\Tenancy\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -1054,6 +1056,64 @@ class Shift extends Model
         }
 
         return $eligibility;
+    }
+
+    /**
+     * Access revoked or account deactivated (user decision, 18/10/2026): the professional's future shifts
+     * go back to being vacancies, announcements and pending requests close, and the professional's active
+     * applications are withdrawn. Shifts with a check-in or already begun stay as they are. Runs inside the
+     * caller's transaction and filters by tenant explicitly (a deactivation spans every client).
+     */
+    public static function vacateFor(Membership $membership): void
+    {
+        // Runs in the membership's client so every tenant-scoped relation (check-ins, applications) sees
+        // its rows; a deactivation spans several clients from outside any of them.
+        $context = app(CurrentTenant::class);
+        $previous = $context->get();
+        $context->set($membership->tenant);
+
+        try {
+            $professional = Professional::query()->where('membership_id', $membership->id)->lockForUpdate()->first();
+            if ($professional === null) {
+                return;
+            }
+
+            $reason = 'Acesso do profissional revogado.';
+            $involving = fn () => ShiftRequest::query()->whereIn('status', RequestStatus::pending())
+                ->where(fn (Builder $query) => $query->where('requester_professional_id', $professional->id)->orWhere('recipient_professional_id', $professional->id));
+
+            // Same order as every other flow: professional, then shifts by id, then requests.
+            $own = self::query()->where('professional_id', $professional->id)
+                ->whereIn('status', [ShiftStatus::Draft, ShiftStatus::Published])->where('starts_at', '>', now())->pluck('id');
+            $related = $involving()->get(['shift_id', 'counterpart_shift_id'])->flatMap(fn (ShiftRequest $request) => [$request->shift_id, $request->counterpart_shift_id]);
+            self::query()->whereKey($own->merge($related)->filter()->unique()->values()->all())->orderBy('id')->lockForUpdate()->get();
+
+            foreach ($involving()->orderBy('id')->lockForUpdate()->get() as $request) {
+                $request->forceFill(['status' => RequestStatus::Cancelled, 'decided_at' => now(), 'decided_by_user_id' => Auth::id(), 'decision_reason' => $reason])->save();
+                AuditEvent::record("shift.{$request->type}_cancelled", $request->tenant_id, $request->shift, ['request_id' => $request->id, 'reason' => $reason]);
+            }
+
+            ShiftApplication::query()->where('professional_id', $professional->id)->where('status', ApplicationStatus::Active)
+                ->update(['status' => ApplicationStatus::Withdrawn, 'withdrawn_at' => now()]);
+
+            // Re-read under the locks: a shift may have changed hands or been cancelled meanwhile.
+            $shifts = self::query()->whereKey($own->all())->where('professional_id', $professional->id)
+                ->whereIn('status', [ShiftStatus::Draft, ShiftStatus::Published])->where('starts_at', '>', now())
+                ->orderBy('id')->get();
+            foreach ($shifts as $shift) {
+                // Presence already started (entry window before the start): the shift stays with them.
+                if ($shift->hasCheckIn()) {
+                    continue;
+                }
+                $shift->forceFill(['professional_id' => null, 'announced_at' => null, 'eligibility_version' => null, 'qualification_id' => null])->save();
+                $shift->applications()->where('status', ApplicationStatus::Active)
+                    ->update(['status' => ApplicationStatus::NotSelected, 'decided_at' => now(), 'decided_by_user_id' => Auth::id()]);
+                $shift->applications()->where('status', ApplicationStatus::Selected)->update(['status' => ApplicationStatus::Replaced]);
+                AuditEvent::record('shift.vacated', $shift->tenant_id, $shift, ['professional_id' => $professional->id, 'reason' => $reason]);
+            }
+        } finally {
+            $context->set($previous);
+        }
     }
 
     /**

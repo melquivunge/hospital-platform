@@ -153,7 +153,7 @@ export default function PersonShow({
                         </h2>
                         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                             {person.active
-                                ? 'Revogar remove o acesso a esta instituição no próximo clique da pessoa. O histórico é preservado.'
+                                ? 'Revogar remove o acesso a esta instituição no próximo clique da pessoa. Se for profissional, os plantões futuros dela voltam a ser vaga e os pedidos em andamento são cancelados. O histórico é preservado.'
                                 : 'Reativar devolve o acesso com os papéis que a pessoa já tinha.'}
                         </p>
                         <Form

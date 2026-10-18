@@ -179,7 +179,8 @@ class VacancyTest extends TestCase
         $this->anaAccess->revoke();
 
         $this->actingAs($this->coordinator->user)->post(route('shift-applications.select', $this->application($this->ana)), ['reason' => 'Motivo'])
-            ->assertSessionHasErrors(['application' => 'Este candidato perdeu o acesso à plataforma e não pode ser escolhido.']);
+            ->assertSessionHasErrors(['application' => 'Esta candidatura não está mais ativa. Recarregue a página.']);
+        $this->assertSame(ApplicationStatus::Withdrawn, $this->application($this->ana)->status);
         $this->assertNull($this->vacancy->fresh()?->professional_id);
     }
 
