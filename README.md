@@ -41,6 +41,22 @@ Obrigatório antes de qualquer ambiente com dados reais. A aplicação recusa in
 - Credenciais de banco e e-mail exclusivas do ambiente, guardadas fora do repositório; backup e restauração testados.
 - Cabeçalhos de segurança (CSP, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) presentes na resposta final, mesmo atrás de proxy/CDN. Ao alterar o script inline de tema em `resources/views/app.blade.php`, atualizar o hash em `docker/nginx/default.conf`; `SecurityConfigTest` falha se divergirem.
 
+### Limites conhecidos da V1 (revisão integrada, etapa 9c)
+
+Pendentes antes de operação real, além do checklist acima:
+
+- **Processos:** o worker da fila precisa rodar sempre (notificações e importações). Sem ele, nada se perde, mas as notificações atrasam até ele voltar.
+- **Backup:** banco e disco privado (`storage/app/private`: arquivos de importação e fotos de perfil) precisam de backup e restauração conjuntos.
+- **Presença:** teste em aparelho físico via HTTPS e política de retenção de coordenadas (decisão de produto pendente no PRODUCT.md).
+- **Fotos de perfil:** hoje são entregues só ao dono. Antes de mostrá-las a colegas, reprocessar a imagem no servidor (instalar GD ou Imagick), porque hoje só o navegador remove metadados.
+- **Relatórios:** o PDF é gerado na hora e limitado a 2.000 linhas; acima disso, usar CSV ou passar para exportação em fila.
+- **Notificações:** um único cursor serializa as entregas de todos os clientes; particionar por cliente se o volume exigir.
+- **Isolamento:** sem RLS no PostgreSQL ([ADR-0002](docs/adr/0002-no-postgres-rls-in-v1.md)); reavaliar antes da produção.
+- **Repositório:** proteção remota da `main` inativa (exige plano pago do GitHub); hoje só os hooks locais protegem.
+- **Idioma:** o conteúdo das telas de segurança e aparência e o e-mail de redefinição de senha ainda estão em inglês.
+- **Revogação de acesso:** não tira a pessoa dos plantões futuros já atribuídos (decisão de produto pendente); pedidos e escolhas em andamento já são barrados.
+- **Capacidade:** sem metas de disponibilidade, recuperação, tempo de resposta e volume; nenhuma garantia de escala foi validada.
+
 ## Verificações
 
 O CI executa testes PHP com PostgreSQL descartável, Pint, PHPStan, TypeScript, lint/formatação, build, auditorias de dependências e smoke test dos containers. As credenciais do serviço de teste em CI são descartáveis, sem relação com ambientes reais.

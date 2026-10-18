@@ -173,6 +173,16 @@ class VacancyTest extends TestCase
         $this->assertSame(ApplicationStatus::Active, $this->application($this->bruno)->status);
     }
 
+    public function test_a_candidate_whose_access_was_revoked_is_not_selected(): void
+    {
+        $this->actingAs($this->anaAccess->user)->post(route('vacancies.apply', $this->vacancy))->assertSessionHasNoErrors();
+        $this->anaAccess->revoke();
+
+        $this->actingAs($this->coordinator->user)->post(route('shift-applications.select', $this->application($this->ana)), ['reason' => 'Motivo'])
+            ->assertSessionHasErrors(['application' => 'Este candidato perdeu o acesso à plataforma e não pode ser escolhido.']);
+        $this->assertNull($this->vacancy->fresh()?->professional_id);
+    }
+
     public function test_selection_rejects_a_conflicting_shift(): void
     {
         $this->actingAs($this->anaAccess->user)->post(route('vacancies.apply', $this->vacancy));
