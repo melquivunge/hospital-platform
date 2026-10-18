@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade e escala com publicação segura, com identidade visual própria. Próximo passo: etapa 4b (agenda diária/semanal/mensal e eventos para notificação).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade e escala (publicação segura, agenda diária/semanal/mensal), com identidade visual própria. Próximo passo: etapa 5 (importação de CSV) ou 6 (vagas e candidaturas).
 
 ## Onde está cada coisa
 
@@ -34,14 +34,15 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #8 | Etapa 2c: catálogo de regras e ADR do RLS | Mesclado |
 | #9 | Etapa 3a: cadastro de profissionais e unidade-base | Mesclado |
 | #10 | Etapa 3b: funções, habilitações e elegibilidade | Mesclado |
-| — | Etapa 4a: plantões, publicação e cancelamento (branch `feat/shifts`) | Em revisão |
+| #11 | Etapa 4a: plantões, publicação e cancelamento | Mesclado |
+| — | Etapa 4b: agenda diária, semanal e mensal (branch `feat/schedule-calendar`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala).
-- **Próximo: etapa 4b** (agenda diária/semanal/mensal e eventos/outbox para notificações), e depois as etapas 5 a 9 (importação, vagas, trocas, presença, relatórios).
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda).
+- **Próximo:** etapas 5 a 9 (importação, vagas, trocas, presença, relatórios). Pelo plano, 5 e 6 podem seguir em qualquer ordem depois da 4.
 
 ### Etapa 4a: decisões do usuário (17/10/2026) e como funciona
 
@@ -52,6 +53,18 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
 - **Plantão já iniciado:** não pode ser criado, editado nem publicado (padrão conservador; registrado como decisão técnica).
 - **Horários:** digitados no fuso da unidade e guardados em UTC. Horário inexistente no fuso é rejeitado. A lista é semanal, por unidade.
 - **Limite de duração:** não há duração máxima de plantão; o limite precisa ser definido pelo produto.
+- **4b (agenda):** visões de dia, semana e mês na tela "Escala", no fuso da unidade.
+  - A visão de dia lista também os plantões iniciados na véspera que terminam nesse dia (V1-05).
+  - O mês é uma grade no computador e uma lista no celular.
+- **Itens das fotos de referência** (references/insightcare-screenshots, IMG_0911 a 0917), escolhidos pelo usuário em 17/10/2026:
+  - **Faixa de dias no celular:** com ponto nos dias em que começa algum plantão.
+  - **Filtro de vagas:** "Mostrar também vagas abertas".
+  - **Busca de profissional:** por nome ou registro no conselho.
+  - **Turno:** calculado pelo início, no horário da unidade. Diurno de 07:00 a 18:59, noturno nos demais (decisão do usuário).
+  - **Valor:** opcional, em R$ (`value_cents`), visível a quem consulta a escala: coordenador, gestor, admin e auditor (decisão do usuário).
+  - **Fora desta etapa:** colegas de plantão, menu de troca/ceder/check-in e "meus plantões" dependem das etapas 6 a 8 e da conta do profissional.
+- **Eventos para notificação:** não há tabela de outbox separada. Os eventos `shift.published` e `shift.cancelled` já são gravados em `audit_events`, só de inserção, na mesma transação da mudança. A etapa 9 deve consumi-los com um cursor de entrega e deduplicação, e criar a tabela própria só se o consumo exigir.
+- **Visão "meus plantões" do profissional:** depende de ligar o cadastro do profissional a uma conta de acesso, que ainda não existe.
 
 ### Etapa 3: decisões do usuário (17/10/2026)
 

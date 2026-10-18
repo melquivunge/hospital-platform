@@ -191,6 +191,26 @@ class ShiftManagementTest extends TestCase
         $this->assertSame($this->qualification->id, $shift->fresh()?->qualification_id);
     }
 
+    public function test_value_period_markers_and_registration_are_shown(): void
+    {
+        $this->professional->update(['council' => 'CRM', 'council_number' => '12345', 'council_uf' => 'SP']);
+        $this->createShift(['value' => '300,50'])->assertSessionHasNoErrors();
+        $this->createShift(['starts_at' => '2026-11-12T07:00', 'ends_at' => '2026-11-12T19:00', 'value' => '1.5x'])->assertSessionHasErrors('value');
+        $this->createShift(['starts_at' => '2026-11-12T07:00', 'ends_at' => '2026-11-12T19:00', 'professional_id' => ''])->assertSessionHasNoErrors();
+
+        $this->assertSame(30050, Shift::withoutTenantScope()->orderBy('id')->value('value_cents'));
+
+        $this->get(route('shifts.index', ['unit' => $this->unit->id, 'view' => 'day', 'date' => '2026-11-10']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('shifts.0.valueCents', 30050)
+                ->where('shifts.0.period', 'day')
+                ->where('weekFrom', '2026-11-09')
+                ->where('markers', ['2026-11-10', '2026-11-12']));
+
+        $this->get(route('units.shifts.create', $this->unit))
+            ->assertInertia(fn (Assert $page) => $page->where('professionals.0.registration', 'CRM 12345/SP'));
+    }
+
     public function test_open_vacancy_can_be_published(): void
     {
         $this->createShift(['professional_id' => ''])->assertSessionHasNoErrors();
@@ -249,14 +269,31 @@ class ShiftManagementTest extends TestCase
     {
         $this->createShift(['starts_at' => '2026-11-10T19:00', 'ends_at' => '2026-11-11T07:00']);
 
-        $this->get(route('shifts.index', ['unit' => $this->unit->id, 'week' => '2026-11-12']))
+        $this->get(route('shifts.index', ['unit' => $this->unit->id, 'date' => '2026-11-12']))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('week', '2026-11-09')
+                ->where('view', 'week')
+                ->where('from', '2026-11-09')
+                ->where('to', '2026-11-15')
                 ->has('shifts', 1)
                 ->where('shifts.0.date', '2026-11-10')
                 ->where('shifts.0.start', '19:00')
                 ->where('shifts.0.endDate', '2026-11-11')
                 ->where('shifts.0.professional', 'Ana Sintética')
+                ->where('shifts.0.period', 'night')
                 ->where('canManage', true));
+
+        // Day view of the 11th still lists the night shift that started on the 10th.
+        $this->get(route('shifts.index', ['unit' => $this->unit->id, 'view' => 'day', 'date' => '2026-11-11']))
+            ->assertInertia(fn (Assert $page) => $page->where('from', '2026-11-11')->where('to', '2026-11-11')->has('shifts', 1));
+        $this->get(route('shifts.index', ['unit' => $this->unit->id, 'view' => 'day', 'date' => '2026-11-12']))
+            ->assertInertia(fn (Assert $page) => $page->has('shifts', 0));
+
+        // Sunday night into Monday: listed in the following week too.
+        $this->createShift(['starts_at' => '2026-11-15T19:00', 'ends_at' => '2026-11-16T07:00']);
+        $this->get(route('shifts.index', ['unit' => $this->unit->id, 'date' => '2026-11-16']))
+            ->assertInertia(fn (Assert $page) => $page->where('from', '2026-11-16')->has('shifts', 1)->where('shifts.0.date', '2026-11-15'));
+
+        $this->get(route('shifts.index', ['unit' => $this->unit->id, 'view' => 'month', 'date' => '2026-11-20']))
+            ->assertInertia(fn (Assert $page) => $page->where('from', '2026-11-01')->where('to', '2026-11-30')->has('shifts', 2));
     }
 }

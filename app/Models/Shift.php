@@ -37,8 +37,9 @@ use Illuminate\Validation\ValidationException;
  * @property int|null $cancelled_by_user_id
  * @property string|null $cancel_reason
  * @property int $created_by_user_id
+ * @property int|null $value_cents
  */
-#[Fillable(['unit_id', 'sector_id', 'job_function_id', 'professional_id', 'starts_at', 'ends_at', 'status', 'created_by_user_id'])]
+#[Fillable(['unit_id', 'sector_id', 'job_function_id', 'professional_id', 'starts_at', 'ends_at', 'value_cents', 'status', 'created_by_user_id'])]
 class Shift extends Model
 {
     use BelongsToTenant;
@@ -58,6 +59,7 @@ class Shift extends Model
             'sector_id' => 'integer',
             'job_function_id' => 'integer',
             'professional_id' => 'integer',
+            'value_cents' => 'integer',
         ];
     }
 
@@ -94,7 +96,7 @@ class Shift extends Model
     }
 
     /**
-     * @param  array{sector_id: int, job_function_id: int, professional_id: int|null, starts_at: CarbonInterface, ends_at: CarbonInterface}  $data
+     * @param  array{sector_id: int, job_function_id: int, professional_id: int|null, starts_at: CarbonInterface, ends_at: CarbonInterface, value_cents?: int|null}  $data
      */
     public static function createDraft(Unit $unit, array $data): self
     {
@@ -110,7 +112,7 @@ class Shift extends Model
     }
 
     /**
-     * @param  array{sector_id: int, job_function_id: int, professional_id: int|null, starts_at: CarbonInterface, ends_at: CarbonInterface}  $data
+     * @param  array{sector_id: int, job_function_id: int, professional_id: int|null, starts_at: CarbonInterface, ends_at: CarbonInterface, value_cents?: int|null}  $data
      */
     public function updateDraft(array $data): void
     {
@@ -194,7 +196,7 @@ class Shift extends Model
     }
 
     /**
-     * @param  array{sector_id: int, job_function_id: int, professional_id: int|null, starts_at: CarbonInterface, ends_at: CarbonInterface}  $data
+     * @param  array{sector_id: int, job_function_id: int, professional_id: int|null, starts_at: CarbonInterface, ends_at: CarbonInterface, value_cents?: int|null}  $data
      */
     private static function assertAssignable(array $data): ?Eligibility
     {

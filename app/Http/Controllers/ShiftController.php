@@ -21,7 +21,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Schedule of a unit (step 4a): weekly list, drafts, publication and cancellation. Times are typed and
+ * Schedule of a unit (step 4): day/week/month views, drafts, publication and cancellation. Times are typed and
  * shown in the unit's timezone and stored in UTC.
  */
 class ShiftController extends Controller
@@ -41,26 +41,43 @@ class ShiftController extends Controller
         $unit = $units->firstWhere('id', $request->integer('unit')) ?? $units->first();
 
         if ($unit === null) {
-            return Inertia::render('shifts/index', ['units' => [], 'unit' => null, 'week' => null, 'shifts' => [], 'canManage' => false]);
+            return Inertia::render('shifts/index', ['units' => [], 'unit' => null, 'view' => 'week', 'from' => null, 'to' => null, 'weekFrom' => null, 'markers' => [], 'shifts' => [], 'canManage' => false]);
         }
 
         $timezone = $unit->timezone ?? 'UTC';
-        $week = self::weekStart($request->string('week')->value(), $timezone);
+        $view = in_array($request->string('view')->value(), ['day', 'week', 'month'], true) ? $request->string('view')->value() : 'week';
+        [$from, $to] = self::range($view, $request->string('date')->value(), $timezone);
 
+        // Overlap, not start: a shift crossing midnight stays visible on the day it ends (V1-05).
         $shifts = Shift::query()
             ->where('unit_id', $unit->id)
-            ->where('starts_at', '<', $week->addWeek()->utc())
-            ->where('ends_at', '>', $week->utc())
+            ->where('starts_at', '<', $to->utc())
+            ->where('ends_at', '>', $from->utc())
             ->with(['sector:id,name', 'jobFunction:id,name', 'professional:id,name'])
             ->orderBy('starts_at')
             ->orderBy('id')
             ->get()
             ->map(fn (Shift $shift) => self::summary($shift, $timezone));
 
+        // Local days of the surrounding week that have shifts: dots on the phone day strip.
+        $weekFrom = $from->startOfWeek(CarbonImmutable::MONDAY);
+        $markers = Shift::query()
+            ->where('unit_id', $unit->id)
+            ->where('starts_at', '<', $weekFrom->addWeek()->utc())
+            ->where('starts_at', '>=', $weekFrom->utc())
+            ->pluck('starts_at')
+            ->map(fn (CarbonImmutable $start) => $start->setTimezone($timezone)->toDateString())
+            ->unique()
+            ->values();
+
         return Inertia::render('shifts/index', [
+            'weekFrom' => $weekFrom->toDateString(),
+            'markers' => $markers,
             'units' => $units->map->only('id', 'name')->values(),
             'unit' => [...$unit->only('id', 'name', 'timezone'), 'complete' => $unit->isComplete()],
-            'week' => $week->toDateString(),
+            'view' => $view,
+            'from' => $from->toDateString(),
+            'to' => $to->subDay()->toDateString(),
             'shifts' => $shifts,
             'canManage' => Gate::allows('manage', [Shift::class, $unit]),
         ]);
@@ -119,6 +136,7 @@ class ShiftController extends Controller
                 'professional_id' => $shift->professional_id,
                 'starts_at' => $shift->starts_at->setTimezone($timezone)->format('Y-m-d\TH:i'),
                 'ends_at' => $shift->ends_at->setTimezone($timezone)->format('Y-m-d\TH:i'),
+                'value' => $shift->value_cents === null ? null : number_format($shift->value_cents / 100, 2, ',', ''),
             ],
             ...self::formOptions($unit),
         ]);
@@ -157,15 +175,22 @@ class ShiftController extends Controller
     }
 
     /**
-     * Local Monday of the requested week (or the current one) in the unit's timezone.
+     * Local [from, to) of the day, week (Monday) or month containing $date (default: today) in the unit's timezone.
+     *
+     * @return array{CarbonImmutable, CarbonImmutable}
      */
-    private static function weekStart(string $date, string $timezone): CarbonImmutable
+    private static function range(string $view, string $date, string $timezone): array
     {
         $day = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1
             ? CarbonImmutable::createFromFormat('!Y-m-d', $date, $timezone)
             : null;
+        $day = ($day ?: CarbonImmutable::now($timezone))->startOfDay();
 
-        return ($day ?: CarbonImmutable::now($timezone))->startOfWeek(CarbonImmutable::MONDAY)->startOfDay();
+        return match ($view) {
+            'day' => [$day, $day->addDay()],
+            'month' => [$day->startOfMonth(), $day->startOfMonth()->addMonth()],
+            default => [$day->startOfWeek(CarbonImmutable::MONDAY), $day->startOfWeek(CarbonImmutable::MONDAY)->addWeek()],
+        };
     }
 
     /**
@@ -186,6 +211,9 @@ class ShiftController extends Controller
             'function' => $shift->jobFunction?->name,
             'professional' => $shift->professional?->name,
             'status' => $shift->status->value,
+            // User decision (17/10/2026): day shift starts 07:00–18:59 local, night otherwise.
+            'period' => $start->hour >= 7 && $start->hour < 19 ? 'day' : 'night',
+            'valueCents' => $shift->value_cents,
         ];
     }
 
@@ -198,7 +226,12 @@ class ShiftController extends Controller
         $professionals = Professional::query()
             ->whereHas('qualifications', fn (Builder $query) => $query->where('unit_id', $unit->id)->where('status', '<>', QualificationStatus::Revoked))
             ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'council', 'council_number', 'council_uf'])
+            ->map(fn (Professional $professional) => [
+                'id' => $professional->id,
+                'name' => $professional->name,
+                'registration' => $professional->council === null ? null : "{$professional->council} {$professional->council_number}/{$professional->council_uf}",
+            ]);
 
         return [
             'unit' => [...$unit->only('id', 'name', 'timezone'), 'complete' => $unit->isComplete()],
@@ -209,7 +242,7 @@ class ShiftController extends Controller
     }
 
     /**
-     * @return array{sector_id: int, job_function_id: int, professional_id: int|null, starts_at: CarbonImmutable, ends_at: CarbonImmutable}
+     * @return array{sector_id: int, job_function_id: int, professional_id: int|null, starts_at: CarbonImmutable, ends_at: CarbonImmutable, value_cents: int|null}
      */
     private static function validated(Request $request, Unit $unit): array
     {
@@ -230,7 +263,9 @@ class ShiftController extends Controller
             'professional_id' => ['bail', 'nullable', 'integer', $exists(Professional::query())],
             'starts_at' => ['required', 'date_format:Y-m-d\TH:i'],
             'ends_at' => ['required', 'date_format:Y-m-d\TH:i'],
-        ], attributes: ['sector_id' => 'setor', 'job_function_id' => 'função', 'professional_id' => 'profissional', 'starts_at' => 'início', 'ends_at' => 'fim']);
+            // Reais with up to two decimals, comma or dot ("300", "300,50").
+            'value' => ['nullable', 'string', 'regex:/^\d{1,7}([.,]\d{1,2})?$/'],
+        ], attributes: ['sector_id' => 'setor', 'job_function_id' => 'função', 'professional_id' => 'profissional', 'starts_at' => 'início', 'ends_at' => 'fim', 'value' => 'valor']);
 
         $timezone = (string) $unit->timezone;
 
@@ -240,6 +275,7 @@ class ShiftController extends Controller
             'professional_id' => $request->filled('professional_id') ? $request->integer('professional_id') : null,
             'starts_at' => self::local('starts_at', $request->string('starts_at')->value(), $timezone),
             'ends_at' => self::local('ends_at', $request->string('ends_at')->value(), $timezone),
+            'value_cents' => $request->filled('value') ? (int) round((float) str_replace(',', '.', $request->string('value')->value()) * 100) : null,
         ];
     }
 
