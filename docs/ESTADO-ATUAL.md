@@ -73,6 +73,7 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Possível duplicado (mesmo nascimento e mesmo nome, ou mesmos primeiro e último nome): o cadastro é recusado com a lista de parecidos, sem o nome em nenhuma URL, até a pessoa confirmar que é outra; a confirmação fica na auditoria.
   - A auditoria registra criação e alteração com os **nomes** dos campos alterados, nunca os valores. `patients` é tabela clínica com RLS forçado.
   - Gestor e administrador não veem pacientes por serem gestores (a unificação, na 3.3, terá tela própria).
+  - Revisão de segurança aplicada: a busca vai por **POST** (`patients/search`), então nome, CPF e data não entram em URL, logs ou histórico. Termos sem uma palavra de 3 letras, documento completo ou data válida não encontram ninguém, e há limite de 30 por minuto na busca e nas gravações. O histórico do Inertia é criptografado nas páginas de paciente e limpo no logout.
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
   - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`). Locks na mesma ordem dos demais fluxos (profissional → plantões por id → pedidos). Corrida real entre revogação e cancelamento do plantão (cliente sintético "Rede Corrida", 12 rodadas nas duas ordens): sem deadlock, um resultado coerente por rodada, um único evento de auditoria por pedido.
@@ -260,7 +261,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 272 testes passando (etapa 3.2), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 273 testes passando (etapa 3.2), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

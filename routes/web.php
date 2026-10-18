@@ -52,7 +52,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('units/{unit}/attendance-points', [AttendancePointController::class, 'store'])->name('units.attendance-points.store');
     Route::post('shifts/{shift}/occurrences', [AttendanceOccurrenceController::class, 'store'])->middleware('throttle:20,1')->name('shifts.occurrences.store');
     Route::post('occurrences/{occurrence}/decide', [AttendanceOccurrenceController::class, 'decide'])->name('occurrences.decide');
-    Route::resource('patients', PatientController::class)->except('destroy');
+    Route::post('patients/search', [PatientController::class, 'search'])->middleware('throttle:30,1')->name('patients.search');
+    Route::get('patients/search', fn () => to_route('patients.index'));
+    Route::resource('patients', PatientController::class)->except('destroy')->middlewareFor(['store', 'update'], 'throttle:30,1');
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('reports/schedule.{format}', [ReportController::class, 'schedule'])->whereIn('format', ['csv', 'pdf'])->middleware('throttle:20,1')->name('reports.schedule');
     Route::get('reports/attendance.{format}', [ReportController::class, 'attendance'])->whereIn('format', ['csv', 'pdf'])->middleware('throttle:20,1')->name('reports.attendance');

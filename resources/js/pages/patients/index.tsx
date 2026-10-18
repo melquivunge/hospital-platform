@@ -9,20 +9,20 @@ import {
 } from '@/components/patient-display';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { create, index, show } from '@/routes/patients';
+import { create, index, search, show } from '@/routes/patients';
 
 /** Patient search (step 3.2): the registry is searched, never listed whole. */
 export default function PatientsIndex({
     q,
+    searched,
     patients,
     canCreate,
 }: {
     q: string;
+    searched: boolean;
     patients: PatientSummary[];
     canCreate: boolean;
 }) {
-    const searched = q.trim().length >= 3;
-
     return (
         <>
             <Head title="Pacientes" />
@@ -43,9 +43,10 @@ export default function PatientsIndex({
                     }
                 />
 
+                {/* POST: names and documents never go into the URL, logs or history. */}
                 <Form
-                    action={index().url}
-                    method="get"
+                    action={search().url}
+                    method="post"
                     options={{ preserveScroll: true }}
                     className="mb-6"
                     role="search"
@@ -63,7 +64,6 @@ export default function PatientsIndex({
                             name="q"
                             type="search"
                             defaultValue={q}
-                            minLength={3}
                             autoComplete="off"
                             autoFocus
                             placeholder="Nome, CPF, cartão SUS ou dd/mm/aaaa"
@@ -90,7 +90,8 @@ export default function PatientsIndex({
                             Nenhum paciente encontrado
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Confira a grafia ou busque pelo documento.
+                            Use ao menos uma palavra do nome com 3 letras, o
+                            CPF, o cartão SUS ou a data dd/mm/aaaa.
                         </p>
                     </div>
                 ) : (

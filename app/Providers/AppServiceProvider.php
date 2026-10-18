@@ -4,15 +4,18 @@ namespace App\Providers;
 
 use App\Tenancy\CurrentTenant;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Events\Logout;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Inertia\Inertia;
 use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
@@ -34,6 +37,8 @@ class AppServiceProvider extends ServiceProvider
         $this->ensureSafeProductionConfig();
         $this->configureDefaults();
         $this->configureDatabaseRole();
+        // Encrypted Inertia history (patient pages) becomes unreadable once the person logs out.
+        Event::listen(Logout::class, fn () => Inertia::clearHistory());
     }
 
     /**

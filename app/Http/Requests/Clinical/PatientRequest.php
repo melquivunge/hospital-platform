@@ -27,8 +27,8 @@ class PatientRequest extends FormRequest
         $text = fn (string $key) => is_string($this->input($key)) && trim($this->input($key)) !== '' ? trim($this->input($key)) : null;
 
         $this->merge([
-            'cpf' => PatientIdentity::digits($this->input('cpf')),
-            'cns' => PatientIdentity::digits($this->input('cns')),
+            'cpf' => is_string($this->input('cpf')) ? PatientIdentity::digits($this->input('cpf')) : $this->input('cpf'),
+            'cns' => is_string($this->input('cns')) ? PatientIdentity::digits($this->input('cns')) : $this->input('cns'),
             'email' => $text('email') === null ? null : mb_strtolower($text('email')),
             ...collect(['social_name', 'mother_name', 'phone', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'birth_date', 'sex'])
                 ->mapWithKeys(fn (string $key) => [$key => $text($key)])->all(),
@@ -62,12 +62,12 @@ class PatientRequest extends FormRequest
             'sex' => ['nullable', Rule::in(Patient::SEXES)],
             // Unique in the whole network: one person, one registration (accepted: a duplicate message tells
             // that the document is registered, no data is returned).
-            'cpf' => ['bail', 'nullable', function (string $attribute, mixed $value, Closure $fail) {
+            'cpf' => ['bail', 'nullable', 'string', function (string $attribute, mixed $value, Closure $fail) {
                 if (! PatientIdentity::validCpf((string) $value)) {
                     $fail('CPF inválido.');
                 }
             }, $unique('cpf', 'Já existe um paciente com este CPF. Busque o cadastro existente.')],
-            'cns' => ['bail', 'nullable', function (string $attribute, mixed $value, Closure $fail) {
+            'cns' => ['bail', 'nullable', 'string', function (string $attribute, mixed $value, Closure $fail) {
                 if (! PatientIdentity::validCns((string) $value)) {
                     $fail('Cartão Nacional de Saúde inválido.');
                 }

@@ -28,14 +28,37 @@ class PatientController extends Controller
 {
     private const SEARCH_LIMIT = 20;
 
-    public function index(Request $request): Response
+    public function index(): Response
     {
         Gate::authorize('viewAny', Patient::class);
-        $term = trim($request->string('q')->value());
+
+        return self::results('', []);
+    }
+
+    /**
+     * Sent in the request body, never in the URL: names, documents and birth dates stay out of server
+     * logs and browser history (delivery 3 contract).
+     */
+    public function search(Request $request): Response
+    {
+        Gate::authorize('viewAny', Patient::class);
+        $term = is_string($request->input('q')) ? trim($request->input('q')) : '';
+        $query = self::matching($term);
+
+        return self::results($term, $query === null ? [] : array_values($query->limit(self::SEARCH_LIMIT)->get()->map(fn (Patient $patient) => self::summary($patient))->all()));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $patients
+     */
+    private static function results(string $term, array $patients): Response
+    {
+        Inertia::encryptHistory();
 
         return Inertia::render('patients/index', [
             'q' => $term,
-            'patients' => mb_strlen($term) < 3 ? [] : self::search($term)->limit(self::SEARCH_LIMIT)->get()->map(fn (Patient $patient) => self::summary($patient)),
+            'searched' => $term !== '',
+            'patients' => $patients,
             'canCreate' => Gate::allows('create', Patient::class),
         ]);
     }
@@ -84,6 +107,8 @@ class PatientController extends Controller
     public function show(Patient $patient): Response
     {
         Gate::authorize('view', $patient);
+        // Full documents on screen: kept encrypted in the browser history, not readable after the session.
+        Inertia::encryptHistory();
         $patient->load('registeredUnit:id,name');
 
         return Inertia::render('patients/show', [
@@ -100,6 +125,7 @@ class PatientController extends Controller
     public function edit(Request $request, Patient $patient): Response
     {
         Gate::authorize('update', $patient);
+        Inertia::encryptHistory();
 
         return Inertia::render('patients/form', [
             'patient' => [
@@ -129,11 +155,12 @@ class PatientController extends Controller
     }
 
     /**
-     * Eleven digits: CPF; fifteen: CNS; dd/mm/yyyy: birth date; otherwise every word of the name.
+     * Eleven digits: CPF; fifteen: CNS; dd/mm/yyyy: birth date; otherwise the words of the name, at
+     * least one with 3 letters. Anything else finds nobody: the registry is never listed whole.
      *
-     * @return Builder<Patient>
+     * @return Builder<Patient>|null
      */
-    private static function search(string $term): Builder
+    private static function matching(string $term): ?Builder
     {
         $digits = (string) PatientIdentity::digits($term);
         $query = Patient::query()->with('registeredUnit:id,name')->orderBy('name_key')->orderBy('id');
@@ -141,14 +168,19 @@ class PatientController extends Controller
         if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $term) === 1) {
             $date = CarbonImmutable::createFromFormat('!d/m/Y', $term);
 
-            return $date === null ? $query->whereRaw('false') : $query->whereDate('birth_date', $date->toDateString());
+            // 31/02 must not roll over to March: only a date that reads back the same is searched.
+            return $date === null || $date->format('d/m/Y') !== $term ? null : $query->where('birth_date', $date->toDateString());
         }
 
-        if (preg_match('/^[\d.\-\s]+$/', $term) === 1 && in_array(strlen($digits), [11, 15], true)) {
-            return $query->where(strlen($digits) === 11 ? 'cpf' : 'cns', $digits);
+        if (preg_match('/^[\d.\-\s]+$/', $term) === 1) {
+            return in_array(strlen($digits), [11, 15], true) ? $query->where(strlen($digits) === 11 ? 'cpf' : 'cns', $digits) : null;
         }
 
-        foreach (array_filter(explode(' ', PatientIdentity::nameKey($term))) as $word) {
+        $words = array_values(array_filter(explode(' ', PatientIdentity::nameKey($term))));
+        if (array_filter($words, fn (string $word) => strlen($word) >= 3) === []) {
+            return null;
+        }
+        foreach ($words as $word) {
             $query->where('name_key', 'like', '%'.addcslashes($word, '%_\\').'%');
         }
 

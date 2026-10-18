@@ -109,12 +109,27 @@ class PatientTest extends TestCase
         $this->post(route('patients.store'), $this->payload(['name' => 'Ana Souza', 'birth_date' => '1990-01-01']));
 
         foreach (['jose avila', 'Ávila', '529.982.247-25', '123 4567 8901 0000', '10/05/1980'] as $term) {
-            $this->get(route('patients.index', ['q' => $term]))->assertInertia(fn (Assert $page) => $page
+            $this->post(route('patients.search'), ['q' => $term])->assertInertia(fn (Assert $page) => $page
                 ->has('patients', 1)->where('patients.0.name', 'José da Silva Ávila')
                 ->where('patients.0.cpf', '•••.•••.•47-25')->where('patients.0.cns', '••• •••• •••• 0000'));
         }
-        $this->get(route('patients.index', ['q' => 'an']))->assertInertia(fn (Assert $page) => $page->has('patients', 0));
-        $this->get(route('patients.index'))->assertInertia(fn (Assert $page) => $page->has('patients', 0));
+        // Never the whole registry: symbols, short words or impossible dates find nobody.
+        foreach (['an', '%%%', '---', 'a b', '31/02/1980', '123'] as $term) {
+            $this->post(route('patients.search'), ['q' => $term])->assertInertia(fn (Assert $page) => $page->has('patients', 0));
+        }
+        $this->post(route('patients.search'), ['q' => ['x']])->assertInertia(fn (Assert $page) => $page->has('patients', 0));
+        $this->get(route('patients.index'))->assertInertia(fn (Assert $page) => $page->has('patients', 0)->where('searched', false));
+        $this->post(route('patients.store'), $this->payload(['cpf' => ['x']]))->assertSessionHasErrors('cpf');
+    }
+
+    public function test_revoked_access_loses_the_registry(): void
+    {
+        $this->actingAs($this->reception->user)->post(route('patients.store'), $this->payload());
+        $patient = Patient::withoutTenantScope()->sole();
+        $this->reception->revoke();
+
+        $this->post(route('patients.search'), ['q' => 'maria'])->assertForbidden();
+        $this->get(route('patients.show', $patient))->assertForbidden();
     }
 
     public function test_professionals_anywhere_in_the_network_find_patients_and_managers_or_other_clients_do_not(): void
@@ -122,7 +137,7 @@ class PatientTest extends TestCase
         $this->actingAs($this->reception->user)->post(route('patients.store'), $this->payload());
         $patient = Patient::withoutTenantScope()->sole();
 
-        $this->actingAs($this->professional->user)->get(route('patients.index', ['q' => 'maria']))->assertInertia(fn (Assert $page) => $page->has('patients', 1));
+        $this->actingAs($this->professional->user)->post(route('patients.search'), ['q' => 'maria'])->assertInertia(fn (Assert $page) => $page->has('patients', 1));
         $this->get(route('patients.show', $patient))->assertOk();
 
         $this->actingAs($this->manager->user)->get(route('patients.index'))->assertForbidden();
@@ -131,8 +146,10 @@ class PatientTest extends TestCase
         app(CurrentTenant::class)->set(null);
         $foreign = Membership::factory()->create();
         $foreign->grant(Role::Reception, Unit::factory()->for($foreign->tenant)->create());
-        $this->actingAs($foreign->user)->get(route('patients.index', ['q' => 'maria']))->assertInertia(fn (Assert $page) => $page->has('patients', 0));
+        $this->actingAs($foreign->user)->post(route('patients.search'), ['q' => 'maria'])->assertInertia(fn (Assert $page) => $page->has('patients', 0));
         $this->get(route('patients.show', $patient))->assertNotFound();
+
+        $this->put(route('patients.update', $patient), $this->payload())->assertNotFound();
 
         // And the database agrees: under the other client, the row does not exist (ADR-0003).
         $this->assertSame(0, DB::table('patients')->count());
