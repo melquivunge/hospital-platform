@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação e presença por localização, com identidade visual própria. Próximo passo: etapa 8b (ocorrências e ajuste administrativo).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: etapa 9 (notificações, relatórios e revisão integrada).
 
 ## Onde está cada coisa
 
@@ -43,14 +43,19 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #17 | Etapa 6c: anúncio do próprio plantão para substituição | Mesclado |
 | #18 | Etapa 7a: transferência direta | Mesclado |
 | #19 | Etapa 7b: troca entre dois plantões | Mesclado |
-| — | Etapa 8a: presença por localização (branch `feat/attendance`) | Em revisão |
+| #20 | Etapa 8a: presença por localização | Mesclado |
+| — | Etapa 8b: ocorrências e ajuste administrativo (branch `feat/attendance-occurrences`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca, PR #19), 8a (presença por localização).
-- **Próximo:** 8b (ocorrências: tentativa negada ou falha relatada pelo profissional, análise e encerramento administrativo da saída pelo coordenador, com horário informado e justificativa, sem alterar o original), depois a etapa 9.
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição, PR #17), 7a (transferência direta, PR #18), 7b (troca, PR #19), 8a (presença por localização, PR #20), 8b (ocorrências).
+- **Próximo:** etapa 9 (notificações a partir de `audit_events`, relatórios e exportação CSV/PDF, revisão integrada da jornada).
+- **8b (ocorrências):**
+  - Em "Meus plantões", "Relatar problema na presença" abre uma ocorrência de entrada ou saída com descrição (uma aberta por tipo e plantão). Estados: aberta → deferida ou indeferida (o passo "em análise" foi omitido por não mudar nenhuma regra).
+  - O coordenador da unidade (ou admin de rede) decide no detalhe do plantão, com justificativa obrigatória; ocorrências abertas aparecem em "Solicitações". Quem é participante não decide.
+  - Saída deferida exige horário informado (fuso da unidade, entre a entrada e agora) e encerra a presença administrativamente, marcada como ajustada; os eventos originais não mudam e a saída por localização passa a ser recusada. Entrada deferida nunca cria check-in.
 - **Decisões do usuário (18/10/2026) para a etapa 8:** duas janelas configuradas pela rede/unidade (entrada a partir de X min antes do início, até o fim; saída até Y min depois do fim); pontos de presença cadastrados pelo gestor da unidade e pelo administrador de rede.
 - **8a (presença por localização):**
   - Regras no catálogo (sem valor padrão): precisão máxima, antecedência da entrada e prazo da saída. Pontos por unidade (nome, coordenadas, raio), imutáveis: para mudar, cadastra-se outro e desativa-se o antigo; o ponto usado fica registrado em cada decisão.

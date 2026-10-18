@@ -602,6 +602,10 @@ class Shift extends Model
                 throw ValidationException::withMessages(['attendance' => 'A saída já foi registrada.']);
             }
 
+            if ($kind === 'check_out' && $shift->occurrences()->where('kind', 'check_out')->where('status', 'granted')->exists()) {
+                throw ValidationException::withMessages(['attendance' => 'A saída já foi encerrada pela coordenação.']);
+            }
+
             $now = CarbonImmutable::now();
             $decision = self::attendanceDecision($shift, $kind, $reading, $now);
 
@@ -636,6 +640,103 @@ class Shift extends Model
 
             return $event;
         });
+    }
+
+    /**
+     * The professional reports a presence problem for their own shift (step 8b). The attempt stays as
+     * it was; nothing is confirmed until a coordinator decides.
+     */
+    public function reportOccurrence(Professional $professional, string $kind, string $description): AttendanceOccurrence
+    {
+        return self::writing(function () use ($professional, $kind, $description) {
+            self::lockProfessionals([$professional->id]);
+            $shift = self::query()->lockForUpdate()->findOrFail($this->id);
+
+            if ($shift->status !== ShiftStatus::Published || $shift->professional_id !== $professional->id) {
+                throw ValidationException::withMessages(['occurrence' => 'Este plantão não está com você.']);
+            }
+
+            if ($shift->occurrences()->where('kind', $kind)->where('status', 'open')->exists()) {
+                throw ValidationException::withMessages(['occurrence' => 'Já existe uma ocorrência aberta deste tipo para o plantão.']);
+            }
+
+            $occurrence = $shift->occurrences()->create([
+                'professional_id' => $professional->id,
+                'kind' => $kind,
+                'description' => $description,
+                'reported_by_user_id' => Auth::id(),
+                'status' => 'open',
+            ]);
+            AuditEvent::record('attendance.occurrence_reported', $shift->tenant_id, $shift, ['occurrence_id' => $occurrence->id, 'kind' => $kind]);
+
+            return $occurrence;
+        });
+    }
+
+    /**
+     * Coordinator's decision (PRODUCT.md, "Falhas e ajuste administrativo"): reason always; a granted exit
+     * closes the presence at the informed time (between the entry and now) without fabricating a
+     * geographic exit. A granted entry never creates a check-in. The professional never decides.
+     */
+    public static function decideOccurrence(AttendanceOccurrence $occurrence, bool $grant, string $reason, ?CarbonImmutable $informedAt): void
+    {
+        self::writing(function () use ($occurrence, $grant, $reason, $informedAt) {
+            self::lockProfessionals([$occurrence->professional_id]);
+            $shift = self::query()->lockForUpdate()->findOrFail($occurrence->shift_id);
+            $current = $shift->occurrences()->lockForUpdate()->whereKey($occurrence->id)->firstOrFail();
+
+            if ($current->status !== 'open') {
+                throw ValidationException::withMessages(['occurrence' => 'Esta ocorrência já foi decidida.']);
+            }
+
+            if (self::belongsToActor($current->professional_id)) {
+                throw ValidationException::withMessages(['occurrence' => 'Você não pode decidir a própria ocorrência. Outro coordenador precisa decidir.']);
+            }
+
+            if ($shift->status !== ShiftStatus::Published || $shift->professional_id !== $current->professional_id) {
+                throw ValidationException::withMessages(['occurrence' => 'O plantão mudou desde a ocorrência. Indefira e peça uma nova.']);
+            }
+
+            $exit = $grant && $current->kind === 'check_out';
+
+            if ($exit) {
+                $entry = $shift->attendanceEvents()->where('kind', 'check_in')->where('result', 'accepted')->value('received_at');
+
+                if ($entry === null) {
+                    throw ValidationException::withMessages(['occurrence' => 'Sem entrada registrada não há presença para encerrar.']);
+                }
+
+                if ($shift->attendanceEvents()->where('kind', 'check_out')->where('result', 'accepted')->exists()) {
+                    throw ValidationException::withMessages(['occurrence' => 'A saída já foi registrada por localização.']);
+                }
+
+                if ($informedAt === null || $informedAt < CarbonImmutable::parse($entry) || $informedAt > now()) {
+                    throw ValidationException::withMessages(['informed_at' => 'Informe um horário de saída entre a entrada e agora.']);
+                }
+            }
+
+            $current->forceFill([
+                'status' => $grant ? 'granted' : 'denied',
+                'informed_at' => $exit ? $informedAt : null,
+                'decided_by_user_id' => Auth::id(),
+                'decided_at' => now(),
+                'decision_reason' => $reason,
+            ])->save();
+            AuditEvent::record('attendance.occurrence_'.($grant ? 'granted' : 'denied'), $shift->tenant_id, $shift, array_filter([
+                'occurrence_id' => $current->id,
+                'kind' => $current->kind,
+                'reason' => $reason,
+                'informed_at' => $current->informed_at?->toIso8601String(),
+            ], fn ($value) => $value !== null));
+        });
+    }
+
+    /**
+     * @return HasMany<AttendanceOccurrence, $this>
+     */
+    public function occurrences(): HasMany
+    {
+        return $this->hasMany(AttendanceOccurrence::class);
     }
 
     /**

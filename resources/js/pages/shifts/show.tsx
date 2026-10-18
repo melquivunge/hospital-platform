@@ -1,5 +1,6 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { Pencil, Send } from 'lucide-react';
+import AttendanceOccurrenceController from '@/actions/App/Http/Controllers/AttendanceOccurrenceController';
 import ShiftController from '@/actions/App/Http/Controllers/ShiftController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -20,6 +21,18 @@ import {
 type Shift = ShiftSummary & {
     unit: { id: number; name: string; timezone: string | null };
     cancelReason: string | null;
+};
+
+type Occurrence = {
+    id: number;
+    kind: 'check_in' | 'check_out';
+    kindLabel: string;
+    description: string;
+    status: 'open' | 'granted' | 'denied';
+    statusLabel: string;
+    reportedAt: string;
+    informedAt: string | null;
+    reason: string | null;
 };
 
 type Attendance = {
@@ -52,6 +65,8 @@ export default function ShiftShow({
     canSelect,
     applications,
     attendance,
+    occurrences,
+    canDecideOccurrences,
 }: {
     shift: Shift;
     canEdit: boolean;
@@ -60,6 +75,8 @@ export default function ShiftShow({
     canSelect: boolean;
     applications: Application[];
     attendance: Attendance[];
+    occurrences: Occurrence[];
+    canDecideOccurrences: boolean;
 }) {
     return (
         <>
@@ -153,6 +170,54 @@ export default function ShiftShow({
                                             {event.reason}
                                         </p>
                                     )}
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
+
+                {occurrences.length > 0 && (
+                    <section aria-labelledby="occurrences" className="mb-6">
+                        <h2
+                            id="occurrences"
+                            className="mb-3 text-base font-semibold"
+                        >
+                            Ocorrências de presença
+                        </h2>
+                        <ul className="grid gap-3">
+                            {occurrences.map((occurrence) => (
+                                <li
+                                    key={occurrence.id}
+                                    className="grid gap-2 rounded-lg border bg-card p-4 text-sm"
+                                >
+                                    <p className="flex flex-wrap justify-between gap-2">
+                                        <span className="font-medium">
+                                            {occurrence.kindLabel} ·{' '}
+                                            {occurrence.statusLabel}
+                                        </span>
+                                        <span className="text-muted-foreground tabular-nums">
+                                            {occurrence.reportedAt}
+                                        </span>
+                                    </p>
+                                    <p>{occurrence.description}</p>
+                                    {occurrence.informedAt && (
+                                        <p>
+                                            Saída ajustada para{' '}
+                                            {occurrence.informedAt} (sem
+                                            registro por localização)
+                                        </p>
+                                    )}
+                                    {occurrence.reason && (
+                                        <p className="text-muted-foreground">
+                                            Justificativa: {occurrence.reason}
+                                        </p>
+                                    )}
+                                    {canDecideOccurrences &&
+                                        occurrence.status === 'open' && (
+                                            <OccurrenceDecision
+                                                occurrence={occurrence}
+                                            />
+                                        )}
                                 </li>
                             ))}
                         </ul>
@@ -307,6 +372,69 @@ export default function ShiftShow({
                 )}
             </Page>
         </>
+    );
+}
+
+/** Grant or deny with a reason; a granted exit needs the informed time (unit's timezone). */
+function OccurrenceDecision({ occurrence }: { occurrence: Occurrence }) {
+    const field = `decision-${occurrence.id}`;
+
+    return (
+        <Form
+            {...AttendanceOccurrenceController.decide.form(occurrence.id)}
+            options={{ preserveScroll: true }}
+            className="grid gap-2 border-t pt-3"
+        >
+            {({ processing, errors }) => (
+                <>
+                    {occurrence.kind === 'check_out' && (
+                        <>
+                            <Label htmlFor={`${field}-time`}>
+                                Horário de saída informado (para deferir)
+                            </Label>
+                            <Input
+                                id={`${field}-time`}
+                                name="informed_at"
+                                type="datetime-local"
+                                className="h-11"
+                            />
+                            <InputError message={errors.informed_at} />
+                        </>
+                    )}
+                    <Label htmlFor={`${field}-reason`}>Justificativa</Label>
+                    <Input
+                        id={`${field}-reason`}
+                        name="reason"
+                        required
+                        maxLength={1000}
+                        className="h-11"
+                    />
+                    <InputError message={errors.reason ?? errors.occurrence} />
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            type="submit"
+                            name="grant"
+                            value="1"
+                            disabled={processing}
+                            className="min-h-11"
+                        >
+                            {processing && <Spinner />}
+                            Deferir
+                        </Button>
+                        <Button
+                            type="submit"
+                            name="grant"
+                            value="0"
+                            variant="outline"
+                            disabled={processing}
+                            className="min-h-11"
+                        >
+                            Indeferir
+                        </Button>
+                    </div>
+                </>
+            )}
+        </Form>
     );
 }
 

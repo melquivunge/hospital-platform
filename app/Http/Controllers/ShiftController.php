@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceEvent;
+use App\Models\AttendanceOccurrence;
 use App\Models\JobFunction;
 use App\Models\Professional;
 use App\Models\Shift;
@@ -104,7 +105,7 @@ class ShiftController extends Controller
             ->where('professional_id', $professional->id)
             ->where('status', ShiftStatus::Published)
             ->where('ends_at', '>', now()->startOfDay()->subDay())
-            ->with(['unit:id,name,timezone', 'sector:id,name', 'jobFunction:id,name', 'attendanceEvents' => fn ($query) => $query->where('result', 'accepted')])
+            ->with(['unit:id,name,timezone', 'sector:id,name', 'jobFunction:id,name', 'attendanceEvents' => fn ($query) => $query->where('result', 'accepted'), 'occurrences'])
             ->withExists([
                 'requests as request_pending' => fn (Builder $query) => $query->whereIn('status', RequestStatus::pending()),
                 'counterpartRequests as counterpart_pending' => fn (Builder $query) => $query->whereIn('status', RequestStatus::pending()),
@@ -117,7 +118,14 @@ class ShiftController extends Controller
                 'unit' => $shift->unit->name,
                 'upcoming' => $shift->starts_at->isFuture(),
                 'checkIn' => self::attendanceTime($shift, 'check_in'),
-                'checkOut' => self::attendanceTime($shift, 'check_out'),
+                'checkOut' => self::attendanceTime($shift, 'check_out') ?? self::adjustedExit($shift),
+                'checkOutAdjusted' => self::attendanceTime($shift, 'check_out') === null && self::adjustedExit($shift) !== null,
+                'occurrences' => $shift->occurrences->map(fn (AttendanceOccurrence $occurrence) => [
+                    'id' => $occurrence->id,
+                    'kind' => $occurrence->kind === 'check_in' ? 'Entrada' : 'Saída',
+                    'status' => AttendanceOccurrence::STATUS_LABELS[$occurrence->status],
+                    'reason' => $occurrence->decision_reason,
+                ])->values(),
                 'ended' => $shift->ends_at->isPast(),
                 'requestPending' => (bool) $shift->getAttribute('request_pending') || (bool) $shift->getAttribute('counterpart_pending'),
             ])
@@ -163,7 +171,29 @@ class ShiftController extends Controller
             'canSelect' => $canManage && $shift->status === ShiftStatus::Published && ($shift->professional_id === null || $shift->announced_at !== null) && $shift->starts_at->isFuture(),
             'applications' => $canManage ? self::applications($shift) : [],
             'attendance' => self::attendance($shift),
+            'occurrences' => $shift->occurrences()->orderBy('id')->get()->map(fn (AttendanceOccurrence $occurrence) => [
+                'id' => $occurrence->id,
+                'kind' => $occurrence->kind,
+                'kindLabel' => $occurrence->kind === 'check_in' ? 'Entrada' : 'Saída',
+                'description' => $occurrence->description,
+                'status' => $occurrence->status,
+                'statusLabel' => AttendanceOccurrence::STATUS_LABELS[$occurrence->status],
+                'reportedAt' => $occurrence->created_at->setTimezone($unit->timezone ?? 'UTC')->format('d/m/Y H:i'),
+                'informedAt' => $occurrence->informed_at?->setTimezone($unit->timezone ?? 'UTC')->format('d/m/Y H:i'),
+                'reason' => $occurrence->decision_reason,
+            ])->values(),
+            'canDecideOccurrences' => $canManage,
         ]);
+    }
+
+    /**
+     * Local time of an administrative exit (granted exit occurrence), shown apart from a geographic one.
+     */
+    private static function adjustedExit(Shift $shift): ?string
+    {
+        $occurrence = $shift->occurrences->first(fn (AttendanceOccurrence $occurrence) => $occurrence->kind === 'check_out' && $occurrence->status === 'granted');
+
+        return $occurrence?->informed_at?->setTimezone($shift->unit->timezone ?? 'UTC')->format('H:i');
     }
 
     /**
