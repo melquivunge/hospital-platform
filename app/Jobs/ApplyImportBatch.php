@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Imports\ProfessionalCsvImporter;
+use App\Http\Controllers\ImportController;
 use App\Models\AuditEvent;
 use App\Models\ImportBatch;
 use App\Models\ImportItem;
@@ -46,8 +46,9 @@ class ApplyImportBatch implements ShouldBeUnique, ShouldQueue
             $membership = $creator->deactivated_at === null ? $creator->activeMembershipIn($batch->tenant_id) : null;
             $allowed = $membership === null ? [] : ImportBatchPolicy::importableUnitIds($membership);
 
+            $importer = ImportController::importer($batch->type);
             $batch->items()->where('status', 'ready')->orderBy('id')
-                ->each(fn (ImportItem $item) => ProfessionalCsvImporter::apply($item, $batch, $allowed));
+                ->each(fn (ImportItem $item) => $importer::apply($item, $batch, $allowed));
 
             if (! $batch->items()->where('status', 'ready')->exists()) {
                 $batch->update(['status' => 'applied']);

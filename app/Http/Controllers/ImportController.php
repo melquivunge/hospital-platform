@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Imports\CsvReader;
 use App\Imports\ProfessionalCsvImporter;
+use App\Imports\ShiftCsvImporter;
 use App\Jobs\ApplyImportBatch;
 use App\Models\AuditEvent;
 use App\Models\ImportBatch;
@@ -55,8 +57,8 @@ class ImportController extends Controller
         Gate::authorize('create', ImportBatch::class);
 
         return Inertia::render('imports/create', [
-            'columns' => ProfessionalCsvImporter::COLUMNS,
-            'maxLines' => ProfessionalCsvImporter::MAX_LINES,
+            'columns' => ['professionals' => ProfessionalCsvImporter::COLUMNS, 'shifts' => ShiftCsvImporter::COLUMNS],
+            'maxLines' => CsvReader::MAX_LINES,
         ]);
     }
 
@@ -65,12 +67,15 @@ class ImportController extends Controller
         Gate::authorize('create', ImportBatch::class);
 
         $request->validate([
+            'type' => ['required', 'in:professionals,shifts'],
             'source_system' => ['required', 'string', 'max:100', 'regex:/^[\pL\pN ._\-]+$/u'],
-            'file' => ['required', 'file', 'extensions:csv,txt', 'mimetypes:text/csv,text/plain,application/csv,application/vnd.ms-excel', 'max:'.intdiv(ProfessionalCsvImporter::MAX_BYTES, 1024)],
+            'file' => ['required', 'file', 'extensions:csv,txt', 'mimetypes:text/csv,text/plain,application/csv,application/vnd.ms-excel', 'max:'.intdiv(CsvReader::MAX_BYTES, 1024)],
         ], attributes: ['source_system' => 'sistema de origem', 'file' => 'arquivo']);
 
         $file = $request->file('file');
-        $parsed = ProfessionalCsvImporter::parse((string) $file->get());
+        $type = $request->string('type')->value();
+        $importer = self::importer($type);
+        $parsed = CsvReader::parse((string) $file->get(), $importer::COLUMNS);
 
         if ($parsed['errors'] !== []) {
             throw ValidationException::withMessages(['file' => $parsed['errors']]);
@@ -90,9 +95,9 @@ class ImportController extends Controller
         $path = (string) $file->storeAs("imports/{$tenantId}", Str::uuid()->toString().'.csv', 'local');
 
         try {
-            $batch = DB::transaction(function () use ($request, $file, $parsed, $units, $path) {
+            $batch = DB::transaction(function () use ($request, $file, $parsed, $units, $path, $type, $importer) {
                 $batch = ImportBatch::create([
-                    'type' => 'professionals',
+                    'type' => $type,
                     'source_system' => trim($request->string('source_system')->value()),
                     // Display only; control and bidi characters removed.
                     'filename' => mb_substr((string) preg_replace('/[\p{Cc}\p{Cf}]/u', '', $file->getClientOriginalName()), 0, 255),
@@ -100,7 +105,7 @@ class ImportController extends Controller
                     'status' => 'previewed',
                     'created_by_user_id' => $request->user()->id,
                 ]);
-                ProfessionalCsvImporter::preview($batch, $parsed['rows'], $units);
+                $importer::preview($batch, $parsed['rows'], $units);
                 AuditEvent::record('import.uploaded', $batch->tenant_id, $batch, ['source_system' => $batch->source_system, 'received' => $batch->received]);
 
                 return $batch;
@@ -128,14 +133,15 @@ class ImportController extends Controller
                 'id' => $item->id,
                 'line' => $item->line,
                 'sourceId' => $item->data['source_id'] ?? null,
-                'name' => $item->data['name'] ?? null,
+                // Professionals: name; shifts: local start as sent in the file.
+                'name' => $item->data['name'] ?? $item->data['start'] ?? null,
                 'status' => $item->status,
                 'messages' => $item->messages ?? [],
             ]);
 
         return Inertia::render('imports/show', [
             'batch' => [
-                ...$batch->only('id', 'source_system', 'filename', 'status', 'received'),
+                ...$batch->only('id', 'type', 'source_system', 'filename', 'status', 'received'),
                 'createdAt' => $batch->created_at->toIso8601String(),
             ],
             'counts' => $batch->counts(),
@@ -169,12 +175,22 @@ class ImportController extends Controller
     /**
      * Header-only CSV template (no example data).
      */
-    public function template(): StreamedResponse
+    public function template(Request $request): StreamedResponse
     {
         Gate::authorize('create', ImportBatch::class);
+        $type = $request->string('type')->value() === 'shifts' ? 'shifts' : 'professionals';
+        $columns = self::importer($type)::COLUMNS;
 
-        return response()->streamDownload(function () {
-            echo implode(';', ProfessionalCsvImporter::COLUMNS)."\r\n";
-        }, 'modelo-profissionais.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+        return response()->streamDownload(function () use ($columns) {
+            echo implode(';', $columns)."\r\n";
+        }, $type === 'shifts' ? 'modelo-plantoes.csv' : 'modelo-profissionais.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>
+     */
+    public static function importer(string $type): string
+    {
+        return $type === 'shifts' ? ShiftCsvImporter::class : ProfessionalCsvImporter::class;
     }
 }
