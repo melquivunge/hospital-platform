@@ -28,6 +28,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('imports', [ImportController::class, 'store'])->name('imports.store');
     Route::get('imports/{batch}', [ImportController::class, 'show'])->name('imports.show');
     Route::post('imports/{batch}/confirm', [ImportController::class, 'confirm'])->name('imports.confirm');
+    Route::get('my-shifts', [ShiftController::class, 'mine'])->name('shifts.mine');
+    Route::post('professionals/{professional}/invite', [ProfessionalController::class, 'invite'])->name('professionals.invite');
     Route::get('shifts', [ShiftController::class, 'index'])->name('shifts.index');
     Route::get('units/{unit}/shifts/create', [ShiftController::class, 'create'])->name('units.shifts.create');
     Route::post('units/{unit}/shifts', [ShiftController::class, 'store'])->name('units.shifts.store');

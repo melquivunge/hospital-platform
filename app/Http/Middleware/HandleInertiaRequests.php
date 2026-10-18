@@ -8,6 +8,7 @@ use App\Models\Membership;
 use App\Models\PolicyVersion;
 use App\Models\Professional;
 use App\Models\Shift;
+use App\Policies\UnitPolicy;
 use App\Tenancy\CurrentTenant;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -57,6 +58,8 @@ class HandleInertiaRequests extends Middleware
                 && $request->user()->can('viewAny', Professional::class),
             'canManageJobFunctions' => fn () => $request->user() !== null
                 && $request->user()->can('manage', JobFunction::class),
+            'canViewMyShifts' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null
+                && Professional::query()->where('membership_id', $membership->id)->exists(),
             'canImport' => fn () => $request->user() !== null
                 && $request->user()->can('create', ImportBatch::class),
             'canViewShifts' => fn () => $request->user() !== null

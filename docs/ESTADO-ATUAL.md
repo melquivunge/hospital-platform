@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) e importação CSV de profissionais e plantões, com identidade visual própria. Próximo passo: etapa 6 (vagas e candidaturas, com acesso do profissional por convite).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional e "Meus plantões", com identidade visual própria. Próximo passo: etapa 6b (vagas e candidaturas).
 
 ## Onde está cada coisa
 
@@ -37,14 +37,20 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #11 | Etapa 4a: plantões, publicação e cancelamento | Mesclado |
 | #12 | Etapa 4b: agenda e itens das referências | Mesclado |
 | #13 | Etapa 5a: importação CSV de profissionais | Mesclado |
-| — | Etapa 5b: importação CSV de plantões (branch `feat/import-shifts`) | Em revisão |
+| #14 | Etapa 5b: importação CSV de plantões | Mesclado |
+| — | Etapa 6a: acesso do profissional e "Meus plantões" (branch `feat/professional-access`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões).
-- **Próximo:** etapa 6 (vagas e candidaturas), depois as etapas 7 a 9.
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional).
+- **Próximo:** 6b (vagas: anúncio, candidatura e retirada pelo profissional, escolha justificada pelo coordenador; ver referências IMG_0928 a 0932), depois as etapas 7 a 9.
+- **6a:**
+  - **Convite:** botão "Convidar para acessar" na tela do profissional, para o administrador ou o gestor da unidade-base. Usa o e-mail do cadastro e reaproveita a conta se ela já existir; senão, cria a conta e envia o link de senha.
+  - **Papel:** dá o papel Profissional na unidade-base, sem remover os outros papéis de um vínculo ativo.
+  - **Ligação:** `professionals.membership_id` é única, ou seja, uma conta por profissional.
+  - **"Meus plantões":** mostra só os plantões publicados do próprio profissional (referência IMG_0911).
 - **Decisão do usuário para a etapa 6 (17/10/2026):** o profissional ganha acesso por convite na tela dele, usando o e-mail do cadastro. Isso cria o vínculo com o papel Profissional e o liga ao cadastro.
 
 ### Etapa 5a: como funciona a importação
@@ -166,7 +172,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 185 testes passando (etapa 5b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 189 testes passando (etapa 6a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
