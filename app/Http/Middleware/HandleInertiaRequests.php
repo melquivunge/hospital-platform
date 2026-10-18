@@ -6,6 +6,7 @@ use App\Models\ImportBatch;
 use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\Patient;
+use App\Models\PatientMerge;
 use App\Models\PolicyVersion;
 use App\Models\Professional;
 use App\Models\Shift;
@@ -70,6 +71,8 @@ class HandleInertiaRequests extends Middleware
                 : UserNotification::query()->where('user_id', $request->user()->id)->whereNull('read_at')->count(),
             'canViewPatients' => fn () => $request->user() !== null
                 && $request->user()->can('viewAny', Patient::class),
+            'canMergePatients' => fn () => $request->user() !== null
+                && $request->user()->can('merge', PatientMerge::class),
             'canImport' => fn () => $request->user() !== null
                 && $request->user()->can('create', ImportBatch::class),
             'canViewShifts' => fn () => $request->user() !== null
