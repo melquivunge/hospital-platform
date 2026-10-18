@@ -57,9 +57,9 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
 - **Próximo:** 9c (revisão integrada da jornada).
 - **Decisões do usuário (18/10/2026) para a 9b:** indicadores de cobertura, solicitações, presença e horas por profissional; PDF gerado no servidor; acesso igual ao da Escala (coordenador, gestor, admin de rede e auditor, cada um nas suas unidades).
 - **9b-1 (relatórios e CSV, V1-11):**
-  - Tela "Relatórios" (menu de quem vê a Escala): unidade e período (até 92 dias; inválido volta ao mês atual). Tudo conta os plantões da unidade que **começam** no período, no fuso da unidade, e cada grupo fecha com o total: publicados = preenchidos + anunciados + vagas abertas (mais rascunhos e cancelados); solicitações pela situação atual; presença dos publicados já iniciados com responsável (com/sem entrada, saída registrada, saída ajustada, ocorrências abertas); horas por profissional.
+  - Tela "Relatórios" (menu de quem vê a Escala): unidade e período (até 92 dias; inválido volta ao mês atual). Tudo conta os plantões da unidade que **começam** no período, no fuso da unidade, e cada grupo fecha com o total: publicados = preenchidos + anunciados + vagas abertas (mais rascunhos e cancelados); solicitações pela situação atual (a troca conta nas duas unidades que a aprovam, uma vez em cada); presença dos publicados já iniciados com responsável (com/sem entrada, saída registrada, saída ajustada, ocorrências abertas); horas por profissional.
   - Botão "Exportar": Escala e Presença, cada uma em PDF ou planilha (CSV) com exatamente as linhas contadas: `;`, BOM UTF-8, células que começam com `= + - @` neutralizadas, sem coordenadas, precisão ou distância. Geradas na hora para quem pediu (nada fica guardado) e auditadas (`report.exported`, com o formato).
-- **9b-2 (PDF):** `dompdf/dompdf` 3.1 (LGPL-2.1, PHP puro; exige só `dom` e `mbstring`; `composer audit` limpo), sem recursos remotos nem PHP embutido. Mesmas linhas do CSV, escapadas pelo Blade (`resources/views/reports/table.blade.php`), A4 paisagem, com rede, unidade, período, horário de geração e "Página X de Y". Limite conhecido: gerado em memória; um período longo de uma unidade grande pode ficar lento (passar para exportação em fila se precisar).
+- **9b-2 (PDF):** `dompdf/dompdf` 3.1 (LGPL-2.1, PHP puro; exige só `dom` e `mbstring`; `composer audit` limpo), sem recursos remotos nem PHP embutido. Mesmas linhas do CSV, escapadas pelo Blade (`resources/views/reports/table.blade.php`), A4 paisagem, com rede, unidade, período, horário de geração e "Página X de Y". Gerado em memória, limitado a 2.000 linhas (acima disso, a mensagem orienta usar a planilha ou um período menor); passar para exportação em fila se unidades grandes precisarem.
 - **Foto de perfil:** em Meu perfil, cada usuário escolhe, troca ou remove a foto. O navegador recorta em quadrado (512 px) e regrava em JPEG, o que descarta metadados como GPS. O servidor aceita só JPG/PNG/WebP reais, até 2 MB, de 64 a 4096 px; guarda com nome aleatório no disco privado e entrega a foto só ao dono (`settings/profile/photo`). Sem GD/Imagick no container, o servidor não reprocessa a imagem. A foto aparece na barra superior; sem foto, as iniciais.
 - **Configurações:** layout, perfil e exclusão de conta em português. As rotas de configurações carregam a instituição atual quando existe (`tenant:optional`), para o menu e o sino não perderem itens.
 - **9a (notificações internas, V1-12):**
@@ -231,7 +231,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 257 testes passando (etapa 9b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 258 testes passando (etapa 9b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

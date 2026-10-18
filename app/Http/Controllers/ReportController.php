@@ -31,6 +31,9 @@ class ReportController extends Controller
 {
     private const MAX_DAYS = 92;
 
+    /** dompdf renders in memory: beyond this the spreadsheet is the way out. */
+    private const PDF_MAX_ROWS = 2000;
+
     public function index(Request $request): Response
     {
         $scope = $this->scope($request);
@@ -50,8 +53,10 @@ class ReportController extends Controller
             count(*) filter (where status = 'published' and professional_id is null) as open
             SQL)->first();
 
+        // A swap belongs to both units (both coordinators approve it); each request still counts once.
         $requests = DB::table('shift_requests')->where('tenant_id', $unit->tenant_id)
-            ->whereIn('shift_id', self::shifts($unit, $from, $to)->select('id'))
+            ->where(fn ($query) => $query->whereIn('shift_id', self::shifts($unit, $from, $to)->select('id'))
+                ->orWhereIn('counterpart_shift_id', self::shifts($unit, $from, $to)->select('id')))
             ->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
         $request = fn (RequestStatus $status) => (int) ($requests[$status->value] ?? 0);
 
@@ -192,7 +197,7 @@ class ReportController extends Controller
         };
         $from = $date('from');
         $to = $date('to')?->addDay();
-        if ($from === null || $to === null || $to <= $from || $from->diffInDays($to) > self::MAX_DAYS) {
+        if ($from === null || $to === null || $to <= $from || $from->addDays(self::MAX_DAYS) < $to) {
             $from = CarbonImmutable::now($timezone)->startOfMonth();
             $to = $from->addMonth();
         }
@@ -222,12 +227,13 @@ class ReportController extends Controller
     private function export(string $format, Unit $unit, string $report, string $title, CarbonImmutable $from, CarbonImmutable $to, array $header, array $rows): SymfonyResponse
     {
         $last = $to->subDay();
-        AuditEvent::record('report.exported', $unit->tenant_id, $unit, ['report' => $report, 'format' => $format, 'from' => $from->toDateString(), 'to' => $last->toDateString(), 'rows' => count($rows)]);
+        $audit = fn () => AuditEvent::record('report.exported', $unit->tenant_id, $unit, ['report' => $report, 'format' => $format, 'from' => $from->toDateString(), 'to' => $last->toDateString(), 'rows' => count($rows)]);
         $file = "{$report}-{$from->toDateString()}-a-{$last->toDateString()}.{$format}";
 
         if ($format === 'pdf') {
-            // ponytail: dompdf renders in memory; a 92-day period of a large unit (thousands of rows) is
-            // the ceiling — move to a queued export with a private download if that ever gets slow.
+            // ponytail: rendered in memory and capped; move to a queued export with a private download if
+            // large units need longer PDFs.
+            abort_if(count($rows) > self::PDF_MAX_ROWS, 422, 'Período grande demais para PDF. Use a planilha (CSV) ou um período menor.');
             $pdf = new Dompdf(new Options(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Sans']));
             $pdf->loadHtml(view('reports.table', [
                 'network' => $unit->tenant->name, 'unit' => $unit->name, 'title' => $title, 'header' => $header, 'rows' => $rows,
@@ -237,6 +243,7 @@ class ReportController extends Controller
             $pdf->setPaper('A4', 'landscape');
             $pdf->render();
             $pdf->getCanvas()->page_text(770, 570, 'Página {PAGE_NUM} de {PAGE_COUNT}', $pdf->getFontMetrics()->getFont('DejaVu Sans'), 7, [0.4, 0.4, 0.4]);
+            $audit();
 
             return response((string) $pdf->output(), 200, [
                 'Content-Type' => 'application/pdf',
@@ -245,6 +252,8 @@ class ReportController extends Controller
             ]);
         }
 
+        $audit();
+
         return response()->streamDownload(function () use ($header, $rows) {
             $out = fopen('php://output', 'w');
             if ($out === false) {
@@ -252,7 +261,7 @@ class ReportController extends Controller
             }
             fwrite($out, "\u{FEFF}");
             foreach ([$header, ...$rows] as $row) {
-                fputcsv($out, array_map(fn (string $cell) => preg_match('/^[=+\-@\t\r]/', $cell) === 1 ? "'".$cell : $cell, $row), ';', '"', '');
+                fputcsv($out, array_map(fn (string $cell) => preg_match('/^[=+\-@|\t\r]/', $cell) === 1 ? "'".$cell : $cell, $row), ';', '"', '');
             }
             fclose($out);
         }, $file, ['Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'no-store']);

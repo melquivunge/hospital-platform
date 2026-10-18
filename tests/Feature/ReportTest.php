@@ -129,6 +129,30 @@ class ReportTest extends TestCase
         $this->get(route('reports.schedule', 'pdf'))->assertForbidden();
     }
 
+    public function test_requests_count_once_for_every_unit_that_approves_them_and_periods_follow_the_unit_clock(): void
+    {
+        $mine = $this->shift('2026-11-10 10:00:00+00', ['professional_id' => $this->n['ana']->id]);
+        $alsoMine = $this->shift('2026-11-11 10:00:00+00', ['professional_id' => $this->n['formula']->id]);
+        $elsewhere = $this->shift('2026-11-12 10:00:00+00', ['professional_id' => $this->n['formula']->id, 'unit_id' => $this->n['other']->id, 'sector_id' => $this->n['otherSector']->id]);
+        // 30/11 23:30 local counts; 01/12 00:00 local does not.
+        $this->shift('2026-12-01 02:30:00+00');
+        $this->shift('2026-12-01 03:00:00+00');
+        $request = fn (string $type, int $shift, ?int $counterpart, string $status) => DB::table('shift_requests')->insert([
+            'tenant_id' => $this->n['unit']->tenant_id, 'type' => $type, 'shift_id' => $shift, 'counterpart_shift_id' => $counterpart,
+            'requester_professional_id' => $this->n['ana']->id, 'recipient_professional_id' => $this->n['formula']->id, 'status' => $status,
+            'requested_by_user_id' => $this->n['admin']->user_id, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $request('swap', $mine, $alsoMine, 'completed');
+        $request('swap', $elsewhere, $mine, 'refused');
+        $request('transfer', $alsoMine, null, 'expired');
+
+        $this->actingAs($this->n['admin']->user)->get(route('reports.index', ['unit' => $this->n['unit']->id, 'from' => '2026-11-01', 'to' => '2026-11-30']))
+            ->assertInertia(fn (Assert $page) => $page->where('coverage.published', 3)
+                ->where('requests', ['pending' => 0, 'completed' => 1, 'refused' => 1, 'cancelled' => 0, 'expired' => 1]));
+        $this->get(route('reports.index', ['unit' => $this->n['other']->id, 'from' => '2026-11-01', 'to' => '2026-11-30']))
+            ->assertInertia(fn (Assert $page) => $page->where('requests.refused', 1)->where('requests.completed', 0));
+    }
+
     public function test_the_pdf_carries_the_same_rows_and_is_audited(): void
     {
         $this->shift('2026-11-10 10:00:00+00', ['professional_id' => $this->n['ana']->id]);
