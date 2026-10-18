@@ -4,6 +4,7 @@ import {
     BriefcaseMedical,
     CalendarCheck,
     CalendarDays,
+    GitMerge,
     ChartColumn,
     FileUp,
     Building2,
@@ -29,6 +30,7 @@ import { dashboard } from '@/routes';
 import { edit as selectTenant } from '@/routes/current-tenant';
 import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
+import { index as patientMerges } from '@/routes/patient-merges';
 import { index as patients } from '@/routes/patients';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
@@ -66,11 +68,21 @@ export function AppSidebar() {
         canViewMyShifts,
         canViewRequests,
         canViewPatients,
+        canMergePatients,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
         ...(canViewPatients
             ? [{ title: 'Pacientes', href: patients(), icon: UsersRound }]
+            : []),
+        ...(canMergePatients
+            ? [
+                  {
+                      title: 'Unificar cadastros',
+                      href: patientMerges(),
+                      icon: GitMerge,
+                  },
+              ]
             : []),
         ...(canViewMyShifts
             ? [

@@ -6,6 +6,7 @@ use App\Clinical\PatientIdentity;
 use App\Http\Requests\Clinical\PatientRequest;
 use App\Models\AuditEvent;
 use App\Models\Patient;
+use App\Models\PatientMerge;
 use App\Models\Unit;
 use App\Policies\PatientPolicy;
 use App\Policies\UnitPolicy;
@@ -104,9 +105,14 @@ class PatientController extends Controller
         return to_route('patients.show', $patient);
     }
 
-    public function show(Patient $patient): Response
+    public function show(Patient $patient): Response|RedirectResponse
     {
         Gate::authorize('view', $patient);
+        if ($patient->merged_into_id !== null) {
+            Inertia::flash('toast', ['type' => 'info', 'message' => 'Este cadastro foi unificado. Você está vendo o cadastro principal.']);
+
+            return to_route('patients.show', $patient->merged_into_id);
+        }
         // Full documents on screen: kept encrypted in the browser history, not readable after the session.
         Inertia::encryptHistory();
         $patient->load('registeredUnit:id,name');
@@ -118,13 +124,23 @@ class PatientController extends Controller
                 'cpf' => $patient->cpf,
                 'cns' => $patient->cns,
             ],
+            'unifiedFrom' => PatientMerge::query()->where('primary_patient_id', $patient->id)->whereNull('undone_at')->with('duplicate')->get()
+                ->map(fn (PatientMerge $merge) => [
+                    'id' => $merge->duplicate_patient_id,
+                    'name' => $merge->duplicate?->name,
+                    'birthDate' => $merge->duplicate?->birth_date?->toDateString(),
+                    'cpf' => PatientIdentity::maskCpf($merge->duplicate?->cpf),
+                ]),
             'canUpdate' => Gate::allows('update', $patient),
         ]);
     }
 
-    public function edit(Request $request, Patient $patient): Response
+    public function edit(Request $request, Patient $patient): Response|RedirectResponse
     {
         Gate::authorize('update', $patient);
+        if ($patient->merged_into_id !== null) {
+            return to_route('patients.edit', $patient->merged_into_id);
+        }
         Inertia::encryptHistory();
 
         return Inertia::render('patients/form', [
@@ -139,6 +155,9 @@ class PatientController extends Controller
 
     public function update(PatientRequest $request, Patient $patient): RedirectResponse
     {
+        if ($patient->merged_into_id !== null) {
+            throw ValidationException::withMessages(['name' => 'Este cadastro foi unificado. Edite o cadastro principal.']);
+        }
         self::saving(fn () => DB::transaction(function () use ($request, $patient) {
             $patient->fill($request->safe()->except('confirm_new'));
             // Field names only: the trail keeps who changed what, not the personal data itself.
@@ -163,7 +182,8 @@ class PatientController extends Controller
     private static function matching(string $term): ?Builder
     {
         $digits = (string) PatientIdentity::digits($term);
-        $query = Patient::query()->with('registeredUnit:id,name')->orderBy('name_key')->orderBy('id');
+        // Merged registrations never show up themselves; their documents lead to the primary one.
+        $query = Patient::query()->whereNull('merged_into_id')->with('registeredUnit:id,name')->orderBy('name_key')->orderBy('id');
 
         if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $term) === 1) {
             $date = CarbonImmutable::createFromFormat('!d/m/Y', $term);
@@ -173,7 +193,13 @@ class PatientController extends Controller
         }
 
         if (preg_match('/^[\d.\-\s]+$/', $term) === 1) {
-            return in_array(strlen($digits), [11, 15], true) ? $query->where(strlen($digits) === 11 ? 'cpf' : 'cns', $digits) : null;
+            if (! in_array(strlen($digits), [11, 15], true)) {
+                return null;
+            }
+            $field = strlen($digits) === 11 ? 'cpf' : 'cns';
+
+            return $query->where(fn (Builder $match) => $match->where($field, $digits)
+                ->orWhereIn('id', Patient::query()->where($field, $digits)->whereNotNull('merged_into_id')->select('merged_into_id')));
         }
 
         $words = array_values(array_filter(explode(' ', PatientIdentity::nameKey($term))));

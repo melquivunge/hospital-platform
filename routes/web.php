@@ -9,6 +9,7 @@ use App\Http\Controllers\ImportController;
 use App\Http\Controllers\JobFunctionController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PatientController;
+use App\Http\Controllers\PatientMergeController;
 use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\PolicyController;
 use App\Http\Controllers\ProfessionalController;
@@ -52,6 +53,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('units/{unit}/attendance-points', [AttendancePointController::class, 'store'])->name('units.attendance-points.store');
     Route::post('shifts/{shift}/occurrences', [AttendanceOccurrenceController::class, 'store'])->middleware('throttle:20,1')->name('shifts.occurrences.store');
     Route::post('occurrences/{occurrence}/decide', [AttendanceOccurrenceController::class, 'decide'])->name('occurrences.decide');
+    Route::get('patient-merges', [PatientMergeController::class, 'index'])->name('patient-merges.index');
+    Route::post('patient-merges', [PatientMergeController::class, 'store'])->middleware('throttle:30,1')->name('patient-merges.store');
+    Route::post('patient-merges/{merge}/undo', [PatientMergeController::class, 'undo'])->middleware('throttle:30,1')->name('patient-merges.undo');
     Route::post('patients/search', [PatientController::class, 'search'])->middleware('throttle:30,1')->name('patients.search');
     Route::get('patients/search', fn () => to_route('patients.index'));
     Route::resource('patients', PatientController::class)->except('destroy')->middlewareFor(['store', 'update'], 'throttle:30,1');

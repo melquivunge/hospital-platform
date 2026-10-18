@@ -52,7 +52,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #26 | Revogação libera plantões futuros | Mesclado |
 | #27 | Entrega 3: contrato, ADR-0003 e plano | Mesclado |
 | #28 | Etapa 3.1: fundação clínica | Mesclado |
-| — | Etapa 3.2: pacientes (branch `feat/patients`) | Em revisão |
+| #29 | Etapa 3.2: pacientes | Mesclado |
+| — | Etapa 3.3: unificação de cadastros (branch `feat/patient-merge`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -74,6 +75,13 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - A auditoria registra criação e alteração com os **nomes** dos campos alterados, nunca os valores. `patients` é tabela clínica com RLS forçado.
   - Gestor e administrador não veem pacientes por serem gestores (a unificação, na 3.3, terá tela própria).
   - Revisão de segurança aplicada: a busca vai por **POST** (`patients/search`), então nome, CPF e data não entram em URL, logs ou histórico. Termos sem uma palavra de 3 letras, documento completo ou data válida não encontram ninguém, e há limite de 30 por minuto na busca e nas gravações. O histórico do Inertia é criptografado nas páginas de paciente e limpo no logout.
+- **3.3 (unificação):**
+  - Tela "Unificar cadastros" para o gestor da unidade e o administrador de rede, só com dados de identificação (documentos mascarados). Mostra uma fila de pares suspeitos (mesmo nascimento e mesmo nome, ou mesmos primeiro e último nome); pares cuja unificação foi desfeita não voltam.
+  - O gestor escolhe o cadastro principal e informa o motivo. O duplicado fica `merged`, aponta para o principal (`merged_into_id`) e nada é apagado. A decisão fica em `patient_merges` (RLS) e a auditoria (`patient.merged`) guarda só ids.
+  - Na busca, o duplicado some e o CPF ou CNS dele leva ao principal; abrir o duplicado redireciona para o principal, que lista "Cadastros unificados neste".
+  - Desfazer exige motivo e gera nova decisão auditada (`patient.merge_undone`).
+  - Escopo (decisão técnica, a confirmar): o gestor de qualquer unidade unifica cadastros da rede inteira, porque o paciente pertence à rede. Sem cadeias: um cadastro que é principal de outra unificação não vira duplicado sem desfazer a anterior. Cadastro unificado não é editado (redireciona para o principal). A fila é calculada a cada visita (limite conhecido para cadastros muito grandes).
+  - Locks nos dois cadastros em ordem de id. Corrida real (6 rodadas, A→B contra B→A): uma vence, a outra é recusada, sem ciclo nem travamento.
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
   - **Acesso revogado ou conta desativada:** os plantões futuros (rascunho ou publicados, ainda não iniciados e sem entrada registrada) voltam a ser vaga. Os pedidos pendentes em que a pessoa participa são cancelados, as candidaturas ativas dela são retiradas, o anúncio é encerrado, cada plantão gera `shift.vacated` na auditoria e o coordenador da unidade é notificado (`Shift::vacateFor`). Locks na mesma ordem dos demais fluxos (profissional → plantões por id → pedidos). Corrida real entre revogação e cancelamento do plantão (cliente sintético "Rede Corrida", 12 rodadas nas duas ordens): sem deadlock, um resultado coerente por rodada, um único evento de auditoria por pedido.
@@ -261,7 +269,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 273 testes passando (etapa 3.2), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 277 testes passando (etapa 3.3), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

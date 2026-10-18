@@ -33,9 +33,16 @@ function formatCns(cns: string | null): string | null {
 export default function PatientShow({
     patient,
     canUpdate,
+    unifiedFrom,
 }: {
     patient: Patient;
     canUpdate: boolean;
+    unifiedFrom: {
+        id: number;
+        name: string | null;
+        birthDate: string | null;
+        cpf: string | null;
+    }[];
 }) {
     const rows: [string, string | null][][] = [
         [
@@ -120,6 +127,32 @@ export default function PatientShow({
                         </dl>
                     ))}
                 </div>
+
+                {unifiedFrom.length > 0 && (
+                    <section className="mt-8">
+                        <h2 className="mb-3 font-semibold">
+                            Cadastros unificados neste
+                        </h2>
+                        <ul className="divide-y rounded-xl border bg-card text-sm">
+                            {unifiedFrom.map((source) => (
+                                <li key={source.id} className="px-4 py-3">
+                                    <span className="font-medium">
+                                        {source.name}
+                                    </span>
+                                    <span className="text-muted-foreground tabular-nums">
+                                        {' · '}
+                                        {[
+                                            formatBirthDate(source.birthDate),
+                                            source.cpf && `CPF ${source.cpf}`,
+                                        ]
+                                            .filter(Boolean)
+                                            .join(' · ')}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
             </Page>
         </>
     );
