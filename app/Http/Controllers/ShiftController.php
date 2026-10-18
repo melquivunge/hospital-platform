@@ -6,12 +6,14 @@ use App\Models\JobFunction;
 use App\Models\Professional;
 use App\Models\Shift;
 use App\Models\ShiftApplication;
+use App\Models\ShiftRequest;
 use App\Models\Unit;
 use App\Policies\ShiftPolicy;
 use App\Policies\UnitPolicy;
 use App\Professionals\Eligibility;
 use App\Professionals\QualificationStatus;
 use App\Scheduling\ApplicationStatus;
+use App\Scheduling\RequestStatus;
 use App\Scheduling\ShiftStatus;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -95,16 +97,23 @@ class ShiftController extends Controller
         $membership = UnitPolicy::currentMembership($request->user());
         $professional = $membership === null ? null : Professional::query()->where('membership_id', $membership->id)->first();
         abort_if($professional === null, 403);
+        ShiftRequest::expireStarted();
 
         $shifts = Shift::query()
             ->where('professional_id', $professional->id)
             ->where('status', ShiftStatus::Published)
             ->where('ends_at', '>', now()->startOfDay()->subDay())
             ->with(['unit:id,name,timezone', 'sector:id,name', 'jobFunction:id,name'])
+            ->withExists(['requests as transfer_pending' => fn (Builder $query) => $query->whereIn('status', RequestStatus::pending())])
             ->orderBy('starts_at')
             ->limit(200)
             ->get()
-            ->map(fn (Shift $shift) => [...self::summary($shift, $shift->unit->timezone ?? 'UTC'), 'unit' => $shift->unit->name, 'upcoming' => $shift->starts_at->isFuture()])
+            ->map(fn (Shift $shift) => [
+                ...self::summary($shift, $shift->unit->timezone ?? 'UTC'),
+                'unit' => $shift->unit->name,
+                'upcoming' => $shift->starts_at->isFuture(),
+                'transferPending' => (bool) $shift->getAttribute('transfer_pending'),
+            ])
             ->values();
 
         return Inertia::render('shifts/mine', ['professional' => $professional->name, 'shifts' => $shifts]);

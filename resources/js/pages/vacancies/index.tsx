@@ -1,8 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
 import { ChevronRight, Megaphone } from 'lucide-react';
 import { Page, PageHeader } from '@/components/page';
-import type { ShiftSummary } from '@/pages/shifts/index';
-import { formatDay, PeriodLabel, timeRange } from '@/pages/shifts/index';
+import type { ShiftSummary } from '@/components/shift-display';
+import { formatDay, PeriodLabel, timeRange } from '@/components/shift-display';
 import { index, show } from '@/routes/vacancies';
 
 export type Vacancy = Pick<

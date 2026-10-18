@@ -1,15 +1,21 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
 import { CalendarCheck } from 'lucide-react';
 import VacancyController from '@/actions/App/Http/Controllers/VacancyController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import type { ShiftSummary } from '@/pages/shifts/index';
-import { formatDay, PeriodLabel, timeRange } from '@/pages/shifts/index';
+import type { ShiftSummary } from '@/components/shift-display';
+import { formatDay, PeriodLabel, timeRange } from '@/components/shift-display';
+import { index as requests } from '@/routes/requests';
 import { mine } from '@/routes/shifts';
+import { create as createTransfer } from '@/routes/shifts/transfer';
 
-type MyShift = ShiftSummary & { unit: string; upcoming: boolean };
+type MyShift = ShiftSummary & {
+    unit: string;
+    upcoming: boolean;
+    transferPending: boolean;
+};
 
 /** Professional's own published shifts, grouped by local start day (reference IMG_0911). */
 export default function MyShifts({
@@ -91,8 +97,22 @@ export default function MyShifts({
     );
 }
 
-/** Announce for replacement (step 6c): the professional stays responsible until the coordinator chooses. */
+/**
+ * Announce for replacement (step 6c) or transfer to a colleague (step 7a). The professional stays
+ * responsible until the coordinator decides.
+ */
 function AnnounceForm({ shift }: { shift: MyShift }) {
+    if (shift.transferPending) {
+        return (
+            <p className="border-t pt-3 font-medium text-primary">
+                Transferência pendente.{' '}
+                <Link href={requests()} className="underline">
+                    Acompanhar em Solicitações
+                </Link>
+            </p>
+        );
+    }
+
     const action = shift.announced
         ? VacancyController.cancelAnnouncement.form(shift.id)
         : VacancyController.announce.form(shift.id);
@@ -112,17 +132,30 @@ function AnnounceForm({ shift }: { shift: MyShift }) {
                         </p>
                     )}
                     <InputError message={errors.shift} />
-                    <Button
-                        type="submit"
-                        variant="outline"
-                        disabled={processing}
-                        className="min-h-11 justify-self-start"
-                    >
-                        {processing && <Spinner />}
-                        {shift.announced
-                            ? 'Cancelar anúncio'
-                            : 'Anunciar para substituição'}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            className="min-h-11"
+                        >
+                            {processing && <Spinner />}
+                            {shift.announced
+                                ? 'Cancelar anúncio'
+                                : 'Anunciar para substituição'}
+                        </Button>
+                        {!shift.announced && (
+                            <Button
+                                variant="outline"
+                                asChild
+                                className="min-h-11"
+                            >
+                                <Link href={createTransfer(shift.id)}>
+                                    Transferir a um colega
+                                </Link>
+                            </Button>
+                        )}
+                    </div>
                 </>
             )}
         </Form>

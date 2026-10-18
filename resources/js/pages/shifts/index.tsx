@@ -1,34 +1,22 @@
 import { Head, Link, router } from '@inertiajs/react';
-import {
-    CalendarDays,
-    ChevronLeft,
-    ChevronRight,
-    Moon,
-    Plus,
-    Sun,
-} from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Page, PageHeader, WarningBadge } from '@/components/page';
+import type { ShiftSummary } from '@/components/shift-display';
+import {
+    formatDay,
+    formatMoney,
+    PeriodLabel,
+    StatusBadge,
+    statusLabels,
+    timeRange,
+    toDate,
+} from '@/components/shift-display';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { index, show } from '@/routes/shifts';
 import { create } from '@/routes/units/shifts';
-
-export type ShiftSummary = {
-    id: number;
-    date: string;
-    start: string;
-    end: string;
-    endDate: string;
-    sector: string | null;
-    function: string | null;
-    professional: string | null;
-    status: 'draft' | 'published' | 'cancelled';
-    period: 'day' | 'night';
-    valueCents: number | null;
-    announced: boolean;
-};
 
 type View = 'day' | 'week' | 'month';
 
@@ -67,17 +55,6 @@ const viewLabels: Record<View, string> = {
     month: 'Mês',
 };
 
-export const statusLabels: Record<ShiftSummary['status'], string> = {
-    draft: 'Rascunho',
-    published: 'Publicado',
-    cancelled: 'Cancelado',
-};
-
-/** Local calendar dates (YYYY-MM-DD) handled as UTC noon to avoid any timezone shift. */
-function toDate(date: string) {
-    return new Date(`${date}T12:00:00Z`);
-}
-
 function addDays(date: string, days: number) {
     const value = toDate(date);
     value.setUTCDate(value.getUTCDate() + days);
@@ -102,56 +79,12 @@ function daysBetween(from: string, to: string) {
     return days;
 }
 
-export function formatDay(date: string) {
-    return toDate(date).toLocaleDateString('pt-BR', {
-        weekday: 'long',
-        day: '2-digit',
-        month: '2-digit',
-        timeZone: 'UTC',
-    });
-}
-
 function formatMonth(date: string) {
     return toDate(date).toLocaleDateString('pt-BR', {
         month: 'long',
         year: 'numeric',
         timeZone: 'UTC',
     });
-}
-
-export function timeRange(
-    shift: Pick<ShiftSummary, 'date' | 'start' | 'end' | 'endDate'>,
-) {
-    const nextDay = shift.endDate !== shift.date;
-
-    return `${shift.start} – ${shift.end}${nextDay ? ` (${formatDay(shift.endDate)})` : ''}`;
-}
-
-export function formatMoney(cents: number) {
-    return (cents / 100).toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-    });
-}
-
-/** Shift period with icon and text (never the icon alone). */
-export function PeriodLabel({ period }: { period: ShiftSummary['period'] }) {
-    const Icon = period === 'day' ? Sun : Moon;
-
-    return (
-        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <Icon className="size-4 text-primary" aria-hidden="true" />
-            {period === 'day' ? 'Diurno' : 'Noturno'}
-        </span>
-    );
-}
-
-export function StatusBadge({ status }: { status: ShiftSummary['status'] }) {
-    return status === 'published' ? (
-        <span className="text-sm font-medium">{statusLabels[status]}</span>
-    ) : (
-        <WarningBadge>{statusLabels[status]}</WarningBadge>
-    );
 }
 
 export default function ShiftsIndex({
