@@ -135,9 +135,12 @@ class PatientController extends Controller
         ]);
     }
 
-    public function edit(Request $request, Patient $patient): Response
+    public function edit(Request $request, Patient $patient): Response|RedirectResponse
     {
         Gate::authorize('update', $patient);
+        if ($patient->merged_into_id !== null) {
+            return to_route('patients.edit', $patient->merged_into_id);
+        }
         Inertia::encryptHistory();
 
         return Inertia::render('patients/form', [
@@ -152,6 +155,9 @@ class PatientController extends Controller
 
     public function update(PatientRequest $request, Patient $patient): RedirectResponse
     {
+        if ($patient->merged_into_id !== null) {
+            throw ValidationException::withMessages(['name' => 'Este cadastro foi unificado. Edite o cadastro principal.']);
+        }
         self::saving(fn () => DB::transaction(function () use ($request, $patient) {
             $patient->fill($request->safe()->except('confirm_new'));
             // Field names only: the trail keeps who changed what, not the personal data itself.

@@ -80,6 +80,7 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - O gestor escolhe o cadastro principal e informa o motivo. O duplicado fica `merged`, aponta para o principal (`merged_into_id`) e nada é apagado. A decisão fica em `patient_merges` (RLS) e a auditoria (`patient.merged`) guarda só ids.
   - Na busca, o duplicado some e o CPF ou CNS dele leva ao principal; abrir o duplicado redireciona para o principal, que lista "Cadastros unificados neste".
   - Desfazer exige motivo e gera nova decisão auditada (`patient.merge_undone`).
+  - Escopo (decisão técnica, a confirmar): o gestor de qualquer unidade unifica cadastros da rede inteira, porque o paciente pertence à rede. Sem cadeias: um cadastro que é principal de outra unificação não vira duplicado sem desfazer a anterior. Cadastro unificado não é editado (redireciona para o principal). A fila é calculada a cada visita (limite conhecido para cadastros muito grandes).
   - Locks nos dois cadastros em ordem de id. Corrida real (6 rodadas, A→B contra B→A): uma vence, a outra é recusada, sem ciclo nem travamento.
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
 - **Decisões do usuário (18/10/2026) após a 9c:**
@@ -268,7 +269,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 276 testes passando (etapa 3.3), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 277 testes passando (etapa 3.3), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

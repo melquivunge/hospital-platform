@@ -85,6 +85,18 @@ class PatientMergeTest extends TestCase
         $this->post(route('patient-merges.undo', $merge), ['reason' => 'De novo'])->assertSessionHasErrors('merge');
     }
 
+    public function test_a_primary_registration_cannot_become_a_duplicate_without_undoing_first(): void
+    {
+        $this->merge($this->a->id)->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('patients.store'), ['registered_unit_id' => $this->a->registered_unit_id, 'name' => 'Maria Silva', 'birth_date' => '1980-05-10', 'confirm_new' => true]);
+        $c = Patient::withoutTenantScope()->latest('id')->firstOrFail();
+
+        $this->actingAs($this->manager->user)->post(route('patient-merges.store'), ['a_id' => $this->a->id, 'b_id' => $c->id, 'primary_id' => $c->id, 'reason' => 'x'])
+            ->assertSessionHasErrors('merge');
+        $this->assertNull($this->a->fresh()->merged_into_id);
+        $this->post(route('patient-merges.store'), ['a_id' => $this->a->id, 'b_id' => $c->id, 'primary_id' => $this->a->id, 'reason' => 'x'])->assertSessionHasNoErrors();
+    }
+
     public function test_merges_are_refused_outside_the_pair_twice_or_across_clients(): void
     {
         $this->merge($this->a->id, '')->assertSessionHasErrors('reason');
@@ -92,6 +104,9 @@ class PatientMergeTest extends TestCase
             ->assertSessionHasErrors('primary_id');
         $this->merge($this->a->id)->assertSessionHasNoErrors();
         $this->merge($this->b->id)->assertSessionHasErrors('merge');
+        // A merged registration is not edited; its page leads to the primary one.
+        $this->actingAs($this->reception->user)->get(route('patients.edit', $this->b))->assertRedirect(route('patients.edit', $this->a));
+        $this->put(route('patients.update', $this->b), ['registered_unit_id' => $this->b->registered_unit_id, 'name' => 'X'])->assertSessionHasErrors('name');
         $merge = PatientMerge::withoutTenantScope()->sole();
 
         app(CurrentTenant::class)->set(null);

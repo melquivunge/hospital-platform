@@ -82,9 +82,13 @@ class Patient extends Model
                 throw ValidationException::withMessages(['merge' => 'Um dos cadastros já foi unificado. Recarregue a página.']);
             }
 
+            // No chains: a registration that is already the primary of a merge cannot become a duplicate,
+            // or that earlier decision would silently change meaning and could no longer be undone.
+            if (self::query()->where('merged_into_id', $duplicate->id)->exists()) {
+                throw ValidationException::withMessages(['merge' => 'O cadastro escolhido como duplicado é o principal de outra unificação. Escolha-o como principal ou desfaça a outra unificação antes.']);
+            }
+
             $duplicate->forceFill(['merged_into_id' => $primary->id])->save();
-            // Registrations merged into the duplicate before follow it to the new primary.
-            self::query()->where('merged_into_id', $duplicate->id)->update(['merged_into_id' => $primary->id]);
             $merge = PatientMerge::query()->create([
                 'primary_patient_id' => $primary->id, 'duplicate_patient_id' => $duplicate->id, 'reason' => $reason,
                 'merged_by_user_id' => Auth::id(), 'merged_at' => now(),

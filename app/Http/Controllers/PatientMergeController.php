@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Clinical\PatientIdentity;
 use App\Models\Patient;
 use App\Models\PatientMerge;
+use App\Tenancy\CurrentTenant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,17 +27,19 @@ class PatientMergeController extends Controller
         Inertia::encryptHistory();
 
         // Same birth date and same name, or same first and last names; pairs already judged different
-        // (a merge that was undone) do not come back.
+        // (a merge that was undone) do not come back. The tenant filter backs up row-level security.
+        // ponytail: computed on every view (pairs per birth date grow quadratically); precompute in a job
+        // or index the name parts when a client's registry gets large.
         $rows = DB::select(<<<'SQL'
             SELECT a.id AS a, b.id AS b FROM patients a
             JOIN patients b ON b.tenant_id = a.tenant_id AND b.id > a.id AND b.birth_date = a.birth_date
-            WHERE a.merged_into_id IS NULL AND b.merged_into_id IS NULL
+            WHERE a.tenant_id = ? AND a.merged_into_id IS NULL AND b.merged_into_id IS NULL
               AND (a.name_key = b.name_key OR (split_part(a.name_key, ' ', 1) = split_part(b.name_key, ' ', 1)
                    AND regexp_replace(a.name_key, '^.* ', '') = regexp_replace(b.name_key, '^.* ', '')))
               AND NOT EXISTS (SELECT 1 FROM patient_merges m WHERE m.undone_at IS NOT NULL
                    AND ((m.primary_patient_id = a.id AND m.duplicate_patient_id = b.id) OR (m.primary_patient_id = b.id AND m.duplicate_patient_id = a.id)))
             ORDER BY a.id, b.id LIMIT ?
-            SQL, [self::QUEUE_LIMIT]);
+            SQL, [app(CurrentTenant::class)->require()->id, self::QUEUE_LIMIT]);
         /** @var list<array{int, int}> $pairs */
         $pairs = array_map(fn (\stdClass $row) => [(int) $row->a, (int) $row->b], $rows);
         $patients = Patient::query()->whereKey(array_unique(array_merge(...array_map(fn (array $pair) => $pair, $pairs ?: [[]]))))
