@@ -1,10 +1,12 @@
 import { Form, Head, Link, router } from '@inertiajs/react';
 import { CalendarCheck, MapPin } from 'lucide-react';
 import { useState } from 'react';
+import AttendanceOccurrenceController from '@/actions/App/Http/Controllers/AttendanceOccurrenceController';
 import VacancyController from '@/actions/App/Http/Controllers/VacancyController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import type { ShiftSummary } from '@/components/shift-display';
 import { formatDay, PeriodLabel, timeRange } from '@/components/shift-display';
@@ -19,7 +21,14 @@ type MyShift = ShiftSummary & {
     requestPending: boolean;
     checkIn: string | null;
     checkOut: string | null;
+    checkOutAdjusted: boolean;
     ended: boolean;
+    occurrences: {
+        id: number;
+        kind: string;
+        status: string;
+        reason: string | null;
+    }[];
 };
 
 /** Professional's own published shifts, grouped by local start day (reference IMG_0911). */
@@ -119,7 +128,8 @@ function AttendanceActions({ shift }: { shift: MyShift }) {
 
     const status = [
         shift.checkIn && `Entrada às ${shift.checkIn}`,
-        shift.checkOut && `Saída às ${shift.checkOut}`,
+        shift.checkOut &&
+            `Saída às ${shift.checkOut}${shift.checkOutAdjusted ? ' (ajustada pela coordenação)' : ''}`,
     ]
         .filter(Boolean)
         .join(' · ');
@@ -185,7 +195,81 @@ function AttendanceActions({ shift }: { shift: MyShift }) {
                 </Button>
             )}
             <InputError message={error ?? undefined} />
+            {shift.occurrences.map((occurrence) => (
+                <p key={occurrence.id} className="text-muted-foreground">
+                    Ocorrência de {occurrence.kind.toLowerCase()}:{' '}
+                    <span className="font-medium text-foreground">
+                        {occurrence.status}
+                    </span>
+                    {occurrence.reason && ` · ${occurrence.reason}`}
+                </p>
+            ))}
+            {(!shift.upcoming || shift.checkIn) && !shift.checkOut && (
+                <OccurrenceForm shift={shift} />
+            )}
         </div>
+    );
+}
+
+/** Report a presence problem (step 8b); the coordination grants or denies. */
+function OccurrenceForm({ shift }: { shift: MyShift }) {
+    const field = `occurrence-${shift.id}`;
+
+    return (
+        <details className="rounded-md border p-3">
+            <summary className="flex min-h-11 cursor-pointer items-center font-medium">
+                Relatar problema na presença
+            </summary>
+            <Form
+                {...AttendanceOccurrenceController.store.form(shift.id)}
+                options={{ preserveScroll: true }}
+                resetOnSuccess
+                className="mt-2 grid gap-2"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <Label htmlFor={`${field}-kind`}>Tipo</Label>
+                        <select
+                            id={`${field}-kind`}
+                            name="kind"
+                            defaultValue={
+                                shift.checkIn ? 'check_out' : 'check_in'
+                            }
+                            className="h-11 rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                            <option value="check_in">Entrada</option>
+                            <option value="check_out">Saída</option>
+                        </select>
+                        <Label htmlFor={`${field}-description`}>
+                            O que aconteceu
+                        </Label>
+                        <textarea
+                            id={`${field}-description`}
+                            name="description"
+                            required
+                            maxLength={2000}
+                            rows={3}
+                            aria-invalid={
+                                !!(errors.description ?? errors.occurrence)
+                            }
+                            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        />
+                        <InputError
+                            message={errors.description ?? errors.occurrence}
+                        />
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            className="min-h-11 justify-self-start"
+                        >
+                            {processing && <Spinner />}
+                            Enviar ocorrência
+                        </Button>
+                    </>
+                )}
+            </Form>
+        </details>
     );
 }
 

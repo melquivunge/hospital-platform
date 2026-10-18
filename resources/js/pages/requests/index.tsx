@@ -1,4 +1,4 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
 import { ArrowDown, ArrowDownUp, Inbox } from 'lucide-react';
 import ShiftRequestController from '@/actions/App/Http/Controllers/ShiftRequestController';
 import InputError from '@/components/input-error';
@@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import type { ShiftBrief } from '@/components/shift-display';
 import { ShiftCard } from '@/components/shift-display';
 import { index } from '@/routes/requests';
+import { show } from '@/routes/shifts';
 
 type Item = {
     id: number;
@@ -36,10 +37,20 @@ export default function Requests({
     mine,
     toDecide,
     isCoordinator,
+    occurrences,
 }: {
     mine: Item[];
     toDecide: Item[];
     isCoordinator: boolean;
+    occurrences: {
+        id: number;
+        shiftId: number;
+        professional: string;
+        unit: string;
+        kind: string;
+        description: string;
+        reportedAt: string;
+    }[];
 }) {
     return (
         <>
@@ -62,6 +73,41 @@ export default function Requests({
                             items={toDecide}
                             empty="Nenhuma solicitação aguardando a sua unidade."
                         />
+                    </section>
+                )}
+
+                {isCoordinator && occurrences.length > 0 && (
+                    <section aria-labelledby="occurrences" className="mb-8">
+                        <h2
+                            id="occurrences"
+                            className="mb-3 text-base font-semibold"
+                        >
+                            Ocorrências de presença
+                        </h2>
+                        <ul className="grid gap-3">
+                            {occurrences.map((occurrence) => (
+                                <li
+                                    key={occurrence.id}
+                                    className="grid gap-1 rounded-lg border bg-card p-4 text-sm"
+                                >
+                                    <p className="font-medium">
+                                        {occurrence.kind} ·{' '}
+                                        {occurrence.professional} ·{' '}
+                                        {occurrence.unit}
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                        {occurrence.reportedAt}
+                                    </p>
+                                    <p>{occurrence.description}</p>
+                                    <Link
+                                        href={show(occurrence.shiftId)}
+                                        className="min-h-11 content-center font-medium text-primary underline"
+                                    >
+                                        Analisar no plantão
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
                     </section>
                 )}
 

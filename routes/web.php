@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\AttendanceOccurrenceController;
 use App\Http\Controllers\AttendancePointController;
 use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
@@ -46,6 +47,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Rejected attempts are kept forever (append-only): bound how fast one person can create them.
     Route::post('shifts/{shift}/attendance', [AttendanceController::class, 'store'])->middleware('throttle:20,1')->name('shifts.attendance');
     Route::post('units/{unit}/attendance-points', [AttendancePointController::class, 'store'])->name('units.attendance-points.store');
+    Route::post('shifts/{shift}/occurrences', [AttendanceOccurrenceController::class, 'store'])->middleware('throttle:20,1')->name('shifts.occurrences.store');
+    Route::post('occurrences/{occurrence}/decide', [AttendanceOccurrenceController::class, 'decide'])->name('occurrences.decide');
     Route::get('requests', [ShiftRequestController::class, 'index'])->name('requests.index');
     Route::post('requests/{shiftRequest}/respond', [ShiftRequestController::class, 'respond'])->name('requests.respond');
     Route::post('requests/{shiftRequest}/cancel', [ShiftRequestController::class, 'cancel'])->name('requests.cancel');

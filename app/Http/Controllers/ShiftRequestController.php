@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceOccurrence;
 use App\Models\Membership;
 use App\Models\Professional;
 use App\Models\Shift;
@@ -54,7 +55,26 @@ class ShiftRequestController extends Controller
             ->limit(100)
             ->get();
 
+        // Open presence occurrences of the units this member manages (step 8b).
+        $occurrences = $managed === [] ? collect() : AttendanceOccurrence::query()
+            ->where('status', 'open')
+            ->when($managed !== null, fn (Builder $query) => $query->whereHas('shift', fn (Builder $shift) => $shift->whereIn('unit_id', $managed ?? [])))
+            ->with(['professional:id,name', 'shift.unit:id,name,timezone'])
+            ->oldest('id')
+            ->limit(100)
+            ->get()
+            ->map(fn (AttendanceOccurrence $occurrence) => [
+                'id' => $occurrence->id,
+                'shiftId' => $occurrence->shift_id,
+                'professional' => $occurrence->professional->name,
+                'unit' => $occurrence->shift->unit->name,
+                'kind' => $occurrence->kind === 'check_in' ? 'Entrada' : 'Saída',
+                'description' => $occurrence->description,
+                'reportedAt' => $occurrence->created_at->setTimezone($occurrence->shift->unit->timezone ?? 'UTC')->format('d/m/Y H:i'),
+            ]);
+
         return Inertia::render('requests/index', [
+            'occurrences' => $occurrences->values(),
             'mine' => $mine->map(fn (ShiftRequest $item) => self::item($item, $professional, false, $managed))->values(),
             'toDecide' => $toDecide->map(fn (ShiftRequest $item) => self::item($item, $professional, true, $managed))->values(),
             'isCoordinator' => $managed !== [],

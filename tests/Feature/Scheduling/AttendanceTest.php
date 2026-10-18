@@ -3,6 +3,7 @@
 namespace Tests\Feature\Scheduling;
 
 use App\Models\AttendanceEvent;
+use App\Models\AttendanceOccurrence;
 use App\Models\AttendancePoint;
 use App\Models\JobFunction;
 use App\Models\Membership;
@@ -305,6 +306,79 @@ class AttendanceTest extends TestCase
         $this->at('2026-11-12 09:40');
         $this->attend()->assertSessionHasNoErrors();
         $this->assertSame(RequestStatus::Expired, ShiftRequest::withoutTenantScope()->sole()->status);
+    }
+
+    private function occurrence(): AttendanceOccurrence
+    {
+        return AttendanceOccurrence::withoutTenantScope()->latest('id')->firstOrFail();
+    }
+
+    public function test_granted_exit_occurrence_closes_presence_at_the_informed_time_without_a_geographic_exit(): void
+    {
+        $this->configure();
+        $this->at('2026-11-12 09:50');
+        $this->attend()->assertSessionHasNoErrors();
+
+        $this->at('2026-11-12 22:30');
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.occurrences.store', $this->shift), ['kind' => 'check_out', 'description' => 'GPS sem sinal na saída'])->assertSessionHasNoErrors();
+        $this->post(route('shifts.occurrences.store', $this->shift), ['kind' => 'check_out', 'description' => 'De novo'])
+            ->assertSessionHasErrors(['occurrence' => 'Já existe uma ocorrência aberta deste tipo para o plantão.']);
+
+        $this->actingAs($this->coordinator->user)->get(route('requests.index'))->assertInertia(fn (Assert $page) => $page->has('occurrences', 1));
+        $this->post(route('occurrences.decide', $this->occurrence()), ['grant' => true, 'reason' => 'Conferido com a equipe', 'informed_at' => '2026-11-12T06:00'])
+            ->assertSessionHasErrors(['informed_at' => 'Informe um horário de saída entre a entrada e agora.']);
+        $this->post(route('occurrences.decide', $this->occurrence()), ['grant' => true, 'reason' => 'Conferido com a equipe', 'informed_at' => '2026-11-12T19:45'])
+            ->assertSessionHasErrors(['informed_at' => 'Informe um horário de saída entre a entrada e agora.']);
+        $this->post(route('occurrences.decide', $this->occurrence()), ['grant' => true, 'reason' => 'Conferido com a equipe', 'informed_at' => '2026-11-12T19:05'])
+            ->assertSessionHasNoErrors();
+
+        $occurrence = $this->occurrence();
+        $this->assertSame('granted', $occurrence->status);
+        $this->assertSame('2026-11-12 22:05:00', $occurrence->informed_at?->utc()->format('Y-m-d H:i:s'));
+        // The original attendance record is untouched: still one accepted entry and no exit event.
+        $this->assertSame(['check_in'], AttendanceEvent::withoutTenantScope()->pluck('kind')->all());
+
+        $this->attend('check_out')->assertSessionHasErrors(['attendance' => 'A saída já foi encerrada pela coordenação.']);
+        $this->actingAs($this->anaAccess->user)->get(route('shifts.mine'))
+            ->assertInertia(fn (Assert $page) => $page->where('shifts.0.checkOut', '19:05')->where('shifts.0.checkOutAdjusted', true));
+        $this->actingAs($this->coordinator->user)->post(route('occurrences.decide', $occurrence), ['grant' => false, 'reason' => 'x'])
+            ->assertSessionHasErrors(['occurrence' => 'Esta ocorrência já foi decidida.']);
+    }
+
+    public function test_entry_occurrence_never_creates_a_check_in_and_exit_needs_an_entry(): void
+    {
+        $this->configure();
+        $this->at('2026-11-12 10:30');
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.occurrences.store', $this->shift), ['kind' => 'check_in', 'description' => 'Aparelho sem bateria'])->assertSessionHasNoErrors();
+        $this->actingAs($this->coordinator->user)->post(route('occurrences.decide', $this->occurrence()), ['grant' => true, 'reason' => 'Chegada confirmada pela equipe'])->assertSessionHasNoErrors();
+        $this->assertFalse($this->shift->fresh()?->hasCheckIn());
+
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.occurrences.store', $this->shift), ['kind' => 'check_out', 'description' => 'Saí sem registrar']);
+        $this->actingAs($this->coordinator->user)->post(route('occurrences.decide', $this->occurrence()), ['grant' => true, 'reason' => 'Conferido', 'informed_at' => '2026-11-12T08:00'])
+            ->assertSessionHasErrors(['occurrence' => 'Sem entrada registrada não há presença para encerrar.']);
+        $this->post(route('occurrences.decide', $this->occurrence()), ['grant' => false])->assertSessionHasErrors('reason');
+        $this->post(route('occurrences.decide', $this->occurrence()), ['grant' => false, 'reason' => 'Sem entrada', 'informed_at' => '2026-11-12T07:10'])->assertSessionHasNoErrors();
+        $this->assertNull($this->occurrence()->informed_at);
+        $this->assertSame('denied', $this->occurrence()->status);
+    }
+
+    public function test_only_other_coordinators_of_the_unit_decide_occurrences(): void
+    {
+        $this->at('2026-11-12 10:30');
+        $this->actingAs($this->anaAccess->user)->post(route('shifts.occurrences.store', $this->shift), ['kind' => 'check_in', 'description' => 'Falha'])->assertSessionHasNoErrors();
+        $this->actingAs($this->brunoAccess->user)->post(route('shifts.occurrences.store', $this->shift), ['kind' => 'check_in', 'description' => 'Falha'])->assertNotFound();
+
+        $this->actingAs($this->anaAccess->user)->post(route('occurrences.decide', $this->occurrence()), ['grant' => true, 'reason' => 'x'])->assertForbidden();
+        $this->anaAccess->grant(Role::ShiftCoordinator, $this->unit);
+        $this->actingAs($this->anaAccess->user)->post(route('occurrences.decide', $this->occurrence()), ['grant' => true, 'reason' => 'x'])
+            ->assertSessionHasErrors(['occurrence' => 'Você não pode decidir a própria ocorrência. Outro coordenador precisa decidir.']);
+
+        $otherUnit = Unit::factory()->for($this->unit->tenant)->create();
+        $other = Membership::factory()->for($this->unit->tenant)->create();
+        $other->grant(Role::ShiftCoordinator, $otherUnit);
+        $this->actingAs($other->user)->post(route('occurrences.decide', $this->occurrence()), ['grant' => true, 'reason' => 'x'])->assertForbidden();
+        $this->get(route('requests.index'))->assertInertia(fn (Assert $page) => $page->has('occurrences', 0));
+        $this->assertSame('open', $this->occurrence()->status);
     }
 
     public function test_attendance_events_are_append_only(): void
