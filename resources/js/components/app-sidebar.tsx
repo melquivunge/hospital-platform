@@ -3,6 +3,7 @@ import {
     ArrowLeftRight,
     BriefcaseMedical,
     CalendarDays,
+    FileUp,
     Building2,
     LayoutGrid,
     SlidersHorizontal,
@@ -23,6 +24,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { edit as selectTenant } from '@/routes/current-tenant';
+import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
@@ -53,6 +55,7 @@ export function AppSidebar() {
         canViewProfessionals,
         canManageJobFunctions,
         canViewShifts,
+        canImport,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
@@ -79,6 +82,9 @@ export function AppSidebar() {
             : []),
         ...(canManagePeople
             ? [{ title: 'Pessoas', href: people(), icon: Users }]
+            : []),
+        ...(canImport
+            ? [{ title: 'Importações', href: imports(), icon: FileUp }]
             : []),
         ...(canViewPolicies
             ? [{ title: 'Regras', href: policies(), icon: SlidersHorizontal }]

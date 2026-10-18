@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade e escala (publicação segura, agenda diária/semanal/mensal), com identidade visual própria. Próximo passo: etapa 5 (importação de CSV) ou 6 (vagas e candidaturas).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) e importação CSV de profissionais, com identidade visual própria. Próximo passo: etapa 5b (importação de plantões em rascunho).
 
 ## Onde está cada coisa
 
@@ -35,14 +35,34 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #9 | Etapa 3a: cadastro de profissionais e unidade-base | Mesclado |
 | #10 | Etapa 3b: funções, habilitações e elegibilidade | Mesclado |
 | #11 | Etapa 4a: plantões, publicação e cancelamento | Mesclado |
-| — | Etapa 4b: agenda diária, semanal e mensal (branch `feat/schedule-calendar`) | Em revisão |
+| #12 | Etapa 4b: agenda e itens das referências | Mesclado |
+| — | Etapa 5a: importação CSV de profissionais (branch `feat/import-professionals`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda).
-- **Próximo:** etapas 5 a 9 (importação, vagas, trocas, presença, relatórios). Pelo plano, 5 e 6 podem seguir em qualquer ordem depois da 4.
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais).
+- **Próximo:** 5b (plantões por CSV, criados como rascunho), depois as etapas 6 a 9.
+- **Decisão do usuário para a etapa 6 (17/10/2026):** o profissional ganha acesso por convite na tela dele, usando o e-mail do cadastro. Isso cria o vínculo com o papel Profissional e o liga ao cadastro.
+
+### Etapa 5a: como funciona a importação
+
+- **Tela "Importações":** para o administrador de rede (qualquer unidade) e para o importador, que só importa nas suas unidades e só vê os próprios lotes.
+- **Arquivo:** CSV UTF-8, com `;` ou `,`, até 2 MB e 2.000 linhas. Colunas: `source_id`, `name`, `base_unit`, `council`, `council_number`, `council_uf`, `email` e `phone`. Há um modelo para baixar. O arquivo original fica privado, com nome aleatório.
+- **Prévia:** nada é gravado na operação. Cada linha recebe um resultado: será criada, idêntica já existente, conflitante ou rejeitada, com o motivo. As contagens fecham com o total recebido.
+- **Identidade:** cliente + sistema de origem + tipo + `source_id`.
+  - Reimportar o mesmo conteúdo não duplica.
+  - Conteúdo diferente vira conflito, sem alterar nada.
+  - Um cadastro manual com o mesmo identificador ou registro também vira conflito, sem ligação automática.
+- **Confirmação:** o job `ApplyImportBatch` roda no worker e aplica linha a linha, com lock. Pode ser retomado sem duplicar. A tela atualiza sozinha.
+- **Segurança:**
+  - O job aplica só como o criador do lote e revalida a permissão na hora. Uma linha cuja unidade deixou de ser permitida vira conflito.
+  - Há um único job por lote (`ShouldBeUnique`), e o contexto é limpo ao final.
+  - Os limites de colunas e de tamanho de campo protegem contra arquivos abusivos.
+  - Valores que começam como fórmula (`=`, `+`, `-`, `@`) são rejeitados.
+  - A auditoria registra o envio, a confirmação e a conclusão do lote.
+- **Testes:** dentro do container, a fila efetiva é `database` (a variável do Docker vence o `phpunit.xml`). Por isso os testes interceptam o envio e executam o job explicitamente.
 
 ### Etapa 4a: decisões do usuário (17/10/2026) e como funciona
 
@@ -141,7 +161,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 171 testes passando (etapa 4a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 181 testes passando (etapa 5a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
