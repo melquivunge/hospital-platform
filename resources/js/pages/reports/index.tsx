@@ -1,9 +1,24 @@
 import { Head, router } from '@inertiajs/react';
-import { ChartColumn, Download } from 'lucide-react';
+import {
+    ChartColumn,
+    ChevronDown,
+    Download,
+    FileText,
+    Sheet,
+} from 'lucide-react';
 import type { FormEvent, ReactNode } from 'react';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { attendance, index, schedule } from '@/routes/reports';
@@ -20,6 +35,11 @@ type Props = {
     attendance: Counts | null;
     hours: { id: number; name: string; shifts: number; hours: number }[];
 };
+
+const exports = [
+    ['Escala', schedule],
+    ['Presença', attendance],
+] as const;
 
 const number = new Intl.NumberFormat('pt-BR');
 const decimal = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
@@ -134,30 +154,63 @@ export default function Reports(props: Props) {
                 <PageHeader
                     eyebrow={unit.name}
                     title="Relatórios"
-                    description="Plantões que começam no período, no horário da unidade. Os arquivos trazem exatamente as linhas contadas aqui."
+                    description="Plantões que começam no período, no horário da unidade. As exportações trazem exatamente os plantões contados aqui."
                     actions={
-                        <>
-                            <Button
-                                asChild
-                                variant="outline"
-                                className="min-h-11"
-                            >
-                                <a href={schedule({ query }).url} download>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="min-h-11">
                                     <Download aria-hidden="true" />
-                                    Escala (CSV)
-                                </a>
-                            </Button>
-                            <Button
-                                asChild
-                                variant="outline"
-                                className="min-h-11"
+                                    Exportar
+                                    <ChevronDown
+                                        className="text-muted-foreground"
+                                        aria-hidden="true"
+                                    />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                align="end"
+                                className="w-56 rounded-xl p-1.5"
                             >
-                                <a href={attendance({ query }).url} download>
-                                    <Download aria-hidden="true" />
-                                    Presença (CSV)
-                                </a>
-                            </Button>
-                        </>
+                                {exports.map(([label, route], position) => (
+                                    <DropdownMenuGroup key={label}>
+                                        {position > 0 && (
+                                            <DropdownMenuSeparator />
+                                        )}
+                                        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                                            {label}
+                                        </DropdownMenuLabel>
+                                        {(['pdf', 'csv'] as const).map(
+                                            (format) => (
+                                                <DropdownMenuItem
+                                                    key={format}
+                                                    asChild
+                                                >
+                                                    <a
+                                                        href={
+                                                            route(
+                                                                { format },
+                                                                { query },
+                                                            ).url
+                                                        }
+                                                        download
+                                                        className="flex min-h-10 cursor-pointer items-center rounded-lg"
+                                                    >
+                                                        {format === 'pdf' ? (
+                                                            <FileText aria-hidden="true" />
+                                                        ) : (
+                                                            <Sheet aria-hidden="true" />
+                                                        )}
+                                                        {format === 'pdf'
+                                                            ? 'PDF'
+                                                            : 'Planilha (CSV)'}
+                                                    </a>
+                                                </DropdownMenuItem>
+                                            ),
+                                        )}
+                                    </DropdownMenuGroup>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     }
                 />
 

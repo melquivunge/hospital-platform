@@ -66,7 +66,7 @@ class ReportTest extends TestCase
      */
     private function csv(string $route, array $query): array
     {
-        $body = $this->get(route($route, $query))->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8')->streamedContent();
+        $body = $this->get(route($route, ['format' => 'csv', ...$query]))->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8')->streamedContent();
         $this->assertStringStartsWith("\u{FEFF}", $body);
 
         return array_map(fn (string $line) => str_getcsv($line, ';', '"', ''), array_values(array_filter(explode("\n", substr($body, 3)))));
@@ -126,7 +126,23 @@ class ReportTest extends TestCase
         $professional = Membership::factory()->for($this->n['unit']->tenant)->create();
         $professional->grant(Role::Professional, $this->n['unit']);
         $this->actingAs($professional->user)->get(route('reports.index'))->assertForbidden();
-        $this->get(route('reports.schedule'))->assertForbidden();
+        $this->get(route('reports.schedule', 'pdf'))->assertForbidden();
+    }
+
+    public function test_the_pdf_carries_the_same_rows_and_is_audited(): void
+    {
+        $this->shift('2026-11-10 10:00:00+00', ['professional_id' => $this->n['ana']->id]);
+        $this->shift('2026-11-12 10:00:00+00');
+        $query = ['format' => 'pdf', 'unit' => $this->n['unit']->id, 'from' => '2026-11-01', 'to' => '2026-11-30'];
+
+        $response = $this->actingAs($this->n['coordinator']->user)->get(route('reports.schedule', $query))->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf')->assertHeader('Content-Disposition', 'attachment; filename="escala-2026-11-01-a-2026-11-30.pdf"');
+        $this->assertStringStartsWith('%PDF-', (string) $response->getContent());
+        $this->assertEquals(['report' => 'escala', 'format' => 'pdf', 'from' => '2026-11-01', 'to' => '2026-11-30', 'rows' => 2],
+            json_decode((string) DB::table('audit_events')->where('action', 'report.exported')->value('context'), true));
+
+        $this->get(route('reports.attendance', $query))->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->get('/reports/schedule.xlsx')->assertNotFound();
     }
 
     public function test_an_invalid_or_too_long_period_falls_back_to_the_current_month(): void

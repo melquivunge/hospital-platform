@@ -10,6 +10,8 @@ use App\Policies\UnitPolicy;
 use App\Scheduling\RequestStatus;
 use App\Scheduling\ShiftStatus;
 use Carbon\CarbonImmutable;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -17,7 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Operational reports (step 9b, V1-11): same readers and units as the schedule (user decision,
@@ -91,14 +93,14 @@ class ReportController extends Controller
         ]);
     }
 
-    public function schedule(Request $request): StreamedResponse
+    public function schedule(Request $request, string $format): SymfonyResponse
     {
         [, $unit, $from, $to] = $this->scope($request) ?? abort(404);
         $timezone = $unit->timezone ?? 'UTC';
         $shifts = self::shifts($unit, $from, $to)->with(['sector:id,name', 'jobFunction:id,name', 'professional:id,name'])
             ->orderBy('starts_at')->orderBy('id')->get();
 
-        return $this->csv($unit, 'escala', $from, $to, ['Data', 'Início', 'Fim', 'Setor', 'Função', 'Profissional', 'Situação', 'Tipo'],
+        return $this->export($format, $unit, 'escala', 'Escala', $from, $to, ['Data', 'Início', 'Fim', 'Setor', 'Função', 'Profissional', 'Situação', 'Tipo'],
             $shifts->map(fn (Shift $shift) => [
                 ...self::when($shift, $timezone), $shift->sector->name, $shift->jobFunction->name, $shift->professional->name ?? '',
                 match ($shift->status) {
@@ -114,7 +116,7 @@ class ReportController extends Controller
             ])->values()->all());
     }
 
-    public function attendance(Request $request): StreamedResponse
+    public function attendance(Request $request, string $format): SymfonyResponse
     {
         [, $unit, $from, $to] = $this->scope($request) ?? abort(404);
         $timezone = $unit->timezone ?? 'UTC';
@@ -128,7 +130,7 @@ class ReportController extends Controller
             ->get(['shift_id', 'kind', 'status', 'informed_at'])->groupBy('shift_id');
         $time = fn (?string $at) => $at === null ? '' : CarbonImmutable::parse($at)->setTimezone($timezone)->format('d/m/Y H:i');
 
-        return $this->csv($unit, 'presenca', $from, $to, ['Data', 'Início', 'Fim', 'Setor', 'Função', 'Profissional', 'Entrada', 'Saída', 'Saída ajustada', 'Ocorrências abertas'],
+        return $this->export($format, $unit, 'presenca', 'Presença', $from, $to, ['Data', 'Início', 'Fim', 'Setor', 'Função', 'Profissional', 'Entrada', 'Saída', 'Saída ajustada', 'Ocorrências abertas'],
             $shifts->map(function (Shift $shift) use ($events, $occurrences, $time, $timezone) {
                 $own = collect($events->get($shift->id, []));
                 $reported = collect($occurrences->get($shift->id, []));
@@ -210,16 +212,38 @@ class ReportController extends Controller
     }
 
     /**
-     * Streamed to the requester only (nothing stored), `;` and a BOM for spreadsheets in pt-BR, and
-     * cells a spreadsheet would run as a formula are neutralized (PRODUCT.md).
+     * Generated for the requester only, never stored, and audited. CSV: `;` and a BOM for spreadsheets
+     * in pt-BR, with cells a spreadsheet would run as a formula neutralized (PRODUCT.md). PDF: the same
+     * rows, escaped by Blade, rendered without remote resources or embedded PHP.
      *
      * @param  list<string>  $header
      * @param  array<array<string>>  $rows
      */
-    private function csv(Unit $unit, string $report, CarbonImmutable $from, CarbonImmutable $to, array $header, array $rows): StreamedResponse
+    private function export(string $format, Unit $unit, string $report, string $title, CarbonImmutable $from, CarbonImmutable $to, array $header, array $rows): SymfonyResponse
     {
-        $last = $to->subDay()->toDateString();
-        AuditEvent::record('report.exported', $unit->tenant_id, $unit, ['report' => $report, 'from' => $from->toDateString(), 'to' => $last, 'rows' => count($rows)]);
+        $last = $to->subDay();
+        AuditEvent::record('report.exported', $unit->tenant_id, $unit, ['report' => $report, 'format' => $format, 'from' => $from->toDateString(), 'to' => $last->toDateString(), 'rows' => count($rows)]);
+        $file = "{$report}-{$from->toDateString()}-a-{$last->toDateString()}.{$format}";
+
+        if ($format === 'pdf') {
+            // ponytail: dompdf renders in memory; a 92-day period of a large unit (thousands of rows) is
+            // the ceiling — move to a queued export with a private download if that ever gets slow.
+            $pdf = new Dompdf(new Options(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Sans']));
+            $pdf->loadHtml(view('reports.table', [
+                'network' => $unit->tenant->name, 'unit' => $unit->name, 'title' => $title, 'header' => $header, 'rows' => $rows,
+                'period' => $from->format('d/m/Y').' a '.$last->format('d/m/Y'),
+                'generated' => CarbonImmutable::now($unit->timezone ?? 'UTC')->format('d/m/Y H:i'),
+            ])->render());
+            $pdf->setPaper('A4', 'landscape');
+            $pdf->render();
+            $pdf->getCanvas()->page_text(770, 570, 'Página {PAGE_NUM} de {PAGE_COUNT}', $pdf->getFontMetrics()->getFont('DejaVu Sans'), 7, [0.4, 0.4, 0.4]);
+
+            return response((string) $pdf->output(), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => "attachment; filename=\"{$file}\"",
+                'Cache-Control' => 'no-store',
+            ]);
+        }
 
         return response()->streamDownload(function () use ($header, $rows) {
             $out = fopen('php://output', 'w');
@@ -231,6 +255,6 @@ class ReportController extends Controller
                 fputcsv($out, array_map(fn (string $cell) => preg_match('/^[=+\-@\t\r]/', $cell) === 1 ? "'".$cell : $cell, $row), ';', '"', '');
             }
             fclose($out);
-        }, "{$report}-{$from->toDateString()}-a-{$last}.csv", ['Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'no-store']);
+        }, $file, ['Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'no-store']);
     }
 }

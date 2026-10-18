@@ -52,8 +52,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('shifts/{shift}/occurrences', [AttendanceOccurrenceController::class, 'store'])->middleware('throttle:20,1')->name('shifts.occurrences.store');
     Route::post('occurrences/{occurrence}/decide', [AttendanceOccurrenceController::class, 'decide'])->name('occurrences.decide');
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
-    Route::get('reports/schedule.csv', [ReportController::class, 'schedule'])->middleware('throttle:20,1')->name('reports.schedule');
-    Route::get('reports/attendance.csv', [ReportController::class, 'attendance'])->middleware('throttle:20,1')->name('reports.attendance');
+    Route::get('reports/schedule.{format}', [ReportController::class, 'schedule'])->whereIn('format', ['csv', 'pdf'])->middleware('throttle:20,1')->name('reports.schedule');
+    Route::get('reports/attendance.{format}', [ReportController::class, 'attendance'])->whereIn('format', ['csv', 'pdf'])->middleware('throttle:20,1')->name('reports.attendance');
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::post('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
     Route::get('requests', [ShiftRequestController::class, 'index'])->name('requests.index');
