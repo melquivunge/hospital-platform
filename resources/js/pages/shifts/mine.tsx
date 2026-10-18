@@ -1,11 +1,15 @@
-import { Head } from '@inertiajs/react';
+import { Form, Head } from '@inertiajs/react';
 import { CalendarCheck } from 'lucide-react';
+import VacancyController from '@/actions/App/Http/Controllers/VacancyController';
+import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import type { ShiftSummary } from '@/pages/shifts/index';
 import { formatDay, PeriodLabel, timeRange } from '@/pages/shifts/index';
 import { mine } from '@/routes/shifts';
 
-type MyShift = ShiftSummary & { unit: string };
+type MyShift = ShiftSummary & { unit: string; upcoming: boolean };
 
 /** Professional's own published shifts, grouped by local start day (reference IMG_0911). */
 export default function MyShifts({
@@ -70,6 +74,11 @@ export default function MyShifts({
                                                         {timeRange(shift)}
                                                     </span>
                                                 </p>
+                                                {shift.upcoming && (
+                                                    <AnnounceForm
+                                                        shift={shift}
+                                                    />
+                                                )}
                                             </li>
                                         ))}
                                 </ul>
@@ -79,6 +88,44 @@ export default function MyShifts({
                 )}
             </Page>
         </>
+    );
+}
+
+/** Announce for replacement (step 6c): the professional stays responsible until the coordinator chooses. */
+function AnnounceForm({ shift }: { shift: MyShift }) {
+    const action = shift.announced
+        ? VacancyController.cancelAnnouncement.form(shift.id)
+        : VacancyController.announce.form(shift.id);
+
+    return (
+        <Form
+            {...action}
+            options={{ preserveScroll: true }}
+            className="grid gap-2 border-t pt-3"
+        >
+            {({ processing, errors }) => (
+                <>
+                    {shift.announced && (
+                        <p className="font-medium text-primary">
+                            Anunciado para substituição. Você continua
+                            responsável até o coordenador escolher.
+                        </p>
+                    )}
+                    <InputError message={errors.shift} />
+                    <Button
+                        type="submit"
+                        variant="outline"
+                        disabled={processing}
+                        className="min-h-11 justify-self-start"
+                    >
+                        {processing && <Spinner />}
+                        {shift.announced
+                            ? 'Cancelar anúncio'
+                            : 'Anunciar para substituição'}
+                    </Button>
+                </>
+            )}
+        </Form>
     );
 }
 

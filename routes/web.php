@@ -34,6 +34,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('vacancies/{shift}', [VacancyController::class, 'show'])->name('vacancies.show');
     Route::post('vacancies/{shift}/apply', [VacancyController::class, 'apply'])->name('vacancies.apply');
     Route::post('vacancies/{shift}/withdraw', [VacancyController::class, 'withdraw'])->name('vacancies.withdraw');
+    Route::post('my-shifts/{shift}/announce', [VacancyController::class, 'announce'])->name('shifts.announce');
+    Route::post('my-shifts/{shift}/cancel-announcement', [VacancyController::class, 'cancelAnnouncement'])->name('shifts.cancel-announcement');
     Route::post('shift-applications/{application}/select', [ShiftController::class, 'select'])->name('shift-applications.select');
     Route::post('professionals/{professional}/invite', [ProfessionalController::class, 'invite'])->name('professionals.invite');
     Route::get('shifts', [ShiftController::class, 'index'])->name('shifts.index');

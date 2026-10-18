@@ -26,7 +26,7 @@ type Application = {
     id: number;
     professional: string;
     registration: string | null;
-    status: 'active' | 'withdrawn' | 'selected' | 'not_selected';
+    status: 'active' | 'withdrawn' | 'selected' | 'not_selected' | 'replaced';
     statusLabel: string;
     appliedAt: string;
     reason: string | null;
@@ -91,6 +91,11 @@ export default function ShiftShow({
                     <Detail label="Função">{shift.function}</Detail>
                     <Detail label="Profissional">
                         {shift.professional ?? 'Vaga aberta'}
+                        {shift.announced && (
+                            <span className="block font-normal text-primary">
+                                Anunciado para substituição
+                            </span>
+                        )}
                     </Detail>
                     {shift.cancelReason && (
                         <Detail label="Motivo do cancelamento">

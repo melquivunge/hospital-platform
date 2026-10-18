@@ -4,7 +4,7 @@ Atualizado em 17/10/2026, ao fim da sessão. Leia este arquivo e o [AGENTS.md](.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões" e vagas com candidatura e escolha justificada, com identidade visual própria. Próximo passo: etapa 6c (anúncio do próprio plantão para substituição).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada e anúncio do próprio plantão para substituição, com identidade visual própria. Próximo passo: etapa 7 (trocas e transferências).
 
 ## Onde está cada coisa
 
@@ -39,14 +39,22 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #13 | Etapa 5a: importação CSV de profissionais | Mesclado |
 | #14 | Etapa 5b: importação CSV de plantões | Mesclado |
 | #15 | Etapa 6a: acesso do profissional e "Meus plantões" | Mesclado |
-| — | Etapa 6b: vagas abertas, candidatura e escolha justificada (branch `feat/open-shift-applications`) | Em revisão |
+| #16 | Etapa 6b: vagas abertas, candidatura e escolha justificada | Mesclado |
+| — | Etapa 6c: anúncio do próprio plantão para substituição (branch `feat/shift-announcement`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
 ## Plano: o que está feito e o que falta
 
-- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas).
-- **Próximo:** 6c (o profissional anuncia o próprio plantão; o responsável só muda quando o coordenador escolhe o substituto), depois as etapas 7 a 9.
+- Feito: etapa 1 (ambiente e login), 2a (isolamento), 2b-1 (unidades e setores), identidade visual (PR #5), 2b-2 (pessoas e papéis, PR #7), 2c (catálogo de regras e decisão sobre RLS, PR #8), 3a (cadastro de profissionais, PR #9), 3b (funções, habilitações e elegibilidade, PR #10), 4a (escala, PR #11), 4b (agenda, PR #12), 5a (importação de profissionais, PR #13), 5b (importação de plantões, PR #14), 6a (acesso do profissional, PR #15), 6b (vagas abertas, PR #16), 6c (anúncio para substituição).
+- **Próximo:** etapa 7 (trocas e transferências), depois 8 e 9.
+- **6c (anúncio para substituição):**
+  - Em "Meus plantões", o responsável anuncia um plantão publicado e futuro ("Anunciar para substituição") ou cancela o anúncio. Ele continua responsável até a escolha (regra do PRODUCT.md).
+  - O plantão anunciado aparece em "Vagas" para os demais profissionais habilitados, marcado como "Substituição", sem o nome de quem anunciou. Quem anunciou não se candidata ao próprio plantão.
+  - A escolha do coordenador trava o responsável atual e o candidato, depois o plantão; troca o responsável, encerra o anúncio, marca a escolha anterior como "Selecionada, depois substituída" (`replaced`) e registra `replaced_professional_id` na auditoria. O coordenador que anunciou não escolhe o próprio substituto.
+  - Cancelar o anúncio encerra as candidaturas; cancelar o plantão encerra o anúncio. Restrição `shifts_announced_check`: só plantão publicado e com responsável pode estar anunciado.
+  - Em vaga aberta, o profissional só vê a candidatura da rodada atual; o resultado anterior aparece quando a vaga fecha.
+  - Verificação: testes, navegador (Playwright, 1440 e 390 px) e corrida real entre escolha e cancelamento do anúncio (um resultado só, sem mistura).
 - **6b (vagas abertas):**
   - **Vaga:** plantão publicado sem responsável. A tela "Vagas" mostra ao profissional as vagas futuras nas unidades e funções em que ele tem habilitação não revogada; o detalhe tem "Candidate-se" e "Retirar-se" (referências IMG_0928 a 0932). O valor não é mostrado ao profissional.
   - **Candidatura:** `shift_applications`, situações `active`, `withdrawn`, `selected` e `not_selected`. Candidatar-se não atribui o plantão. A elegibilidade é verificada na candidatura e de novo na escolha. Retirar e voltar a se candidatar cria um novo registro e preserva o histórico.

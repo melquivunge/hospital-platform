@@ -61,6 +61,12 @@ export default function VacancyShow({
                         <Detail label="Unidade">{vacancy.unit}</Detail>
                         <Detail label="Setor">{vacancy.sector}</Detail>
                         <Detail label="Função">{vacancy.function}</Detail>
+                        {vacancy.replacement && (
+                            <Detail label="Tipo">
+                                Substituição: o plantão tem responsável, que só
+                                muda quando o coordenador escolher
+                            </Detail>
+                        )}
                         {vacancy.application && (
                             <Detail label="Sua candidatura">
                                 {vacancy.application.label}

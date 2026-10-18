@@ -72,9 +72,26 @@ class VacancyController extends Controller
         return to_route('vacancies.show', $shift);
     }
 
+    public function announce(Request $request, Shift $shift): RedirectResponse
+    {
+        $shift->announce(self::professional($request));
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Plantão anunciado. Você continua responsável até o coordenador escolher o substituto.']);
+
+        return to_route('shifts.mine');
+    }
+
+    public function cancelAnnouncement(Request $request, Shift $shift): RedirectResponse
+    {
+        $shift->cancelAnnouncement(self::professional($request));
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Anúncio cancelado. O plantão continua com você.']);
+
+        return to_route('shifts.mine');
+    }
+
     /**
-     * Open vacancies in units and functions where the professional holds a non-revoked qualification.
-     * Full eligibility is checked when applying and again on selection.
+     * Open vacancies, and shifts announced by someone else (step 6c), in units and functions where the
+     * professional holds a non-revoked qualification. Full eligibility is checked when applying and again
+     * on selection.
      *
      * @param  Builder<Shift>  $query
      * @return Builder<Shift>
@@ -83,7 +100,8 @@ class VacancyController extends Controller
     {
         return $query
             ->where('status', ShiftStatus::Published)
-            ->whereNull('professional_id')
+            ->where(fn (Builder $query) => $query->whereNull('professional_id')
+                ->orWhere(fn (Builder $query) => $query->whereNotNull('announced_at')->where('professional_id', '<>', $professional->id)))
             ->whereExists(fn (QueryBuilder $query) => $query->from('qualifications')
                 ->whereColumn('qualifications.unit_id', 'shifts.unit_id')
                 ->whereColumn('qualifications.job_function_id', 'shifts.job_function_id')
@@ -110,6 +128,9 @@ class VacancyController extends Controller
         $end = $shift->ends_at->setTimezone($timezone);
         /** @var ShiftApplication|null $mine */
         $mine = $shift->applications->first();
+        $open = $shift->status === ShiftStatus::Published && ($shift->professional_id === null || $shift->announced_at !== null);
+        // While open, an outcome from an earlier round (e.g. before a new announcement) is not this round's.
+        $mine = $mine !== null && ($mine->status === ApplicationStatus::Active || ! $open) ? $mine : null;
 
         return [
             'id' => $shift->id,
@@ -123,6 +144,8 @@ class VacancyController extends Controller
             // User decision (17/10/2026): day shift starts 07:00–18:59 local, night otherwise.
             'period' => $start->hour >= 7 && $start->hour < 19 ? 'day' : 'night',
             'application' => $mine === null ? null : ['status' => $mine->status->value, 'label' => $mine->status->label()],
+            // Replacement of an announced shift; the announcer's identity is not shown to candidates.
+            'replacement' => $shift->professional_id !== null && $shift->announced_at !== null,
         ];
     }
 }

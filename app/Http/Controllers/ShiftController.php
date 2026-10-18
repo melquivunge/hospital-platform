@@ -104,7 +104,7 @@ class ShiftController extends Controller
             ->orderBy('starts_at')
             ->limit(200)
             ->get()
-            ->map(fn (Shift $shift) => [...self::summary($shift, $shift->unit->timezone ?? 'UTC'), 'unit' => $shift->unit->name])
+            ->map(fn (Shift $shift) => [...self::summary($shift, $shift->unit->timezone ?? 'UTC'), 'unit' => $shift->unit->name, 'upcoming' => $shift->starts_at->isFuture()])
             ->values();
 
         return Inertia::render('shifts/mine', ['professional' => $professional->name, 'shifts' => $shifts]);
@@ -144,7 +144,7 @@ class ShiftController extends Controller
             'canEdit' => $canManage && $shift->status === ShiftStatus::Draft,
             'canPublish' => $canManage && $shift->status === ShiftStatus::Draft,
             'canCancel' => $canManage && ($shift->status === ShiftStatus::Draft || ($shift->status === ShiftStatus::Published && $shift->starts_at->isFuture())),
-            'canSelect' => $canManage && $shift->status === ShiftStatus::Published && $shift->professional_id === null && $shift->starts_at->isFuture(),
+            'canSelect' => $canManage && $shift->status === ShiftStatus::Published && ($shift->professional_id === null || $shift->announced_at !== null) && $shift->starts_at->isFuture(),
             'applications' => $canManage ? self::applications($shift) : [],
         ]);
     }
@@ -293,6 +293,7 @@ class ShiftController extends Controller
             // User decision (17/10/2026): day shift starts 07:00–18:59 local, night otherwise.
             'period' => $start->hour >= 7 && $start->hour < 19 ? 'day' : 'night',
             'valueCents' => $shift->value_cents,
+            'announced' => $shift->announced_at !== null,
         ];
     }
 
