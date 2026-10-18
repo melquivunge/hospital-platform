@@ -2,13 +2,26 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Models\Membership;
 use App\Models\User;
+use App\Tenancy\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ProfileUpdateTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_settings_keep_the_current_client_and_work_without_one()
+    {
+        $membership = Membership::factory()->withRole(Role::NetworkAdmin)->create();
+        $this->actingAs($membership->user)->get(route('profile.edit'))
+            ->assertInertia(fn (Assert $page) => $page->where('canViewShifts', true));
+
+        $this->actingAs(User::factory()->create())->get(route('profile.edit'))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('canViewShifts', false)->where('unreadNotifications', 0));
+    }
 
     public function test_profile_page_is_displayed()
     {

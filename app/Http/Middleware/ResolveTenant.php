@@ -15,12 +15,20 @@ class ResolveTenant
      *
      * @param  Closure(Request): (Response)  $next
      */
-    public function handle(Request $request, Closure $next): Response
+    /**
+     * `tenant:optional` (account settings) loads the client when it can be resolved and lets the
+     * request through otherwise, so menus keep their items without blocking users with no access.
+     */
+    public function handle(Request $request, Closure $next, string $mode = 'required'): Response
     {
         $memberships = $request->user()->memberships()->active()->with('tenant')->get();
 
         $selected = $memberships->firstWhere('tenant_id', $request->session()->get('tenant_id'))
             ?? ($memberships->count() === 1 ? $memberships->first() : null);
+
+        if ($selected === null && $mode === 'optional') {
+            return $next($request);
+        }
 
         abort_if($memberships->isEmpty(), 403, 'Sua conta não tem acesso ativo a nenhuma instituição.');
 

@@ -9,6 +9,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -52,7 +53,11 @@ class ProfileController extends Controller
 
         Auth::logout();
 
+        $photo = $user->avatar_path;
         $user->delete();
+        if ($photo !== null) {
+            Storage::disk('local')->delete($photo);
+        }
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
