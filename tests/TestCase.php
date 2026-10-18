@@ -24,7 +24,7 @@ abstract class TestCase extends BaseTestCase
      */
     public function artisan($command, $parameters = [])
     {
-        if (str_starts_with($command, 'migrate')) {
+        if (is_string($command) && str_starts_with($command, 'migrate')) {
             $parameters += ['--database' => 'pgsql_owner'];
         }
 

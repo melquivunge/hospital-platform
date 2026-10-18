@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Tenancy\CurrentTenant;
 use Carbon\CarbonImmutable;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -40,8 +42,12 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function configureDatabaseRole(): void
     {
-        // A sync job runs inside the request that dispatched it and keeps that request's client.
-        Queue::before(fn (JobProcessing $event) => $event->connectionName === 'sync' || app(CurrentTenant::class)->set(null));
+        // An asynchronous job starts and ends with no client; a sync job runs inside the request that
+        // dispatched it and keeps that request's client.
+        $reset = fn (JobProcessing|JobProcessed|JobFailed $event) => $event->connectionName === 'sync' || app(CurrentTenant::class)->set(null);
+        Queue::before($reset);
+        Queue::after($reset);
+        Queue::failing($reset);
     }
 
     /**

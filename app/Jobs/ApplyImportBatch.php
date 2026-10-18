@@ -35,6 +35,9 @@ class ApplyImportBatch implements ShouldBeUnique, ShouldQueue
 
     public function handle(CurrentTenant $currentTenant): void
     {
+        // A sync run happens inside the request that dispatched it: give its client back at the end.
+        $previous = $currentTenant->get();
+
         try {
             // Outside HTTP: tenant and actor come from the batch, and the creator's permission is checked
             // again now; losing the importer role after the preview stops the remaining lines.
@@ -56,7 +59,7 @@ class ApplyImportBatch implements ShouldBeUnique, ShouldQueue
             }
         } finally {
             Auth::forgetUser();
-            $currentTenant->set(null);
+            $currentTenant->set($previous);
         }
     }
 }

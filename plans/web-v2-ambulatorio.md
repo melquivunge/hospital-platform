@@ -68,6 +68,12 @@ Mesmo monólito Laravel 13 + React/Inertia + PostgreSQL. Auditoria só de inser�
 - Verificação de telas e revisão de segurança independente.
 - Limites de produção atualizados no README.
 
+## Pendências da revisão de segurança da 3.1 (para a 3.2 em diante)
+
+- Tabelas só de inserção (trilha de leitura): revogar de `app_runtime` a alteração e a remoção de linhas, além do trigger.
+- Toda tabela clínica com `tenant_id NOT NULL`; nenhuma view ou função `SECURITY DEFINER` sobre tabela clínica sem `security_invoker`.
+- Em produção: login da aplicação membro só de `app_runtime` (não dono, não superusuário). Com o login comum, `RESET ROLE` e `set_config` continuam ao alcance de uma injeção de SQL: o RLS protege contra erro de escopo, não contra injeção.
+
 ## Riscos
 
 - Dados de saúde: qualquer vazamento é grave. Por isso o RLS (ADR-0003) e a revisão de segurança em toda etapa clínica (3.2, 3.3, 3.6 e 3.7).
