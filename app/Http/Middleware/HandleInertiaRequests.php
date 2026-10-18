@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Controllers\AppointmentController;
 use App\Models\ImportBatch;
 use App\Models\JobFunction;
 use App\Models\Membership;
@@ -75,6 +76,8 @@ class HandleInertiaRequests extends Middleware
                 && $request->user()->can('merge', PatientMerge::class),
             'canManageSchedules' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null
                 && Professional::manageableUnits($membership)->exists(),
+            'canBookAppointments' => fn () => $request->user() !== null
+                && AppointmentController::bookingUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canImport' => fn () => $request->user() !== null
                 && $request->user()->can('create', ImportBatch::class),
             'canViewShifts' => fn () => $request->user() !== null

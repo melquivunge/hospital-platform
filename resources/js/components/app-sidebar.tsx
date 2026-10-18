@@ -3,6 +3,7 @@ import {
     ArrowLeftRight,
     BriefcaseMedical,
     CalendarCheck,
+    CalendarPlus,
     CalendarClock,
     CalendarDays,
     GitMerge,
@@ -32,6 +33,7 @@ import { edit as selectTenant } from '@/routes/current-tenant';
 import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
 import { index as patientMerges } from '@/routes/patient-merges';
+import { index as appointments } from '@/routes/appointments';
 import { index as patients } from '@/routes/patients';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
@@ -72,11 +74,21 @@ export function AppSidebar() {
         canViewPatients,
         canMergePatients,
         canManageSchedules,
+        canBookAppointments,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
         ...(canViewPatients
             ? [{ title: 'Pacientes', href: patients(), icon: UsersRound }]
+            : []),
+        ...(canBookAppointments
+            ? [
+                  {
+                      title: 'Agendamentos',
+                      href: appointments(),
+                      icon: CalendarPlus,
+                  },
+              ]
             : []),
         ...(canManageSchedules
             ? [{ title: 'Agendas', href: schedules(), icon: CalendarClock }]

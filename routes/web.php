@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AttendanceOccurrenceController;
 use App\Http\Controllers\AttendancePointController;
@@ -59,6 +60,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('units/{unit}/schedule-rules/{rule}/deactivate', [ScheduleController::class, 'deactivateRule'])->name('schedules.rules.deactivate');
     Route::post('units/{unit}/schedule-blocks', [ScheduleController::class, 'storeBlock'])->name('schedules.blocks.store');
     Route::post('units/{unit}/schedule-blocks/{block}/cancel', [ScheduleController::class, 'cancelBlock'])->name('schedules.blocks.cancel');
+    Route::get('appointments', [AppointmentController::class, 'index'])->name('appointments.index');
+    Route::post('units/{unit}/appointments', [AppointmentController::class, 'store'])->middleware('throttle:60,1')->name('appointments.store');
+    Route::post('appointments/{appointment}/cancel', [AppointmentController::class, 'cancel'])->middleware('throttle:60,1')->name('appointments.cancel');
+    Route::post('appointments/{appointment}/no-show', [AppointmentController::class, 'noShow'])->middleware('throttle:60,1')->name('appointments.no-show');
     Route::get('patient-merges', [PatientMergeController::class, 'index'])->name('patient-merges.index');
     Route::post('patient-merges', [PatientMergeController::class, 'store'])->middleware('throttle:30,1')->name('patient-merges.store');
     Route::post('patient-merges/{merge}/undo', [PatientMergeController::class, 'undo'])->middleware('throttle:30,1')->name('patient-merges.undo');
