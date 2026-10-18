@@ -25,6 +25,7 @@ declare module '@inertiajs/core' {
             unreadNotifications: number;
             canViewPatients: boolean;
             canMergePatients: boolean;
+            canManageSchedules: boolean;
             [key: string]: unknown;
         };
     }

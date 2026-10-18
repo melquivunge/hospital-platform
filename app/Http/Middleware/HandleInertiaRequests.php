@@ -73,6 +73,8 @@ class HandleInertiaRequests extends Middleware
                 && $request->user()->can('viewAny', Patient::class),
             'canMergePatients' => fn () => $request->user() !== null
                 && $request->user()->can('merge', PatientMerge::class),
+            'canManageSchedules' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null
+                && Professional::manageableUnits($membership)->exists(),
             'canImport' => fn () => $request->user() !== null
                 && $request->user()->can('create', ImportBatch::class),
             'canViewShifts' => fn () => $request->user() !== null
