@@ -19,6 +19,7 @@ declare module '@inertiajs/core' {
             canViewProfessionals: boolean;
             canManageJobFunctions: boolean;
             canViewShifts: boolean;
+            canImport: boolean;
             [key: string]: unknown;
         };
     }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ImportController;
 use App\Http\Controllers\JobFunctionController;
 use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\PolicyController;
@@ -21,6 +22,12 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::resource('professionals', ProfessionalController::class)->except('destroy');
     Route::post('professionals/{professional}/qualifications', [QualificationController::class, 'store'])->name('professionals.qualifications.store');
     Route::post('qualifications/{qualification}/transition', [QualificationController::class, 'transition'])->name('qualifications.transition');
+    Route::get('imports', [ImportController::class, 'index'])->name('imports.index');
+    Route::get('imports/create', [ImportController::class, 'create'])->name('imports.create');
+    Route::get('imports/template', [ImportController::class, 'template'])->name('imports.template');
+    Route::post('imports', [ImportController::class, 'store'])->name('imports.store');
+    Route::get('imports/{batch}', [ImportController::class, 'show'])->name('imports.show');
+    Route::post('imports/{batch}/confirm', [ImportController::class, 'confirm'])->name('imports.confirm');
     Route::get('shifts', [ShiftController::class, 'index'])->name('shifts.index');
     Route::get('units/{unit}/shifts/create', [ShiftController::class, 'create'])->name('units.shifts.create');
     Route::post('units/{unit}/shifts', [ShiftController::class, 'store'])->name('units.shifts.store');

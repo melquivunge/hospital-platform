@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\ImportBatch;
 use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\PolicyVersion;
@@ -56,6 +57,8 @@ class HandleInertiaRequests extends Middleware
                 && $request->user()->can('viewAny', Professional::class),
             'canManageJobFunctions' => fn () => $request->user() !== null
                 && $request->user()->can('manage', JobFunction::class),
+            'canImport' => fn () => $request->user() !== null
+                && $request->user()->can('create', ImportBatch::class),
             'canViewShifts' => fn () => $request->user() !== null
                 && $request->user()->can('viewAny', Shift::class),
             'canViewPolicies' => fn () => $request->user() !== null
