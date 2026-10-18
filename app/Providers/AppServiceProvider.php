@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Tenancy\CurrentTenant;
 use Carbon\CarbonImmutable;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -39,7 +40,8 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function configureDatabaseRole(): void
     {
-        Queue::before(fn () => app(CurrentTenant::class)->set(null));
+        // A sync job runs inside the request that dispatched it and keeps that request's client.
+        Queue::before(fn (JobProcessing $event) => $event->connectionName === 'sync' || app(CurrentTenant::class)->set(null));
     }
 
     /**
