@@ -58,7 +58,10 @@ export function AppSidebarHeader({
                             data-test="user-menu-button"
                         >
                             <Avatar className="size-8 overflow-hidden rounded-full">
-                                <AvatarImage src={auth.user.avatar} alt="" />
+                                <AvatarImage
+                                    src={auth.user.avatar ?? undefined}
+                                    alt=""
+                                />
                                 <AvatarFallback className="rounded-full bg-primary/10 text-xs font-medium text-primary">
                                     {getInitials(auth.user.name)}
                                 </AvatarFallback>

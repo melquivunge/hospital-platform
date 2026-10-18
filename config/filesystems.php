@@ -33,7 +33,8 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Private files (imports, profile photos) are served only by authorized controllers.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],
