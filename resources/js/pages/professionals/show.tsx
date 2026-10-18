@@ -1,4 +1,6 @@
-import { Head, Link } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
+import ProfessionalController from '@/actions/App/Http/Controllers/ProfessionalController';
+import InputError from '@/components/input-error';
 import { History, Pencil } from 'lucide-react';
 import { Page, PageHeader } from '@/components/page';
 import { QualificationsSection } from '@/components/qualifications-section';
@@ -36,12 +38,14 @@ export default function ProfessionalShow({
     professional,
     history,
     canUpdate,
+    access,
     qualifications,
     qualificationOptions,
 }: {
     professional: Professional;
     history: HistoryEntry[];
     canUpdate: boolean;
+    access: { linked: boolean; canInvite: boolean; hasEmail: boolean };
     qualifications: Qualification[];
     qualificationOptions: QualificationOptions | null;
 }) {
@@ -67,6 +71,54 @@ export default function ProfessionalShow({
                         )
                     }
                 />
+
+                <section
+                    aria-labelledby="access-heading"
+                    className="mb-8 rounded-lg border bg-card p-5 text-sm"
+                >
+                    <h2
+                        id="access-heading"
+                        className="mb-2 font-semibold tracking-tight"
+                    >
+                        Acesso ao sistema
+                    </h2>
+                    {access.linked ? (
+                        <p>
+                            Com acesso: o profissional vê os próprios plantões
+                            publicados em "Meus plantões".
+                        </p>
+                    ) : access.canInvite ? (
+                        <Form
+                            {...ProfessionalController.invite.form(
+                                professional.id,
+                            )}
+                            options={{ preserveScroll: true }}
+                            className="grid gap-2"
+                        >
+                            {({ processing, errors }) => (
+                                <>
+                                    <p className="text-muted-foreground">
+                                        {access.hasEmail
+                                            ? 'O convite usa o e-mail do cadastro. A pessoa define a senha pelo link enviado.'
+                                            : 'Cadastre o e-mail do profissional para poder convidar.'}
+                                    </p>
+                                    <InputError message={errors.access} />
+                                    <Button
+                                        type="submit"
+                                        disabled={
+                                            processing || !access.hasEmail
+                                        }
+                                        className="min-h-11 justify-self-start"
+                                    >
+                                        Convidar para acessar
+                                    </Button>
+                                </>
+                            )}
+                        </Form>
+                    ) : (
+                        <p className="text-muted-foreground">Sem acesso.</p>
+                    )}
+                </section>
 
                 <div className="mb-8">
                     <QualificationsSection

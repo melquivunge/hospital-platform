@@ -2,6 +2,7 @@ import { Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeftRight,
     BriefcaseMedical,
+    CalendarCheck,
     CalendarDays,
     FileUp,
     Building2,
@@ -29,7 +30,7 @@ import { index as jobFunctions } from '@/routes/job-functions';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
 import { index as professionals } from '@/routes/professionals';
-import { index as shifts } from '@/routes/shifts';
+import { index as shifts, mine as myShifts } from '@/routes/shifts';
 import { index as units } from '@/routes/units';
 import type { NavItem } from '@/types';
 
@@ -56,9 +57,19 @@ export function AppSidebar() {
         canManageJobFunctions,
         canViewShifts,
         canImport,
+        canViewMyShifts,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
+        ...(canViewMyShifts
+            ? [
+                  {
+                      title: 'Meus plantões',
+                      href: myShifts(),
+                      icon: CalendarCheck,
+                  },
+              ]
+            : []),
         ...(canViewShifts
             ? [{ title: 'Escala', href: shifts(), icon: CalendarDays }]
             : []),

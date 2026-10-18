@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $email
  * @property string|null $phone
  * @property int $eligibility_version
+ * @property int|null $membership_id
  */
 #[Fillable(['base_unit_id', 'name', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone'])]
 class Professional extends Model
@@ -40,7 +41,7 @@ class Professional extends Model
      */
     protected function casts(): array
     {
-        return ['base_unit_id' => 'integer', 'eligibility_version' => 'integer'];
+        return ['base_unit_id' => 'integer', 'eligibility_version' => 'integer', 'membership_id' => 'integer'];
     }
 
     /**

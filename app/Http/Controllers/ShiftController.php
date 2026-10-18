@@ -83,6 +83,30 @@ class ShiftController extends Controller
         ]);
     }
 
+    /**
+     * "Meus plantões": published, not cancelled shifts of the professional linked to this access,
+     * from today on (V1-05). Drafts are never shown to the professional.
+     */
+    public function mine(Request $request): Response
+    {
+        $membership = UnitPolicy::currentMembership($request->user());
+        $professional = $membership === null ? null : Professional::query()->where('membership_id', $membership->id)->first();
+        abort_if($professional === null, 403);
+
+        $shifts = Shift::query()
+            ->where('professional_id', $professional->id)
+            ->where('status', ShiftStatus::Published)
+            ->where('ends_at', '>', now()->startOfDay()->subDay())
+            ->with(['unit:id,name,timezone', 'sector:id,name', 'jobFunction:id,name'])
+            ->orderBy('starts_at')
+            ->limit(200)
+            ->get()
+            ->map(fn (Shift $shift) => [...self::summary($shift, $shift->unit->timezone ?? 'UTC'), 'unit' => $shift->unit->name])
+            ->values();
+
+        return Inertia::render('shifts/mine', ['professional' => $professional->name, 'shifts' => $shifts]);
+    }
+
     public function create(Unit $unit): Response
     {
         Gate::authorize('manage', [Shift::class, $unit]);

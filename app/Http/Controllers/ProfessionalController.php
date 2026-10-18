@@ -5,15 +5,21 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Tenancy\ProfessionalRequest;
 use App\Models\AuditEvent;
 use App\Models\JobFunction;
+use App\Models\Membership;
 use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Unit;
+use App\Models\User;
 use App\Policies\UnitPolicy;
+use App\Tenancy\Role;
+use Illuminate\Auth\Passwords\PasswordBroker;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -121,6 +127,11 @@ class ProfessionalController extends Controller
             ],
             'history' => $history,
             'canUpdate' => Gate::allows('update', $professional),
+            'access' => [
+                'linked' => $professional->membership_id !== null,
+                'canInvite' => $professional->membership_id === null && Gate::allows('update', $professional),
+                'hasEmail' => $professional->email !== null,
+            ],
             'qualifications' => $qualifications,
             'canRequestQualification' => $canRequest,
             // Requesting is allowed for any unit of the network; approval happens at the destination.
@@ -172,6 +183,80 @@ class ProfessionalController extends Controller
         }));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Profissional atualizado.']);
+
+        return to_route('professionals.show', $professional);
+    }
+
+    /**
+     * Gives the professional access with the e-mail of the registration (user decision, 17/10/2026):
+     * reuses an existing account, grants the Professional role at the base unit and links both.
+     */
+    public function invite(Professional $professional): RedirectResponse
+    {
+        Gate::authorize('update', $professional);
+
+        if ($professional->membership_id !== null) {
+            throw ValidationException::withMessages(['access' => 'Este profissional já tem acesso.']);
+        }
+
+        if ($professional->email === null) {
+            throw ValidationException::withMessages(['access' => 'Cadastre o e-mail do profissional antes de convidar.']);
+        }
+
+        $email = $professional->email;
+
+        try {
+            $isNewUser = DB::transaction(function () use ($professional, $email) {
+                Membership::lockTenant($professional->tenant_id);
+                $professional = Professional::query()->lockForUpdate()->whereKey($professional->id)->firstOrFail();
+
+                // Re-read under lock: a concurrent invite or e-mail edit must not relink silently.
+                if ($professional->membership_id !== null || $professional->email !== $email) {
+                    throw ValidationException::withMessages(['access' => 'O cadastro mudou enquanto você convidava. Recarregue a página.']);
+                }
+
+                $isAdmin = UnitPolicy::membershipFor(request()->user(), $professional->tenant_id)?->hasRole(Role::NetworkAdmin) ?? false;
+                $user = User::query()->whereRaw('lower(email) = ?', [$email])->first();
+                $isNewUser = $user === null;
+                $user ??= User::create(['name' => $professional->name, 'email' => $email, 'password' => Str::password(64)]);
+                $membership = Membership::query()->firstOrNew(['tenant_id' => $professional->tenant_id, 'user_id' => $user->id]);
+
+                // Attaching an existing account without access here, or reactivating a revoked access, is a
+                // network admin decision (same power as the people screen); unit managers are refused.
+                if (! $isAdmin && ! $isNewUser && (! $membership->exists || $membership->revoked_at !== null)) {
+                    throw ValidationException::withMessages(['access' => 'Este e-mail pertence a uma conta sem acesso ativo aqui. Peça a um administrador de rede.']);
+                }
+
+                if (! $membership->exists) {
+                    $membership->save();
+                } elseif ($membership->revoked_at !== null) {
+                    // Same rule as the people screen: a returning access gets only what this invitation grants.
+                    $membership->roleAssignments()->delete();
+                    $membership->reactivate();
+                }
+
+                if (Professional::query()->where('membership_id', $membership->id)->exists()) {
+                    throw ValidationException::withMessages(['access' => 'Esta conta já está ligada a outro profissional.']);
+                }
+
+                if (! $membership->roleAssignments()->where('role', Role::Professional)->where('unit_id', $professional->base_unit_id)->exists()) {
+                    $membership->grant(Role::Professional, $professional->baseUnit()->firstOrFail());
+                }
+
+                $professional->forceFill(['membership_id' => $membership->id])->save();
+                AuditEvent::record('professional.invited', $professional->tenant_id, $professional, ['membership_id' => $membership->id, 'new_identity' => $isNewUser]);
+
+                return $isNewUser;
+            });
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages(['access' => 'Outro convite foi registrado ao mesmo tempo. Recarregue a página.']);
+        }
+
+        // Same wording whether or not the e-mail already had an account: no cross-client account discovery.
+        $sent = ! $isNewUser || Password::broker()->sendResetLink(['email' => $email]) === PasswordBroker::RESET_LINK_SENT;
+        Inertia::flash('toast', $sent
+            ? ['type' => 'success', 'message' => 'Acesso liberado. O profissional pode entrar com o e-mail do cadastro.']
+            : ['type' => 'error', 'message' => 'Acesso registrado, mas o e-mail de definição de senha não pôde ser enviado agora. Peça que use "Esqueceu sua senha?".']);
 
         return to_route('professionals.show', $professional);
     }
