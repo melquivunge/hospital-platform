@@ -1079,10 +1079,16 @@ class Shift extends Model
             }
 
             $reason = 'Acesso do profissional revogado.';
-            $requests = ShiftRequest::query()->whereIn('status', RequestStatus::pending())
-                ->where(fn (Builder $query) => $query->where('requester_professional_id', $professional->id)->orWhere('recipient_professional_id', $professional->id))
-                ->orderBy('id')->lockForUpdate()->get();
-            foreach ($requests as $request) {
+            $involving = fn () => ShiftRequest::query()->whereIn('status', RequestStatus::pending())
+                ->where(fn (Builder $query) => $query->where('requester_professional_id', $professional->id)->orWhere('recipient_professional_id', $professional->id));
+
+            // Same order as every other flow: professional, then shifts by id, then requests.
+            $own = self::query()->where('professional_id', $professional->id)
+                ->whereIn('status', [ShiftStatus::Draft, ShiftStatus::Published])->where('starts_at', '>', now())->pluck('id');
+            $related = $involving()->get(['shift_id', 'counterpart_shift_id'])->flatMap(fn (ShiftRequest $request) => [$request->shift_id, $request->counterpart_shift_id]);
+            self::query()->whereKey($own->merge($related)->filter()->unique()->values()->all())->orderBy('id')->lockForUpdate()->get();
+
+            foreach ($involving()->orderBy('id')->lockForUpdate()->get() as $request) {
                 $request->forceFill(['status' => RequestStatus::Cancelled, 'decided_at' => now(), 'decided_by_user_id' => Auth::id(), 'decision_reason' => $reason])->save();
                 AuditEvent::record("shift.{$request->type}_cancelled", $request->tenant_id, $request->shift, ['request_id' => $request->id, 'reason' => $reason]);
             }
@@ -1090,9 +1096,10 @@ class Shift extends Model
             ShiftApplication::query()->where('professional_id', $professional->id)->where('status', ApplicationStatus::Active)
                 ->update(['status' => ApplicationStatus::Withdrawn, 'withdrawn_at' => now()]);
 
-            $shifts = self::query()->where('professional_id', $professional->id)
+            // Re-read under the locks: a shift may have changed hands or been cancelled meanwhile.
+            $shifts = self::query()->whereKey($own->all())->where('professional_id', $professional->id)
                 ->whereIn('status', [ShiftStatus::Draft, ShiftStatus::Published])->where('starts_at', '>', now())
-                ->orderBy('id')->lockForUpdate()->get();
+                ->orderBy('id')->get();
             foreach ($shifts as $shift) {
                 // Presence already started (entry window before the start): the shift stays with them.
                 if ($shift->hasCheckIn()) {
