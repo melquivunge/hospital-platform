@@ -45,6 +45,14 @@ class Admission extends Model
     }
 
     /**
+     * @return BelongsTo<Unit, $this>
+     */
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class);
+    }
+
+    /**
      * @return BelongsTo<Patient, $this>
      */
     public function patient(): BelongsTo

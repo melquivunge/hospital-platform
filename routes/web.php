@@ -30,6 +30,7 @@ use App\Http\Controllers\TriageLevelController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\VacancyController;
 use App\Http\Controllers\VisitController;
+use App\Http\Controllers\WardController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login')->name('home');
@@ -85,6 +86,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('emergency-episodes/{episode}/evade', [EmergencyController::class, 'evade'])->middleware('throttle:60,1')->name('emergency.evade');
     Route::get('triage-levels', [TriageLevelController::class, 'index'])->name('triage-levels.index');
     Route::put('triage-levels/{triageLevel}', [TriageLevelController::class, 'update'])->name('triage-levels.update');
+    Route::get('ward', [WardController::class, 'index'])->name('ward.index');
+    Route::get('ward/{admission}', [WardController::class, 'show'])->name('ward.show');
+    Route::post('ward/{admission}/notes', [WardController::class, 'storeNote'])->middleware('throttle:60,1')->name('ward.notes.store');
     Route::get('admissions', [AdmissionController::class, 'index'])->name('admissions.index');
     Route::post('admissions/{admission}/allocate', [AdmissionController::class, 'allocate'])->middleware('throttle:60,1')->name('admissions.allocate');
     Route::get('beds', [BedController::class, 'index'])->name('beds.index');

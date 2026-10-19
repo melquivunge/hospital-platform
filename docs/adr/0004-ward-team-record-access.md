@@ -15,6 +15,12 @@ A [ADR-0003](0003-rls-on-clinical-tables.md) centralizou o acesso clínico em `A
 - Escrever (evolução, adendo, documento) também passa a valer para quem tem essa base. A regra da entrega 3 continua: a evolução assinada não muda.
 - A gestão de leitos, a recepção, a gestão e a administração continuam sem leitura clínica por causa do papel.
 
+### Esclarecimento da implementação (etapa 4.4b, 18/10/2026)
+
+- A lista "Internados" mostra só identificação (nome, leito, unidade e responsável), como a fila da urgência e a tela da gestão de leitos, e não grava leitura. Entra na trilha toda abertura do prontuário (evoluções, documentos e download) pela internação.
+- Antes da internação ter leito (pedido aguardando), só o médico responsável lê; a equipe do setor passa a ler quando o paciente ocupa o leito.
+- A alta (etapa 4.7) precisa decidir o destino dos rascunhos de evolução ainda abertos, que deixam de poder ser assinados quando o acesso termina.
+
 ## Alternativas
 
 ### Só quem abre atendimento (regra do ambulatório)
