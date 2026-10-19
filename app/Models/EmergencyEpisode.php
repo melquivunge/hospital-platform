@@ -11,8 +11,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
- * A patient's stay in the emergency department (step 4.2): arrival, then classifications. Care,
- * discharge and admission come in step 4.3. One open episode per patient in the network.
+ * A patient's stay in the emergency department: arrival and classifications (step 4.2), then care and
+ * its outcome (step 4.3): waiting → in_care → discharged | admission_requested, or evaded. One open
+ * episode per patient in the network.
  *
  * @property int $id
  * @property int $tenant_id
@@ -22,11 +23,19 @@ use Illuminate\Support\Carbon;
  * @property int|null $current_level
  * @property Carbon $arrived_at
  * @property Carbon|null $triaged_at
+ * @property Carbon|null $ended_at
+ * @property int|null $ended_by_user_id
  */
 #[Fillable(['unit_id', 'patient_id', 'arrived_at', 'arrived_by_user_id'])]
 class EmergencyEpisode extends Model
 {
     use BelongsToTenant;
+
+    /** Still in the department, including while waiting for a bed. */
+    public const OPEN = ['waiting', 'in_care', 'admission_requested'];
+
+    /** How an emergency visit ends. */
+    public const OUTCOMES = ['discharged', 'admission_requested', 'evaded'];
 
     public $timestamps = false;
 
@@ -35,7 +44,15 @@ class EmergencyEpisode extends Model
      */
     protected function casts(): array
     {
-        return ['arrived_at' => 'datetime', 'triaged_at' => 'datetime', 'current_level' => 'integer'];
+        return ['arrived_at' => 'datetime', 'triaged_at' => 'datetime', 'ended_at' => 'datetime', 'current_level' => 'integer'];
+    }
+
+    /**
+     * @return HasOne<Visit, $this>
+     */
+    public function visit(): HasOne
+    {
+        return $this->hasOne(Visit::class);
     }
 
     /**

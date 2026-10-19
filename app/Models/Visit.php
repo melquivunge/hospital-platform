@@ -9,19 +9,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * Outpatient visit (step 3.6a): opened by the professional from an arrival, then closed. No reopening:
- * what comes later is an addendum.
+ * Visit (step 3.6a): opened by the professional from an outpatient arrival or, since step 4.3, from an
+ * emergency episode (exactly one), then closed. No reopening: what comes later is an addendum.
  *
  * @property int $id
  * @property int $tenant_id
  * @property int $unit_id
- * @property int $appointment_id
+ * @property int|null $appointment_id
+ * @property int|null $emergency_episode_id
  * @property int $professional_id
  * @property int $patient_id
  * @property Carbon $opened_at
  * @property Carbon|null $closed_at
  */
-#[Fillable(['unit_id', 'appointment_id', 'professional_id', 'patient_id', 'opened_by_user_id', 'opened_at'])]
+#[Fillable(['unit_id', 'appointment_id', 'emergency_episode_id', 'professional_id', 'patient_id', 'opened_by_user_id', 'opened_at'])]
 class Visit extends Model
 {
     use BelongsToTenant;
@@ -58,5 +59,21 @@ class Visit extends Model
     public function appointment(): BelongsTo
     {
         return $this->belongsTo(Appointment::class);
+    }
+
+    /**
+     * @return BelongsTo<Professional, $this>
+     */
+    public function professional(): BelongsTo
+    {
+        return $this->belongsTo(Professional::class);
+    }
+
+    /**
+     * @return BelongsTo<EmergencyEpisode, $this>
+     */
+    public function emergencyEpisode(): BelongsTo
+    {
+        return $this->belongsTo(EmergencyEpisode::class);
     }
 }

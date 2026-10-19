@@ -7,10 +7,12 @@ use App\Models\AuditEvent;
 use App\Models\EmergencyEpisode;
 use App\Models\Membership;
 use App\Models\Patient;
+use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Triage;
 use App\Models\TriageLevel;
 use App\Models\Unit;
+use App\Models\Visit;
 use App\Policies\UnitPolicy;
 use App\Professionals\QualificationStatus;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -46,12 +48,15 @@ class EmergencyController extends Controller
             $patient = Patient::query()->find($patient->merged_into_id);
         }
 
-        // The latest classification (complaint and vital signs) is loaded only for who classifies.
-        $episodes = EmergencyEpisode::query()->where('unit_id', $unit->id)->where('status', 'waiting')
-            ->with('patient:id,name,social_name,unidentified,apparent_age,sex,description')->withCount('triages')
+        $professional = ClinicalAccess::professional($request->user());
+        // The latest classification (complaint and vital signs) is loaded only for who classifies. Waiting
+        // first (unclassified, then level and arrival), then in care, then waiting for a bed.
+        $episodes = EmergencyEpisode::query()->where('unit_id', $unit->id)->whereIn('status', EmergencyEpisode::OPEN)
+            ->with(['patient:id,name,social_name,unidentified,apparent_age,sex,description', 'visit:id,emergency_episode_id,professional_id', 'visit.professional:id,name'])
+            ->withCount('triages')
             ->when($canTriage, fn ($query) => $query->with('latestTriage'))
             ->get()
-            ->sortBy(fn (EmergencyEpisode $episode) => [$episode->current_level === null ? 0 : 1, $episode->current_level ?? 0, $episode->arrived_at->timestamp])
+            ->sortBy(fn (EmergencyEpisode $episode) => [array_search($episode->status, EmergencyEpisode::OPEN, true), $episode->current_level === null ? 0 : 1, $episode->current_level ?? 0, $episode->arrived_at->timestamp])
             ->values();
 
         return Inertia::render('emergency/index', [
@@ -61,7 +66,7 @@ class EmergencyController extends Controller
             'canTriage' => $canTriage,
             'levels' => $scale->values()->map->only('level', 'name', 'color', 'target_minutes'),
             'patient' => $patient === null ? null : ['id' => $patient->id, 'name' => $patient->social_name ?? $patient->name],
-            'episodes' => $episodes->map(function (EmergencyEpisode $episode) use ($scale, $canTriage, $unit) {
+            'episodes' => $episodes->map(function (EmergencyEpisode $episode) use ($scale, $canTriage, $unit, $professional) {
                 $waiting = (int) $episode->arrived_at->diffInMinutes(now());
                 $level = $episode->current_level === null ? null : $scale->get($episode->current_level);
                 $latest = $canTriage ? $episode->latestTriage : null;
@@ -74,7 +79,11 @@ class EmergencyController extends Controller
                     'arrivedAt' => $episode->arrived_at->setTimezone($unit->timezone ?? 'UTC')->format('H:i'),
                     'waitingMinutes' => $waiting,
                     'level' => $episode->current_level,
-                    'overdue' => $level !== null && $waiting > $level->target_minutes,
+                    // The target is the time to care: it only runs while waiting.
+                    'overdue' => $episode->status === 'waiting' && $level !== null && $waiting > $level->target_minutes,
+                    'status' => $episode->status,
+                    'attendedBy' => $episode->visit?->professional?->name,
+                    'myVisitId' => $professional !== null && $episode->visit?->professional_id === $professional->id && $episode->status === 'in_care' ? $episode->visit->id : null,
                     'classifications' => (int) $episode->triages_count,
                     'latest' => $latest !== null ? $latest->only('id', 'level', 'complaint', 'systolic', 'diastolic', 'heart_rate', 'respiratory_rate', 'temperature', 'spo2', 'pain', 'glucose') : null,
                 ];
@@ -103,7 +112,7 @@ class EmergencyController extends Controller
                     $found = Patient::query()->sharedLock()->find((int) $data['patient_id']) ?? throw ValidationException::withMessages(['patient_id' => 'Paciente não encontrado.']);
                     $patient = $found->merged_into_id === null ? $found : Patient::query()->sharedLock()->findOrFail($found->merged_into_id);
                     // One open episode per person: registrations merged into this one count too.
-                    if (EmergencyEpisode::query()->whereIn('patient_id', ClinicalAccess::recordIds($patient))->where('status', '<>', 'closed')->exists()) {
+                    if (EmergencyEpisode::query()->whereIn('patient_id', ClinicalAccess::recordIds($patient))->whereIn('status', EmergencyEpisode::OPEN)->exists()) {
                         throw ValidationException::withMessages(['patient_id' => 'Este paciente já está na urgência.']);
                     }
                 }
@@ -148,6 +157,81 @@ class EmergencyController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Classificação registrada.']);
 
         return back();
+    }
+
+    /**
+     * Step 4.3: a professional of the unit calls a classified patient and opens the visit. The episode row
+     * is locked: two calls end in one visit (the same professional lands on it, another one is told who
+     * is attending). Notes, addenda, documents and the read trail are those of delivery 3.
+     */
+    public function call(Request $request, EmergencyEpisode $episode): RedirectResponse
+    {
+        abort_unless(in_array($episode->unit_id, self::triageUnitIds($request), true), 403);
+        $professional = ClinicalAccess::professional($request->user()) ?? abort(403);
+
+        $visit = DB::transaction(function () use ($episode, $professional, $request) {
+            $locked = EmergencyEpisode::query()->whereKey($episode->id)->lockForUpdate()->firstOrFail();
+            $existing = Visit::query()->where('emergency_episode_id', $locked->id)->whereNull('closed_at')->first();
+            if ($existing !== null) {
+                if ($existing->professional_id !== $professional->id) {
+                    throw ValidationException::withMessages(['call' => 'Este paciente já está em atendimento com '.Professional::query()->whereKey($existing->professional_id)->value('name').'.']);
+                }
+
+                return $existing;
+            }
+            if ($locked->status !== 'waiting') {
+                throw ValidationException::withMessages(['call' => 'Este paciente não está mais aguardando na urgência.']);
+            }
+            if ($locked->current_level === null) {
+                throw ValidationException::withMessages(['call' => 'Classifique o risco antes de chamar o paciente.']);
+            }
+            $visit = Visit::query()->create([
+                'unit_id' => $locked->unit_id, 'emergency_episode_id' => $locked->id, 'professional_id' => $professional->id,
+                'patient_id' => $locked->patient_id, 'opened_by_user_id' => $request->user()->id, 'opened_at' => now(),
+            ]);
+            $locked->forceFill(['status' => 'in_care'])->save();
+            AuditEvent::record('visit.opened', $visit->tenant_id, $visit, ['unit_id' => $visit->unit_id, 'emergency_episode_id' => $locked->id]);
+
+            return $visit;
+        });
+
+        return to_route('visits.show', $visit);
+    }
+
+    /**
+     * Step 4.3: the patient left before being called; the time and the author are recorded. Once in care,
+     * evasion is the outcome the attending professional records when closing the visit.
+     */
+    public function evade(Request $request, EmergencyEpisode $episode): RedirectResponse
+    {
+        $units = [...AppointmentController::bookingUnitIds(UnitPolicy::currentMembership($request->user())), ...self::triageUnitIds($request)];
+        abort_unless(in_array($episode->unit_id, $units, true), 403);
+
+        DB::transaction(function () use ($episode, $request) {
+            $locked = EmergencyEpisode::query()->whereKey($episode->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== 'waiting') {
+                throw ValidationException::withMessages(['call' => 'Só quem ainda aguarda pode ser registrado como evasão pela fila. Em atendimento, o desfecho é registrado ao encerrar.']);
+            }
+            $locked->forceFill(['status' => 'evaded', 'ended_at' => now(), 'ended_by_user_id' => $request->user()->id])->save();
+            AuditEvent::record('emergency.ended', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'outcome' => 'evaded']);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Evasão registrada.']);
+
+        return back();
+    }
+
+    /**
+     * Step 4.3: the outcome of an emergency visit, recorded when the attending professional closes it.
+     * Called inside the visit's transaction, after the visit row is locked (visit → episode).
+     */
+    public static function end(Visit $visit, string $outcome, int $userId): void
+    {
+        $episode = EmergencyEpisode::query()->whereKey($visit->emergency_episode_id)->lockForUpdate()->firstOrFail();
+        if ($episode->status !== 'in_care') {
+            throw ValidationException::withMessages(['visit' => 'O episódio de urgência deste atendimento já foi encerrado.']);
+        }
+        $episode->forceFill(['status' => $outcome, 'ended_at' => now(), 'ended_by_user_id' => $userId])->save();
+        AuditEvent::record('emergency.ended', $episode->tenant_id, $episode, ['unit_id' => $episode->unit_id, 'outcome' => $outcome, 'visit_id' => $visit->id]);
     }
 
     /**
