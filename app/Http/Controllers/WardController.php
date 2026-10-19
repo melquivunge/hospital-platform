@@ -18,6 +18,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -88,6 +89,14 @@ class WardController extends Controller
                 ? array_values(Unit::query()->whereKeyNot($admission->unit_id)->orderBy('name')->get(['id', 'name'])
                     ->map(fn (Unit $unit) => ['id' => $unit->id, 'name' => $unit->name, ...AdmissionController::requestOptions($unit->id)])
                     ->filter(fn (array $unit) => $unit['sectors'] !== [] && $unit['professionals'] !== [])->all())
+                : null,
+            // Step 4.7: the responsible doctor discharges an admitted patient with no transfer open.
+            'discharge' => $open === null && $admission->status === 'admitted' && $admission->responsible_professional_id === ClinicalAccess::professional($request->user())?->id
+                ? [
+                    'types' => array_map(fn (string $value, string $label) => ['value' => $value, 'label' => $label, 'summary' => in_array($value, Admission::SUMMARY_REQUIRED, true)], array_keys(Admission::DISCHARGE_TYPES), Admission::DISCHARGE_TYPES),
+                    'otherDrafts' => ClinicalNote::query()->where('admission_id', $admission->id)->where('status', 'draft')->where('author_user_id', '<>', $request->user()->id)->count(),
+                    'now' => now($timezone)->format('Y-m-d\TH:i'),
+                ]
                 : null,
             'record' => VisitController::signedRecord($ids, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
@@ -165,6 +174,76 @@ class WardController extends Controller
             AuditEvent::record('admission.responsible_changed', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'from_professional_id' => $professional->id, 'to_professional_id' => $to]);
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Responsabilidade passada.']);
+
+        return to_route('ward.index');
+    }
+
+    /**
+     * Step 4.7: the responsible doctor discharges. Improvement, at request and transfer out of the network
+     * carry a summary signed with the password (a clinical note of the admission, immutable); death and
+     * evasion record when it happened and who registered it. The bed goes to cleaning and the ward access
+     * ends with the admission. Drafts of other authors stay unsigned and are never deleted (ADR-0004).
+     */
+    public function discharge(Request $request, Admission $admission): RedirectResponse
+    {
+        $professional = self::professional($request);
+        abort_unless($admission->responsible_professional_id === $professional->id, 403);
+        $summaryTypes = implode(',', Admission::SUMMARY_REQUIRED);
+        $data = $request->validate([
+            'type' => ['required', Rule::in(array_keys(Admission::DISCHARGE_TYPES))],
+            'summary' => ['exclude_unless:type,'.$summaryTypes, 'required', 'string', 'max:20000'],
+            'password' => ['exclude_unless:type,'.$summaryTypes, 'required', 'string'],
+            'occurred_at' => ['exclude_if:type,'.$summaryTypes, 'required', 'date_format:Y-m-d\TH:i'],
+        ], [], ['type' => 'tipo de alta', 'summary' => 'sumário de alta', 'password' => 'senha', 'occurred_at' => 'horário']);
+        $withSummary = in_array($data['type'], Admission::SUMMARY_REQUIRED, true);
+        $at = $withSummary ? now() : Carbon::createFromFormat('Y-m-d\TH:i', $data['occurred_at'], $admission->unit()->value('timezone') ?? 'UTC')->utc();
+        if ($at->isFuture()) {
+            throw ValidationException::withMessages(['occurred_at' => 'O horário não pode estar no futuro.']);
+        }
+        if ($withSummary) {
+            VisitController::confirmPassword($request, $data['password'], 'admission.discharge_sign_failed', $admission, 'Senha incorreta. A alta não foi registrada.');
+        }
+
+        DB::transaction(function () use ($admission, $professional, $data, $withSummary, $at, $request) {
+            $locked = Admission::query()->whereKey($admission->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== 'admitted' || $locked->responsible_professional_id !== $professional->id) {
+                throw ValidationException::withMessages(['type' => 'A internação mudou nesse meio-tempo. Recarregue a página.']);
+            }
+            if (AdmissionTransfer::query()->where('admission_id', $locked->id)->whereIn('status', AdmissionTransfer::OPEN)->exists()) {
+                throw ValidationException::withMessages(['type' => 'Há uma transferência entre unidades em andamento. Cancele-a antes da alta.']);
+            }
+            // The time is typed to the minute: within the admission's minute it is the admission itself.
+            if ($at->lt($locked->admitted_at->copy()->startOfMinute())) {
+                throw ValidationException::withMessages(['occurred_at' => 'O horário não pode ser anterior à internação.']);
+            }
+            $at = $at->max($locked->admitted_at);
+            // The doctor's own draft would be orphaned (and the summary is one note per author): signed first.
+            if (ClinicalNote::query()->where('admission_id', $locked->id)->where('author_user_id', $request->user()->id)->where('status', 'draft')->exists()) {
+                throw ValidationException::withMessages(['type' => 'Assine seu rascunho de evolução desta internação antes da alta.']);
+            }
+            $summary = null;
+            if ($withSummary) {
+                // Notes start as drafts (database trigger); signed in the same transaction.
+                $summary = ClinicalNote::query()->create([
+                    'patient_id' => $locked->patient_id, 'admission_id' => $locked->id, 'author_user_id' => $request->user()->id,
+                    'author_professional_id' => $professional->id, 'body' => $data['summary'],
+                ]);
+                $summary->forceFill(['status' => 'signed', 'signed_at' => now()])->save();
+            }
+            $bed = Bed::query()->findOrFail($locked->bed_id);
+            $released = Bed::query()->whereKey($bed->id)->where('status', 'occupied')->update(['status' => 'cleaning', 'status_changed_at' => now(), 'updated_at' => now()]);
+            if ($released === 0) {
+                throw ValidationException::withMessages(['type' => 'O leito deixou de estar ocupado. Confira com a gestão de leitos.']);
+            }
+            BedController::event($bed, 'occupied', 'cleaning');
+            $locked->forceFill([
+                'status' => 'discharged', 'discharge_type' => $data['type'], 'discharged_at' => $at,
+                'discharged_by_user_id' => $request->user()->id, 'discharge_summary_id' => $summary?->id,
+            ])->save();
+            // Ids only: the discharge type (death included) stays in the clinical table.
+            AuditEvent::record('admission.discharged', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'bed_id' => $bed->id, 'summary_id' => $summary?->id]));
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Alta registrada. O leito foi para higienização.']);
 
         return to_route('ward.index');
     }

@@ -13,7 +13,7 @@ type FormAction = { action: string; method: 'post' };
 
 export type Draft = { id: number; body: string; addendumOf: number | null };
 
-const textareaClassName =
+export const textareaClassName =
     'min-h-40 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none';
 
 /**

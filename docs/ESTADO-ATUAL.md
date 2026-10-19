@@ -1,10 +1,10 @@
 # Estado atual do projeto
 
-Atualizado em 18/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes de começar uma nova sessão.
+Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes de começar uma nova sessão.
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.6 (transferência entre unidades); depois a 4.7 (alta e censo), plano em plans/web-v3-internacao.md.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.7 (alta e censo); depois a 4.8 (revisão integrada da entrega 4), plano em plans/web-v3-internacao.md.
 
 ## Onde está cada coisa
 
@@ -69,7 +69,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #43 | Etapa 4.4b: acesso da equipe do setor e evolução de internação | Mesclado |
 | #44 | Etapa 4.4b: anexar documento na internação | Mesclado |
 | #45 | Etapa 4.5: movimentação interna | Mesclado |
-| — | Etapa 4.6: transferência entre unidades (branch `feat/unit-transfer`) | Em revisão |
+| #46 | Etapa 4.6: transferência entre unidades | Mesclado |
+| — | Etapa 4.7: alta e censo (branch `feat/discharge-census`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -201,7 +202,7 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Corrida real (6 rodadas): duas pessoas da gestão de leitos movendo dois internados para o mesmo leito livre; sempre um vence, o outro é recusado com mensagem, uma linha de histórico.
   - Navegador (1440 e 390 px): troca de leito pela tela, histórico completo, painel de passar a responsabilidade; sem erro de JavaScript ou 5xx.
   - Revisão de segurança independente: sem crítico ou alto. Corrigido: histórico de responsável (com motivo) fora da tela da gestão de leitos; conta desativada deixa de ser opção de responsável (vale também para o pedido de internação); conferência do novo responsável sob lock; histórico tolera profissional ausente; troca recusada se o leito atual não está ocupado. Aceito: passar a responsabilidade ainda no pedido (antes do leito), como no próprio pedido.
-- **4.6 (transferência entre unidades da rede)** (branch `feat/unit-transfer`):
+- **4.6 (transferência entre unidades da rede)** (PR #46):
   - `admission_transfers` (clínica, RLS): solicitada → aceita (leito reservado no destino) → saída → concluída; recusada ou cancelada com motivo e autor. Uma transferência aberta por internação e uma reserva por leito (índices no banco). A internação ganhou o estado "em trânsito" (sem leito) entre a saída e o recebimento.
   - Pede o médico responsável (na tela da internação: unidade, setor e responsável no destino, habilitado e com conta ativa). A gestão de leitos do destino aceita (reserva leito livre, justificativa fora da regra), recusa com motivo e registra o recebimento; a da origem registra a saída (leito de origem → higienização) e pode cancelar; o responsável atual também cancela antes da saída (o leito reservado volta a livre).
   - No recebimento, a mesma internação passa para o destino (unidade, setor do leito, leito e responsável), com o histórico de leitos e responsáveis; o prontuário segue: o novo responsável e a equipe do setor do destino leem, o médico da origem deixa de ler.
@@ -211,6 +212,15 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Navegador (1440 e 390 px): recebimento pela tela "Internações" e pedido de transferência na internação; sem erros.
   - Revisão de segurança independente: sem crítico ou alto. Corrigido: responsável do destino conferido de novo no aceite e no recebimento; setor da internação vem do leito reservado; sem passagem de responsabilidade nem troca de leito com transferência aberta; cancelamento só pelo responsável atual ou pela gestão de leitos da origem; `down` recusa com transferências abertas. Decisão registrada: a gestão de leitos do destino vê nome, sexo e isolamento já no pedido (necessário para escolher o leito).
   - Para a 4.7 (alta): encerrar ou cancelar transferências abertas na alta (senão sobra leito reservado), e prever saída para um paciente "em trânsito" cujo leito reservado deixe de estar disponível (hoje nenhum fluxo muda um leito reservado).
+- **4.7 (alta e censo)** (branch `feat/discharge-census`):
+  - Alta pela tela da internação, só pelo médico responsável, com o paciente num leito: melhora, a pedido e transferência (para fora da rede) exigem o **sumário de alta assinado com a senha** (uma evolução da internação, imutável, marcada "Sumário de alta" no prontuário); óbito e evasão registram o horário informado (fuso da unidade, precisão de minuto, nem no futuro nem antes da internação) e o autor. A restrição no banco amarra estado, tipo, horário, autor e sumário.
+  - O leito vai de ocupado para higienização (com evento no histórico do leito) e o acesso da equipe termina na hora (a internação sai de `ACTIVE`). A auditoria `admission.discharged` guarda só ids, nunca o tipo (óbito incluído); senha errada gera `admission.discharge_sign_failed` e conta no mesmo limite de tentativas da assinatura.
+  - Rascunhos (pendência da ADR-0004): o rascunho do próprio médico precisa ser assinado antes da alta; os de outros profissionais ficam sem assinatura, nunca apagados, e a tela avisa quantos são. Com transferência entre unidades aberta, a alta é recusada até cancelá-la (resolve a pendência da 4.6 sobre leito reservado). Paciente "em trânsito" não recebe alta pela tela.
+  - Tela "Censo" (gestor da unidade, administrador de rede e gestão de leitos; não a higienização): por setor e total da unidade, leitos, ocupados, livres, reservados, em higienização, bloqueados, ocupação (ocupados sobre leitos ativos não bloqueados), altas e tempo médio de internação dos últimos 30 dias pelo setor do último leito. Só números; contagens da mesma consulta do mapa de leitos (teste compara as duas).
+  - Corrida real (cliente sintético "Rede Corrida Alta", 8 rodadas, dois processos): alta × alta da mesma internação, sempre uma vence e a outra é recusada com mensagem; alta × troca de leito nas duas ordens, sempre coerente (nenhum leito ocupado sobra, um evento de auditoria, um sumário).
+  - Navegador (1440 e 390 px): alta por melhora com senha errada e depois certa, óbito pelo celular, censo; sem erro de JavaScript ou 5xx, sem rolagem horizontal da página (a tabela do censo rola dentro do cartão).
+  - Corrigido durante os testes: o horário de óbito/evasão era gravado sem fuso (3 horas de deslocamento).
+  - Pendente da 4.6, sem fluxo ainda: saída para um paciente "em trânsito" cujo leito reservado deixe de estar disponível.
 - **Entrega 4 (urgência, internação e leitos) em definição** (18/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4". Decisões do usuário: jornada primeiro (prescrição e farmácia na entrega 4b), escala de risco própria de 5 níveis (sem Manchester), papel Gestão de leitos, transferência dentro da rede; acesso na internação pelo médico responsável e pela equipe do setor ([ADR-0004](adr/0004-ward-team-record-access.md), aceita); "Não identificado" unificável depois; compatibilidade do leito com aviso e justificativa; sumário de alta obrigatório exceto óbito e evasão; tempo-alvo com destaque visual; censo diário. Plano em `plans/web-v3-internacao.md` (3.8, depois 4.1 a 4.8). ADR-0004 e plano aceitos e **implementação autorizada** pelo usuário (18/10/2026), uma etapa por vez, começando pela 3.8.
 
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
@@ -400,7 +410,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 342 testes passando (etapa 4.6), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 346 testes passando (etapa 4.7), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

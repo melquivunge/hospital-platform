@@ -12,6 +12,7 @@ use App\Models\Professional;
 use App\Models\Visit;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -223,17 +224,7 @@ class VisitController extends Controller
     {
         self::ownDraft($request, $note);
         $data = $request->validate(['body' => self::BODY, 'password' => ['required', 'string']], [], ['body' => 'texto', 'password' => 'senha']);
-        // Only wrong passwords count, so a busy professional signing many notes is never blocked.
-        $attempts = 'clinical-sign:'.$request->user()->id;
-        if (RateLimiter::tooManyAttempts($attempts, self::SIGN_ATTEMPTS)) {
-            throw ValidationException::withMessages(['password' => 'Muitas tentativas com a senha errada. Tente de novo em '.ceil(RateLimiter::availableIn($attempts) / 60).' minutos.']);
-        }
-        if (! Hash::check($data['password'], $request->user()->getAuthPassword())) {
-            RateLimiter::hit($attempts, self::SIGN_LOCKOUT_SECONDS);
-            AuditEvent::record('clinical_note.sign_failed', $note->tenant_id, $note);
-            throw ValidationException::withMessages(['password' => 'Senha incorreta. A evolução não foi assinada.']);
-        }
-        RateLimiter::clear($attempts);
+        self::confirmPassword($request, $data['password'], 'clinical_note.sign_failed', $note, 'Senha incorreta. A evolução não foi assinada.');
 
         DB::transaction(function () use ($note, $data) {
             $locked = self::lockDraft($note);
@@ -243,6 +234,24 @@ class VisitController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Evolução assinada.']);
 
         return back();
+    }
+
+    /**
+     * The signature's password check (notes, and the discharge summary of step 4.7). Only wrong passwords
+     * count, so a busy professional signing many notes is never blocked.
+     */
+    public static function confirmPassword(Request $request, string $password, string $failedEvent, Model $subject, string $failedMessage): void
+    {
+        $attempts = 'clinical-sign:'.$request->user()->id;
+        if (RateLimiter::tooManyAttempts($attempts, self::SIGN_ATTEMPTS)) {
+            throw ValidationException::withMessages(['password' => 'Muitas tentativas com a senha errada. Tente de novo em '.ceil(RateLimiter::availableIn($attempts) / 60).' minutos.']);
+        }
+        if (! Hash::check($password, $request->user()->getAuthPassword())) {
+            RateLimiter::hit($attempts, self::SIGN_LOCKOUT_SECONDS);
+            AuditEvent::record($failedEvent, $subject->getAttribute('tenant_id'), $subject);
+            throw ValidationException::withMessages(['password' => $failedMessage]);
+        }
+        RateLimiter::clear($attempts);
     }
 
     /**
@@ -285,7 +294,8 @@ class VisitController extends Controller
         return array_values(ClinicalNote::query()->whereIn('patient_id', $patientIds)->whereNull('addendum_of_id')->where('status', 'signed')
             ->with(['author:id,name', 'visit.unit:id,name', 'admission.unit:id,name', 'addenda' => fn ($query) => $query->where('status', 'signed')->with('author:id,name')->orderBy('signed_at')])
             ->orderByDesc('signed_at')->get()
-            ->map(fn (ClinicalNote $note) => [...$signed($note), 'unit' => $note->visit?->unit->name ?? $note->admission?->unit->name, 'addenda' => $note->addenda->map($signed)->values()->all()])
+            ->map(fn (ClinicalNote $note) => [...$signed($note), 'unit' => implode(' · ', array_filter([$note->visit?->unit->name ?? $note->admission?->unit->name,
+                $note->admission?->discharge_summary_id === $note->id ? 'Sumário de alta' : null])) ?: null, 'addenda' => $note->addenda->map($signed)->values()->all()])
             ->all());
     }
 

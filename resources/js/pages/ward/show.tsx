@@ -6,7 +6,7 @@ import WardController from '@/actions/App/Http/Controllers/WardController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
 import type { Draft } from '@/components/clinical-notes';
-import { NotesWorkspace } from '@/components/clinical-notes';
+import { NotesWorkspace, textareaClassName } from '@/components/clinical-notes';
 import type { RecordNote, RecordPatient } from '@/components/clinical-record';
 import { patientDescription } from '@/components/clinical-record';
 import InputError from '@/components/input-error';
@@ -28,6 +28,7 @@ export default function WardShow({
     handOver,
     transfer,
     transferOptions,
+    discharge,
     record,
     drafts,
     documents,
@@ -49,6 +50,7 @@ export default function WardShow({
         mine: boolean;
     } | null;
     transferOptions: TransferUnit[] | null;
+    discharge: DischargeOptions | null;
     record: RecordNote[];
     drafts: Draft[];
     documents: ClinicalDocument[];
@@ -78,6 +80,9 @@ export default function WardShow({
                         admissionId={admission.id}
                         units={transferOptions}
                     />
+                )}
+                {discharge && (
+                    <Discharge admissionId={admission.id} options={discharge} />
                 )}
                 {handOver && (
                     <details className="mb-6 rounded-xl border bg-card px-5 py-3">
@@ -179,6 +184,135 @@ export default function WardShow({
                 </NotesWorkspace>
             </Page>
         </>
+    );
+}
+
+type DischargeOptions = {
+    types: { value: string; label: string; summary: boolean }[];
+    otherDrafts: number;
+    now: string;
+};
+
+/**
+ * Step 4.7: the responsible doctor discharges. Improvement, at request and transfer need a summary signed
+ * with the password; death and evasion record the time. Access to the record ends with the discharge.
+ */
+function Discharge({
+    admissionId,
+    options,
+}: {
+    admissionId: number;
+    options: DischargeOptions;
+}) {
+    const [type, setType] = useState(options.types[0].value);
+    // Kept across type changes: switching to death and back must not lose a typed summary.
+    const [summary, setSummary] = useState('');
+    const withSummary =
+        options.types.find((option) => option.value === type)?.summary ?? true;
+
+    return (
+        <details className="mb-6 rounded-xl border bg-card px-5 py-3">
+            <summary className="flex min-h-11 cursor-pointer items-center font-medium">
+                Dar alta
+            </summary>
+            <Form
+                {...WardController.discharge.form(admissionId)}
+                resetOnError={['password']}
+                className="grid gap-4 py-3"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <div className="grid max-w-sm gap-2">
+                            <Label htmlFor="discharge_type">Tipo de alta</Label>
+                            <select
+                                id="discharge_type"
+                                name="type"
+                                value={type}
+                                onChange={(event) =>
+                                    setType(event.target.value)
+                                }
+                                className={selectClassName}
+                            >
+                                {options.types.map((option) => (
+                                    <option
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <InputError message={errors.type} />
+                        </div>
+                        {withSummary ? (
+                            <>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="discharge_summary">
+                                        Sumário de alta
+                                    </Label>
+                                    <textarea
+                                        id="discharge_summary"
+                                        name="summary"
+                                        value={summary}
+                                        onChange={(event) =>
+                                            setSummary(event.target.value)
+                                        }
+                                        required
+                                        maxLength={20000}
+                                        className={textareaClassName}
+                                    />
+                                    <InputError message={errors.summary} />
+                                </div>
+                                <div className="grid max-w-sm gap-2">
+                                    <Label htmlFor="discharge_password">
+                                        Sua senha, para assinar o sumário
+                                    </Label>
+                                    <Input
+                                        id="discharge_password"
+                                        name="password"
+                                        type="password"
+                                        autoComplete="current-password"
+                                        required
+                                        className="h-11"
+                                    />
+                                    <InputError message={errors.password} />
+                                </div>
+                            </>
+                        ) : (
+                            <div className="grid max-w-sm gap-2">
+                                <Label htmlFor="discharge_occurred_at">
+                                    Horário
+                                </Label>
+                                <Input
+                                    id="discharge_occurred_at"
+                                    name="occurred_at"
+                                    type="datetime-local"
+                                    required
+                                    max={options.now}
+                                    defaultValue={options.now}
+                                    className="h-11"
+                                />
+                                <InputError message={errors.occurred_at} />
+                            </div>
+                        )}
+                        <p className="text-sm text-muted-foreground">
+                            A alta encerra a internação: o leito vai para
+                            higienização e a equipe deixa de ler o prontuário
+                            por ela.
+                            {options.otherDrafts > 0 &&
+                                ` ${options.otherDrafts === 1 ? 'Há 1 rascunho de evolução de outro profissional, que ficará' : `Há ${options.otherDrafts} rascunhos de evolução de outros profissionais, que ficarão`} sem assinatura.`}
+                        </p>
+                        <Button
+                            type="submit"
+                            disabled={processing}
+                            className="min-h-11 justify-self-start"
+                        >
+                            Registrar alta
+                        </Button>
+                    </>
+                )}
+            </Form>
+        </details>
     );
 }
 

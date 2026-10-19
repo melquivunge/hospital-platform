@@ -21,11 +21,14 @@ use Illuminate\Support\Carbon;
  * @property int $requested_sector_id
  * @property int $responsible_professional_id
  * @property bool $isolation
- * @property string $status requested or admitted
+ * @property string $status requested, admitted, in_transit (step 4.6) or discharged (step 4.7)
  * @property int|null $bed_id
  * @property string|null $compatibility_justification
  * @property Carbon $requested_at
  * @property Carbon|null $admitted_at
+ * @property string|null $discharge_type
+ * @property Carbon|null $discharged_at
+ * @property int|null $discharge_summary_id
  */
 #[Fillable(['unit_id', 'patient_id', 'emergency_episode_id', 'requested_sector_id', 'responsible_professional_id', 'isolation', 'requested_by_user_id', 'requested_at'])]
 class Admission extends Model
@@ -34,6 +37,13 @@ class Admission extends Model
 
     public const ACTIVE = ['requested', 'admitted', 'in_transit'];
 
+    /**
+     * Step 4.7: discharge types; the first three need a signed summary.
+     */
+    public const DISCHARGE_TYPES = ['improved' => 'Melhora', 'at_request' => 'A pedido', 'transfer_out' => 'Transferência', 'death' => 'Óbito', 'evasion' => 'Evasão'];
+
+    public const SUMMARY_REQUIRED = ['improved', 'at_request', 'transfer_out'];
+
     public $timestamps = false;
 
     /**
@@ -41,7 +51,7 @@ class Admission extends Model
      */
     protected function casts(): array
     {
-        return ['isolation' => 'boolean', 'requested_at' => 'datetime', 'admitted_at' => 'datetime'];
+        return ['isolation' => 'boolean', 'requested_at' => 'datetime', 'admitted_at' => 'datetime', 'discharged_at' => 'datetime'];
     }
 
     /**
