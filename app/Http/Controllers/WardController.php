@@ -14,6 +14,7 @@ use App\Professionals\QualificationStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -73,6 +74,11 @@ class WardController extends Controller
                 'responsible' => $admission->responsible?->name,
             ],
             'patient' => VisitController::patientHeader($patient),
+            'history' => self::history($admission, $timezone),
+            // Step 4.5: only the responsible doctor hands the admission over.
+            'handOver' => $admission->responsible_professional_id === ClinicalAccess::professional($request->user())?->id
+                ? array_values(array_filter(AdmissionController::requestOptions($admission->unit_id)['professionals'], fn (array $option) => $option['id'] !== $admission->responsible_professional_id))
+                : null,
             'record' => VisitController::signedRecord($ids, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
             // Drafts are seen only by their author: the admission note and addenda to the record.
@@ -114,6 +120,62 @@ class WardController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Rascunho salvo.']);
 
         return back();
+    }
+
+    /**
+     * Step 4.5: the responsible doctor hands the admission over to another professional qualified at the
+     * unit; a new row in the history, nothing rewritten. Access follows at once.
+     */
+    public function handOver(Request $request, Admission $admission): RedirectResponse
+    {
+        $professional = self::professional($request);
+        abort_unless($admission->responsible_professional_id === $professional->id, 403);
+        $data = $request->validate(['professional_id' => ['required', 'integer'], 'reason' => ['nullable', 'string', 'max:500']], [], ['professional_id' => 'novo responsável', 'reason' => 'motivo']);
+        $to = (int) $data['professional_id'];
+        if ($to === $professional->id || ! in_array($to, array_column(AdmissionController::requestOptions($admission->unit_id)['professionals'], 'id'), true)) {
+            throw ValidationException::withMessages(['professional_id' => 'Escolha outro profissional habilitado nesta unidade.']);
+        }
+
+        DB::transaction(function () use ($admission, $professional, $to, $data) {
+            $locked = Admission::query()->whereKey($admission->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($locked->status, Admission::ACTIVE, true) || $locked->responsible_professional_id !== $professional->id) {
+                throw ValidationException::withMessages(['professional_id' => 'A internação mudou nesse meio-tempo. Recarregue a página.']);
+            }
+            // Checked again under the lock: a qualification or account may have ended in between.
+            if (! in_array($to, array_column(AdmissionController::requestOptions($locked->unit_id)['professionals'], 'id'), true)) {
+                throw ValidationException::withMessages(['professional_id' => 'Escolha outro profissional habilitado nesta unidade.']);
+            }
+            $locked->forceFill(['responsible_professional_id' => $to])->save();
+            $reason = trim((string) ($data['reason'] ?? ''));
+            AdmissionController::movement($locked, ['kind' => 'responsible', 'from_professional_id' => $professional->id, 'to_professional_id' => $to, 'reason' => $reason === '' ? null : $reason]);
+            AuditEvent::record('admission.responsible_changed', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'from_professional_id' => $professional->id, 'to_professional_id' => $to]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Responsabilidade passada.']);
+
+        return to_route('ward.index');
+    }
+
+    /**
+     * The admission's history (step 4.5): beds and responsible doctors, oldest first. Bed management gets
+     * the beds only: the hand-over reason is written by doctors and may carry clinical detail.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function history(Admission $admission, string $timezone, bool $bedsOnly = false): array
+    {
+        $rows = DB::table('admission_movements')->where('admission_id', $admission->id)->when($bedsOnly, fn ($query) => $query->where('kind', 'bed'))->orderBy('id')->get();
+        $beds = Bed::query()->whereKey($rows->pluck('to_bed_id')->merge($rows->pluck('from_bed_id'))->filter()->unique()->all())->with('sector:id,name')->get()->keyBy('id');
+        $people = Professional::query()->whereKey($rows->pluck('to_professional_id')->merge($rows->pluck('from_professional_id'))->filter()->unique()->all())->pluck('name', 'id');
+        $bed = fn (?int $id) => $id === null || ! $beds->has($id) ? null : "{$beds[$id]->sector?->name} · quarto {$beds[$id]->room} · leito {$beds[$id]->code}";
+
+        return array_values($rows->map(fn (\stdClass $row) => [
+            'id' => (int) $row->id,
+            'at' => Carbon::parse($row->occurred_at)->setTimezone($timezone)->format('d/m/Y H:i'),
+            'text' => $row->kind === 'bed'
+                ? ($row->from_bed_id === null ? 'Internado em '.$bed((int) $row->to_bed_id) : 'De '.$bed((int) $row->from_bed_id).' para '.$bed((int) $row->to_bed_id))
+                : 'Responsável: de '.($people[$row->from_professional_id] ?? '—').' para '.($people[$row->to_professional_id] ?? '—'),
+            'reason' => $row->reason,
+        ])->all());
     }
 
     private static function bedLabel(Admission $admission): ?string

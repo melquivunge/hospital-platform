@@ -4,7 +4,7 @@ Atualizado em 18/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge do documento na internação; depois a 4.5 (movimentação interna e higienização), plano em plans/web-v3-internacao.md.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.5 (movimentação interna); depois a 4.6 (transferência entre unidades da rede), plano em plans/web-v3-internacao.md.
 
 ## Onde está cada coisa
 
@@ -67,7 +67,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #41 | Etapa 4.3: atendimento de urgência | Mesclado |
 | #42 | Etapa 4.4a: pedido de internação e alocação de leito | Mesclado |
 | #43 | Etapa 4.4b: acesso da equipe do setor e evolução de internação | Mesclado |
-| — | Etapa 4.4b: anexar documento na internação (branch `feat/admission-documents`) | Em revisão |
+| #44 | Etapa 4.4b: anexar documento na internação | Mesclado |
+| — | Etapa 4.5: movimentação interna (branch `feat/ward-moves`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -188,8 +189,17 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Corrida real (6 rodadas, um paciente novo por rodada): duas abas encerrando a urgência com pedido de internação geram uma internação e um evento; duas abas criando a evolução da internação geram um rascunho. A corrida achou um defeito corrigido: o rascunho de evolução da internação era tratado como adendo e travava o encerramento de outro atendimento do mesmo paciente (e aparecia nele); teste de regressão falhava antes e passa depois.
   - Navegador (1440 e 390 px): lista, prontuário da internação, rascunho e assinatura; a gestão de leitos recebe 403 em "Internados"; sem erro de JavaScript ou 5xx, sem rolagem horizontal.
   - Revisão de segurança independente: sem crítico ou alto. Corrigido: o acesso é conferido de novo depois do lock ao salvar a evolução. Registrado: rascunhos abertos na alta (a decidir na 4.7); a lista "Internados" sem leitura gravada.
-  - **Documento na internação** (branch `feat/admission-documents`): quem tem a base da internação anexa PDF, JPG ou PNG na tela da internação, com as mesmas regras da 3.7 (tipo pelos bytes, 10 MB, até 20 por internação, disco privado). O banco exige exatamente uma origem (atendimento ou internação); a regra de imutabilidade da 3.7 já cobre a coluna nova. Retirar: só quem anexou, enquanto ainda tem a base da internação. Navegador (1440 e 390 px): anexo e download com o nome certo, sem erros.
+  - **Documento na internação** (PR #44): quem tem a base da internação anexa PDF, JPG ou PNG na tela da internação, com as mesmas regras da 3.7 (tipo pelos bytes, 10 MB, até 20 por internação, disco privado). O banco exige exatamente uma origem (atendimento ou internação); a regra de imutabilidade da 3.7 já cobre a coluna nova. Retirar: só quem anexou, enquanto ainda tem a base da internação. Navegador (1440 e 390 px): anexo e download com o nome certo, sem erros.
   - Troca de leito e de setor vem na 4.5.
+- **4.5 (movimentação interna)** (branch `feat/ward-moves`):
+  - `admission_movements` (clínica, RLS, só de inserção por gatilho): cada alocação, troca de leito ou de setor e troca de médico responsável é uma linha nova; nada é reescrito. A migration copiou as alocações existentes cliente a cliente (com o cliente na sessão, porque o RLS é forçado também para o dono), testado com dados no banco local.
+  - Troca de leito (inclusive de setor) pela gestão de leitos na tela "Internações": leito novo livre → ocupado (atualização condicional), leito anterior → em higienização (a higienização da 4.1 o devolve a livre), justificativa fora da regra de sexo ou isolamento; recusada se o leito atual não estiver ocupado. O acesso da equipe acompanha na hora (o setor anterior perde, o novo ganha), porque é calculado pelo setor do leito atual. Auditoria `admission.moved` só com ids.
+  - Troca de médico responsável pelo responsável atual, na tela da internação, para outro profissional habilitado na unidade com vínculo e conta ativos (conferido de novo sob lock), com motivo opcional. Quem passou deixa de ler, salvo se for da equipe do setor do leito. Auditoria `admission.responsible_changed`.
+  - Histórico de leitos e responsáveis na tela da internação; a gestão de leitos vê só o histórico de leitos (o motivo da troca de responsável pode ter detalhe clínico).
+  - Bloqueio e desbloqueio com motivo já existiam (4.1).
+  - Corrida real (6 rodadas): duas pessoas da gestão de leitos movendo dois internados para o mesmo leito livre; sempre um vence, o outro é recusado com mensagem, uma linha de histórico.
+  - Navegador (1440 e 390 px): troca de leito pela tela, histórico completo, painel de passar a responsabilidade; sem erro de JavaScript ou 5xx.
+  - Revisão de segurança independente: sem crítico ou alto. Corrigido: histórico de responsável (com motivo) fora da tela da gestão de leitos; conta desativada deixa de ser opção de responsável (vale também para o pedido de internação); conferência do novo responsável sob lock; histórico tolera profissional ausente; troca recusada se o leito atual não está ocupado. Aceito: passar a responsabilidade ainda no pedido (antes do leito), como no próprio pedido.
 - **Entrega 4 (urgência, internação e leitos) em definição** (18/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4". Decisões do usuário: jornada primeiro (prescrição e farmácia na entrega 4b), escala de risco própria de 5 níveis (sem Manchester), papel Gestão de leitos, transferência dentro da rede; acesso na internação pelo médico responsável e pela equipe do setor ([ADR-0004](adr/0004-ward-team-record-access.md), aceita); "Não identificado" unificável depois; compatibilidade do leito com aviso e justificativa; sumário de alta obrigatório exceto óbito e evasão; tempo-alvo com destaque visual; censo diário. Plano em `plans/web-v3-internacao.md` (3.8, depois 4.1 a 4.8). ADR-0004 e plano aceitos e **implementação autorizada** pelo usuário (18/10/2026), uma etapa por vez, começando pela 3.8.
 
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
@@ -379,7 +389,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 336 testes passando (etapa 4.4b, documentos), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 339 testes passando (etapa 4.5), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

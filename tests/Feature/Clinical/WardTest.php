@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Clinical;
 
+use App\Http\Controllers\AdmissionController;
 use App\Models\Admission;
 use App\Models\AuditEvent;
 use App\Models\Bed;
@@ -149,6 +150,78 @@ class WardTest extends ClinicalTestCase
             $this->fail('A document with two origins was accepted.');
         } catch (QueryException $exception) {
             $this->assertSame('23514', $exception->getCode());
+        }
+    }
+
+    public function test_a_bed_change_moves_the_access_and_keeps_the_history(): void
+    {
+        $first = $this->bed($this->ward, 'E-1');
+        $icuBed = $this->bed($this->icu, 'U-1');
+        $admission = $this->admission($first);
+        $this->actingAs($this->icuNurse->user)->get(route('ward.show', $admission))->assertForbidden();
+
+        // Only bed management moves; the target must be a free bed, not the current one.
+        $this->actingAs($this->wardNurse->user)->post(route('admissions.move', $admission), ['bed_id' => $icuBed->id])->assertForbidden();
+        $this->actingAs($this->bedManager->user)->post(route('admissions.move', $admission), ['bed_id' => $first->id])->assertSessionHasErrors('bed_id');
+        $this->post(route('admissions.move', $admission), ['bed_id' => $icuBed->id])->assertSessionHasNoErrors();
+
+        $this->assertSame([$icuBed->id, 'occupied', 'cleaning'], [$admission->fresh()->bed_id, $icuBed->fresh()->status, $first->fresh()->status]);
+        $this->assertSame(1, AuditEvent::where('action', 'admission.moved')->count());
+        // At once: the previous sector's team loses access, the new one gains it.
+        $this->actingAs($this->wardNurse->user)->get(route('ward.show', $admission))->assertForbidden();
+        $this->actingAs($this->icuNurse->user)->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page
+            ->has('history', 2)->where('history.1.text', 'De '.$this->ward->name.' · quarto 1 · leito E-1 para UTI · quarto 1 · leito U-1'));
+
+        // Housekeeping returns the previous bed, which can then be used again.
+        $housekeeper = Membership::factory()->for($this->unit->tenant)->create();
+        $housekeeper->grant(Role::Housekeeping, $this->unit);
+        $this->actingAs($housekeeper->user)->post(route('beds.clean', $first))->assertSessionHasNoErrors();
+        $this->assertSame('free', $first->fresh()->status);
+        $this->actingAs($this->bedManager->user)->post(route('admissions.move', $admission), ['bed_id' => $icuBed->id])->assertSessionHasErrors('bed_id');
+    }
+
+    public function test_the_responsible_doctor_hands_over_and_loses_access_outside_the_team(): void
+    {
+        $this->bed($this->ward, 'E-1');
+        $admission = $this->admission($this->bed($this->icu, 'U-1'));
+        $wardNurse = Professional::query()->withoutGlobalScopes()->where('membership_id', $this->wardNurse->id)->sole();
+
+        $this->actingAs($this->icuNurse->user)->post(route('ward.hand-over', $admission), ['professional_id' => $wardNurse->id])->assertForbidden();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.hand-over', $admission), ['professional_id' => $this->nurse->id])->assertSessionHasErrors('professional_id');
+        $this->post(route('ward.hand-over', $admission), ['professional_id' => $wardNurse->id, 'reason' => 'Troca de equipe.'])->assertRedirect(route('ward.index'));
+
+        $this->assertSame($wardNurse->id, $admission->fresh()->responsible_professional_id);
+        // The doctor is not on the ICU team: the record closes at once; the new responsible reads it.
+        $this->get(route('ward.show', $admission))->assertForbidden();
+        $this->actingAs($this->wardNurse->user)->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page
+            ->where('history.1.text', 'Responsável: de Dra. Ana para Enf. Carla')->where('history.1.reason', 'Troca de equipe.'));
+        $this->assertSame(1, AuditEvent::where('action', 'admission.responsible_changed')->count());
+        // Bed management sees the beds only, never the hand-over and its reason.
+        $this->actingAs($this->bedManager->user)->get(route('admissions.index'))->assertInertia(fn (Assert $page) => $page->has('admissions.0.history', 1));
+
+        // A deactivated account is no longer offered nor accepted as responsible.
+        $this->wardNurse->user->deactivate();
+        $this->assertNotContains($wardNurse->id, array_column(AdmissionController::requestOptions($this->unit->id)['professionals'], 'id'));
+    }
+
+    public function test_the_admission_history_is_insert_only(): void
+    {
+        $this->admission($this->bed($this->ward, 'E-1'));
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $row = (array) DB::table('admission_movements')->first();
+        unset($row['id']);
+
+        foreach ([
+            fn () => DB::table('admission_movements')->update(['reason' => 'Reescrito']),
+            fn () => DB::table('admission_movements')->delete(),
+            fn () => DB::table('admission_movements')->insert([...$row, 'kind' => 'responsible']),
+        ] as $tamper) {
+            try {
+                DB::transaction($tamper);
+                $this->fail('The database accepted a change it must refuse.');
+            } catch (QueryException $exception) {
+                $this->assertContains($exception->getCode(), ['P0001', '23514']);
+            }
         }
     }
 
