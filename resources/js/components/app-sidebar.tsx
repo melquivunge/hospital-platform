@@ -18,6 +18,7 @@ import {
     Siren,
     Building2,
     Landmark,
+    Pill,
     LayoutGrid,
     ListOrdered,
     Megaphone,
@@ -51,6 +52,7 @@ import { index as emergency } from '@/routes/emergency';
 import { index as triageLevels } from '@/routes/triage-levels';
 import { index as clinicalAccess } from '@/routes/clinical-access';
 import { index as insurers } from '@/routes/insurers';
+import { index as medications } from '@/routes/medications';
 import { index as visits } from '@/routes/visits';
 import { index as ward } from '@/routes/ward';
 import { index as patients } from '@/routes/patients';
@@ -95,6 +97,7 @@ export function AppSidebar() {
         canManageSchedules,
         canBookAppointments,
         canManageInsurers,
+        canManageMedications,
         canAttend,
         canViewClinicalAccess,
         canViewBeds,
@@ -213,6 +216,9 @@ export function AppSidebar() {
             : []),
         ...(canManageInsurers
             ? [{ title: 'Convênios', href: insurers(), icon: Landmark }]
+            : []),
+        ...(canManageMedications
+            ? [{ title: 'Medicamentos', href: medications(), icon: Pill }]
             : []),
         ...(canManagePeople
             ? [{ title: 'Pessoas', href: people(), icon: Users }]
