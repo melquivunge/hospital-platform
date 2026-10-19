@@ -83,14 +83,16 @@ Pendentes antes de uso com pacientes reais, além dos limites da V1 e da entrega
 - **Acesso pela equipe do setor ([ADR-0004](docs/adr/0004-ward-team-record-access.md)):** quem tem habilitação aprovada no setor lê o prontuário de todos os internados dali. Uma habilitação aprovada por engano dá acesso clínico; a aprovação é auditada e cada leitura fica na trilha.
 - **Rascunhos na alta:** rascunhos de evolução de outros profissionais ficam sem assinatura e inacessíveis depois da alta (nada é apagado). A tela de alta avisa quantos são.
 - **Superlotação:** o leito "extra" cobre macas improvisadas, mas precisa ser cadastrado; o banco recusa dois pacientes no mesmo leito.
-- **Transferência:** só dentro da rede. Um paciente "em trânsito" cujo leito reservado no destino deixe de estar disponível ainda não tem fluxo de saída. A transferência para fora da rede é registrada só como tipo de alta.
+- **Transferência:** só dentro da rede. A transferência para fora da rede é registrada só como tipo de alta. O leito reservado no destino não muda até o recebimento ou o cancelamento.
 - **Censo:** é um retrato do momento, não uma série histórica. A ocupação é calculada sobre os leitos ativos não bloqueados. O tempo médio usa as altas dos últimos 30 dias, pelo setor do último leito e desde a internação original (inclui o tempo em outra unidade da rede). O cálculo é feito em memória por unidade.
 - **Fuso horário:** horários de óbito e evasão são digitados no fuso da unidade, com precisão de minuto.
-- **Decisões de produto pendentes (revisão de segurança 4.8):**
-  - Um pedido de internação que ainda não tem leito e um paciente "em trânsito" não têm como ser encerrados (evasão, óbito ou desistência). Enquanto isso, o paciente não pode voltar à urgência nem ser internado de novo.
-  - Uma transferência já saída fica presa se o responsável no destino perder a habilitação ou a conta antes do recebimento. Nesse caso o leito do destino continua reservado.
-  - Qualquer profissional habilitado na unidade pode chamar um paciente da fila da urgência, o que abre o prontuário por atendimento. O contrato não restringe isso por função.
-  - A queixa e os sinais vitais da classificação aparecem na fila para quem classifica sem registro na trilha de leitura (decisão de 18/10/2026). A ADR-0004 fala em "toda leitura": é preciso alinhar o texto ou registrar essas leituras.
+- **Decisões da revisão de segurança 4.8 (aplicadas na 4.9):**
+  - O médico responsável dá alta também a quem aguarda leito ou está em trânsito. A alta encerra o episódio da urgência e cancela a transferência já saída, liberando o leito reservado. Essas altas não entram no censo, porque não ocuparam leito na unidade.
+  - Ao receber uma transferência, a gestão de leitos do destino escolhe o médico responsável, que pode ser outro se o escolhido no pedido saiu.
+  - Só funções marcadas como "atende pacientes" chamam da fila da urgência. Todas vêm marcadas, e o administrador desmarca as que não atendem (por exemplo, administrativas). A classificação continua aberta a quem é habilitado na unidade.
+  - Só funções que atendem pacientes podem ser escolhidas como médico responsável (pedido, passagem, transferência e recebimento).
+  - A queixa e os sinais vitais da classificação ficam fora da trilha de leitura, como registrado na ADR-0004.
+  - Limites aceitos: quem recebe alta em trânsito não conta estada no censo da origem. O médico responsável que perdeu a habilitação ainda dá alta à própria internação (como antes).
 - **Texto livre:** o motivo de bloqueio de leito é visto por gestão de leitos e higienização; não deve conter informação clínica.
 - **Dados de teste:** o cliente sintético "Rede Corrida Alta" existe só no banco local (corridas e verificações de tela).
 

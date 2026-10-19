@@ -8,6 +8,7 @@ use App\Models\AdmissionTransfer;
 use App\Models\AuditEvent;
 use App\Models\Bed;
 use App\Models\EmergencyEpisode;
+use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\Patient;
 use App\Models\Professional;
@@ -81,8 +82,11 @@ class AdmissionController extends Controller
                     'to' => $transfer->toUnit?->name,
                     'sector' => $transfer->requestedSector?->name,
                     'responsible' => $transfer->responsible?->name,
+                    'responsibleId' => $transfer->responsible_professional_id,
                     'bed' => $transfer->reservedBed === null ? null : "{$transfer->reservedBed->sector?->name} · quarto {$transfer->reservedBed->room} · leito {$transfer->reservedBed->code}",
                 ])->values(),
+            // Step 4.9: who can be named responsible when receiving a transfer here.
+            'professionals' => self::requestOptions($unit->id)['professionals'],
             'freeBeds' => Bed::query()->where('unit_id', $unit->id)->whereNull('deactivated_at')->where('status', 'free')
                 ->with('sector:id,name')->orderBy('sector_id')->orderBy('room')->orderBy('code')->get()
                 ->map(fn (Bed $bed) => ['id' => $bed->id, 'sectorId' => $bed->sector_id, 'label' => "{$bed->sector?->name} · quarto {$bed->room} · leito {$bed->code}", 'sex' => $bed->sex_restriction, 'isolation' => $bed->isolation])
@@ -257,7 +261,9 @@ class AdmissionController extends Controller
         $professionals = Professional::query()
             ->whereIn('membership_id', Membership::query()->whereNull('revoked_at')
                 ->whereIn('user_id', User::query()->whereNull('deactivated_at')->select('id'))->select('id'))
+            // Step 4.9: only functions that attend patients are responsible for an admission.
             ->whereIn('id', Qualification::query()->where('unit_id', $unitId)->where('status', QualificationStatus::Approved)
+                ->whereIn('job_function_id', JobFunction::query()->where('attends_patients', true)->select('id'))
                 ->whereDate('valid_from', '<=', $today)->where(fn ($query) => $query->whereNull('valid_until')->orWhereDate('valid_until', '>=', $today))
                 ->select('professional_id'))
             ->orderBy('name')->get(['id', 'name']);

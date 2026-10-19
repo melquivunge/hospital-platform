@@ -26,6 +26,11 @@ A [ADR-0003](0003-rls-on-clinical-tables.md) centralizou o acesso clínico em `A
 - O médico responsável só dá alta depois de assinar o próprio rascunho de evolução da internação.
 - Os rascunhos de outros profissionais ficam como estão: não entram no prontuário, não são apagados e não podem mais ser assinados por essa internação. A tela de alta avisa quantos são, para que a equipe assine antes.
 
+### Esclarecimento (etapa 4.9, 19/10/2026)
+
+- A queixa e os sinais vitais da classificação de risco aparecem na fila da urgência para quem classifica, **sem** registro em `clinical_reads` (decisão do usuário de 18/10/2026, mantida após a revisão da 4.8). "Toda leitura" nesta ADR vale para o prontuário (evoluções, documentos e download), não para a fila.
+- Chamar um paciente da fila abre o prontuário pelo atendimento; só funções marcadas como "atende pacientes" chamam.
+
 ## Alternativas
 
 ### Só quem abre atendimento (regra do ambulatório)

@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.8 (revisão integrada da entrega 4) e decisões de produto pendentes da entrega 4 (README); depois a entrega 4b (prescrição e farmácia).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.9 (pendências da revisão de segurança da entrega 4); depois a entrega 4b (prescrição e farmácia), que ainda precisa de contrato e plano.
 
 ## Onde está cada coisa
 
@@ -71,7 +71,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #45 | Etapa 4.5: movimentação interna | Mesclado |
 | #46 | Etapa 4.6: transferência entre unidades | Mesclado |
 | #47 | Etapa 4.7: alta e censo | Mesclado |
-| — | Etapa 4.8: revisão integrada da entrega 4 (branch `feat/delivery-4-review`) | Em revisão |
+| #48 | Etapa 4.8: revisão integrada da entrega 4 | Mesclado |
+| — | Etapa 4.9: pendências da revisão de segurança (branch `feat/inpatient-loose-ends`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -222,11 +223,17 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Navegador (1440 e 390 px): alta por melhora com senha errada e depois certa, óbito pelo celular, censo; sem erro de JavaScript ou 5xx, sem rolagem horizontal da página (a tabela do censo rola dentro do cartão).
   - Corrigido durante os testes: o horário de óbito/evasão era gravado sem fuso (3 horas de deslocamento).
   - Pendente da 4.6, sem fluxo ainda: saída para um paciente "em trânsito" cujo leito reservado deixe de estar disponível.
-- **4.8 (revisão integrada da entrega 4):**
+- **4.8 (revisão integrada da entrega 4)** (PR #48):
   - `tests/Feature/Clinical/InpatientJourneyTest.php`: a jornada inteira num cliente novo, só pelas rotas. Passa por provisionamento, duas unidades, setores e leitos, convites (recepção, gestão de leitos das duas unidades, higienização, gestão e auditoria) e quatro profissionais habilitados por setor. Depois: chegada, classificação, atendimento de urgência com evolução assinada, pedido de internação, alocação, evolução da enfermagem do setor, troca para a UTI (o acesso acompanha o leito), higienização, transferência para a outra unidade (pedido, aceite, saída, recebimento) e alta com sumário assinado. Por fim, confere o mapa de leitos contra o censo nas duas unidades, a trilha de leitura, as notificações sem dado do paciente e a auditoria sem texto clínico, CPF, nome ou tipo de alta.
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
+- **4.9 (pendências da revisão de segurança da 4.8; o usuário mandou seguir com as recomendações em 19/10/2026):**
+  - Alta também para quem aguarda leito ou está em trânsito, pelo médico responsável. O episódio da urgência é encerrado (evadido na evasão, alta nos demais tipos) e a transferência já saída é cancelada com o leito reservado de volta a livre (auditoria `transfer.cancelled`). As restrições no banco foram ajustadas: internação com alta pode não ter leito nem data de internação, e transferência cancelada pode ter saída registrada. O censo ignora altas sem leito.
+  - Recebimento de transferência: a gestão de leitos do destino escolhe o responsável (vem preenchido com o do pedido), conferido como habilitado no destino sob o lock. Os erros dos passos da transferência passaram a aparecer na tela "Internações" (antes ficavam invisíveis, defeito da 4.6).
+  - Funções com a marca "atende pacientes" (padrão: sim). Só elas chamam da fila da urgência, porque chamar abre o prontuário; classificar continua igual. O campo aparece na tela "Funções".
+  - ADR-0004: a classificação na fila fica fora da trilha de leitura (decisão de 18/10 mantida).
+  - Corrida real (6 rodadas, "Rede Corrida Alta"): alta em trânsito (óbito) × recebimento no destino. Óbito primeiro: transferência cancelada, leito do destino livre, recebimento recusado com mensagem. Recebimento primeiro: internado no destino e alta depois, leito em higienização. Sempre coerente.
 - **Entrega 4 (urgência, internação e leitos) em definição** (18/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4". Decisões do usuário: jornada primeiro (prescrição e farmácia na entrega 4b), escala de risco própria de 5 níveis (sem Manchester), papel Gestão de leitos, transferência dentro da rede; acesso na internação pelo médico responsável e pela equipe do setor ([ADR-0004](adr/0004-ward-team-record-access.md), aceita); "Não identificado" unificável depois; compatibilidade do leito com aviso e justificativa; sumário de alta obrigatório exceto óbito e evasão; tempo-alvo com destaque visual; censo diário. Plano em `plans/web-v3-internacao.md` (3.8, depois 4.1 a 4.8). ADR-0004 e plano aceitos e **implementação autorizada** pelo usuário (18/10/2026), uma etapa por vez, começando pela 3.8.
 
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
@@ -416,7 +423,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 348 testes passando (etapa 4.8), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 351 testes passando (etapa 4.9), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
