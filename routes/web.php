@@ -89,7 +89,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('triage-levels', [TriageLevelController::class, 'index'])->name('triage-levels.index');
     Route::put('triage-levels/{triageLevel}', [TriageLevelController::class, 'update'])->name('triage-levels.update');
     Route::get('ward', [WardController::class, 'index'])->name('ward.index');
-    Route::get('ward/{admission}', [WardController::class, 'show'])->name('ward.show');
+    Route::get('ward/{admission}', [WardController::class, 'show'])->middleware('throttle:120,1')->name('ward.show');
     Route::post('ward/{admission}/documents', [ClinicalDocumentController::class, 'storeForAdmission'])->middleware('throttle:30,1')->name('ward.documents.store');
     Route::post('ward/{admission}/discharge', [WardController::class, 'discharge'])->middleware('throttle:30,1')->name('ward.discharge');
     Route::post('ward/{admission}/hand-over', [WardController::class, 'handOver'])->middleware('throttle:30,1')->name('ward.hand-over');
@@ -113,7 +113,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('beds/{bed}/clean', [BedController::class, 'clean'])->middleware('throttle:60,1')->name('beds.clean');
     Route::get('visits', [VisitController::class, 'index'])->name('visits.index');
     Route::post('appointments/{appointment}/visit', [VisitController::class, 'open'])->middleware('throttle:60,1')->name('visits.open');
-    Route::get('visits/{visit}', [VisitController::class, 'show'])->name('visits.show');
+    Route::get('visits/{visit}', [VisitController::class, 'show'])->middleware('throttle:120,1')->name('visits.show');
     Route::post('visits/{visit}/close', [VisitController::class, 'close'])->middleware('throttle:60,1')->name('visits.close');
     Route::post('visits/{visit}/notes', [VisitController::class, 'storeNote'])->middleware('throttle:60,1')->name('visits.notes.store');
     Route::put('clinical-notes/{note}', [VisitController::class, 'updateNote'])->middleware('throttle:60,1')->name('clinical-notes.update');

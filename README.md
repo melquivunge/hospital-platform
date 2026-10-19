@@ -74,6 +74,26 @@ Pendentes antes de uso com pacientes reais, além dos limites da V1:
 - **Cadastro:** a mensagem de CPF ou CNS já cadastrado confirma a existência do documento; é necessária para o cadastro único e fica protegida pelo limite de 30 tentativas por minuto.
 - **Dados de teste:** o cliente sintético "Rede Corrida Agenda" existe só no banco local (corridas e verificações).
 
+### Limites conhecidos da entrega 4 (revisão integrada, etapa 4.8)
+
+Pendentes antes de uso com pacientes reais, além dos limites da V1 e da entrega 3:
+
+- **Classificação de risco:** escala própria de 5 níveis, **não é Manchester** nem equivalente. Os tempos-alvo padrão (0, 10, 60, 120 e 240 min) são ponto de partida e precisam ser validados pela equipe clínica antes do uso.
+- **Validade legal:** o sumário de alta é assinado com a senha, sem ICP-Brasil. A declaração de óbito fica fora do sistema; óbito e evasão registram só o horário e o autor.
+- **Acesso pela equipe do setor ([ADR-0004](docs/adr/0004-ward-team-record-access.md)):** quem tem habilitação aprovada no setor lê o prontuário de todos os internados dali. Uma habilitação aprovada por engano dá acesso clínico; a aprovação é auditada e cada leitura fica na trilha.
+- **Rascunhos na alta:** rascunhos de evolução de outros profissionais ficam sem assinatura e inacessíveis depois da alta (nada é apagado). A tela de alta avisa quantos são.
+- **Superlotação:** o leito "extra" cobre macas improvisadas, mas precisa ser cadastrado; o banco recusa dois pacientes no mesmo leito.
+- **Transferência:** só dentro da rede. Um paciente "em trânsito" cujo leito reservado no destino deixe de estar disponível ainda não tem fluxo de saída. A transferência para fora da rede é registrada só como tipo de alta.
+- **Censo:** é um retrato do momento, não uma série histórica. A ocupação é calculada sobre os leitos ativos não bloqueados. O tempo médio usa as altas dos últimos 30 dias, pelo setor do último leito e desde a internação original (inclui o tempo em outra unidade da rede). O cálculo é feito em memória por unidade.
+- **Fuso horário:** horários de óbito e evasão são digitados no fuso da unidade, com precisão de minuto.
+- **Decisões de produto pendentes (revisão de segurança 4.8):**
+  - Um pedido de internação que ainda não tem leito e um paciente "em trânsito" não têm como ser encerrados (evasão, óbito ou desistência). Enquanto isso, o paciente não pode voltar à urgência nem ser internado de novo.
+  - Uma transferência já saída fica presa se o responsável no destino perder a habilitação ou a conta antes do recebimento. Nesse caso o leito do destino continua reservado.
+  - Qualquer profissional habilitado na unidade pode chamar um paciente da fila da urgência, o que abre o prontuário por atendimento. O contrato não restringe isso por função.
+  - A queixa e os sinais vitais da classificação aparecem na fila para quem classifica sem registro na trilha de leitura (decisão de 18/10/2026). A ADR-0004 fala em "toda leitura": é preciso alinhar o texto ou registrar essas leituras.
+- **Texto livre:** o motivo de bloqueio de leito é visto por gestão de leitos e higienização; não deve conter informação clínica.
+- **Dados de teste:** o cliente sintético "Rede Corrida Alta" existe só no banco local (corridas e verificações de tela).
+
 ## Verificações
 
 O CI executa testes PHP com PostgreSQL descartável, Pint, PHPStan, TypeScript, lint/formatação, build, auditorias de dependências e smoke test dos containers. As credenciais do serviço de teste em CI são descartáveis, sem relação com ambientes reais.
