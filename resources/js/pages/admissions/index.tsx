@@ -22,6 +22,7 @@ type Admission = {
     bed: string | null;
     admittedAt: string | null;
     justification: string | null;
+    history: { id: number; at: string; text: string; reason: string | null }[];
 };
 
 type FreeBed = {
@@ -157,6 +158,35 @@ export default function Admissions({
                                         Fora da regra: {admission.justification}
                                     </p>
                                 )}
+                                <details className="mt-2">
+                                    <summary
+                                        aria-label={`Trocar de leito: ${admission.patient}`}
+                                        className="inline-flex min-h-11 cursor-pointer items-center rounded-md border px-3 font-medium hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                                    >
+                                        Trocar de leito
+                                    </summary>
+                                    <div className="mt-3">
+                                        <Allocate
+                                            admission={admission}
+                                            freeBeds={freeBeds}
+                                            move
+                                        />
+                                    </div>
+                                </details>
+                                <details>
+                                    <summary className="inline-flex min-h-11 cursor-pointer items-center rounded-md px-3 text-muted-foreground hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                                        Histórico de leitos e responsáveis
+                                    </summary>
+                                    <ol className="mt-2 grid gap-1 text-muted-foreground">
+                                        {admission.history.map((entry) => (
+                                            <li key={entry.id}>
+                                                {entry.at} · {entry.text}
+                                                {entry.reason &&
+                                                    ` (${entry.reason})`}
+                                            </li>
+                                        ))}
+                                    </ol>
+                                </details>
                             </li>
                         ))}
                     </ul>
@@ -186,18 +216,24 @@ function Identification({ admission }: { admission: Admission }) {
     );
 }
 
+/** Allocates the first bed (step 4.4a) or, with `move`, moves the inpatient to another free bed (4.5). */
 function Allocate({
     admission,
     freeBeds,
+    move = false,
 }: {
     admission: Admission;
     freeBeds: FreeBed[];
+    move?: boolean;
 }) {
-    const id = (field: string) => `${field}-${admission.id}`;
+    const id = (field: string) =>
+        `${field}-${move ? 'move-' : ''}${admission.id}`;
 
     return (
         <Form
-            {...AdmissionController.allocate.form(admission.id)}
+            {...(move
+                ? AdmissionController.move.form(admission.id)
+                : AdmissionController.allocate.form(admission.id))}
             errorBag={`admission-${admission.id}`}
             options={{ preserveScroll: true }}
             className="grid gap-3"
@@ -205,7 +241,9 @@ function Allocate({
             {({ processing, errors }) => (
                 <>
                     <div className="grid gap-2">
-                        <Label htmlFor={id('bed')}>Leito</Label>
+                        <Label htmlFor={id('bed')}>
+                            {move ? 'Novo leito' : 'Leito'}
+                        </Label>
                         <select
                             id={id('bed')}
                             name="bed_id"
@@ -244,10 +282,10 @@ function Allocate({
                     <Button
                         type="submit"
                         disabled={processing || freeBeds.length === 0}
-                        aria-label={`Alocar leito: ${admission.patient}`}
+                        aria-label={`${move ? 'Confirmar troca de leito' : 'Alocar leito'}: ${admission.patient}`}
                         className="min-h-11 justify-self-start"
                     >
-                        Alocar leito
+                        {move ? 'Confirmar troca de leito' : 'Alocar leito'}
                     </Button>
                 </>
             )}

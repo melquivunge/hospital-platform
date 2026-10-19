@@ -13,11 +13,13 @@ use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Sector;
 use App\Models\Unit;
+use App\Models\User;
 use App\Policies\UnitPolicy;
 use App\Professionals\QualificationStatus;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -60,6 +62,7 @@ class AdmissionController extends Controller
                 'bed' => $admission->bed === null ? null : "{$admission->bed->sector?->name} · quarto {$admission->bed->room} · leito {$admission->bed->code}",
                 'admittedAt' => $admission->admitted_at?->setTimezone($timezone)->format('d/m H:i'),
                 'justification' => $admission->compatibility_justification,
+                'history' => $admission->status === 'admitted' ? WardController::history($admission, $timezone, bedsOnly: true) : [],
             ])->values(),
             'freeBeds' => Bed::query()->where('unit_id', $unit->id)->whereNull('deactivated_at')->where('status', 'free')
                 ->with('sector:id,name')->orderBy('sector_id')->orderBy('room')->orderBy('code')->get()
@@ -75,44 +78,112 @@ class AdmissionController extends Controller
     public function allocate(Request $request, Admission $admission): RedirectResponse
     {
         abort_unless(in_array($admission->unit_id, BedController::managedUnitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        [$bedId, $typed] = self::bedData($request);
+
+        DB::transaction(function () use ($admission, $bedId, $typed, $request) {
+            $locked = Admission::query()->whereKey($admission->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== 'requested') {
+                throw ValidationException::withMessages(['bed_id' => 'Esta internação já recebeu leito. Confira a lista atualizada.']);
+            }
+            [$bed, $justification, $outsideRule] = self::occupy($locked, $bedId, $typed);
+            $locked->forceFill([
+                'status' => 'admitted', 'bed_id' => $bed->id, 'admitted_at' => now(), 'admitted_by_user_id' => $request->user()->id,
+                'compatibility_justification' => $justification,
+            ])->save();
+            self::movement($locked, ['kind' => 'bed', 'to_bed_id' => $bed->id, 'reason' => $justification]);
+            if ($locked->emergency_episode_id !== null) {
+                EmergencyEpisode::query()->whereKey($locked->emergency_episode_id)->where('status', 'admission_requested')->update(['status' => 'admitted']);
+            }
+            // Ids and flags only; the justification stays in the clinical table.
+            AuditEvent::record('admission.admitted', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'bed_id' => $bed->id, 'outside_rule' => $outsideRule ?: null]));
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Leito alocado. Paciente internado.']);
+
+        return back();
+    }
+
+    /**
+     * Step 4.5: bed management moves an inpatient to another free bed of the unit (another sector included).
+     * The new bed becomes occupied, the previous one goes to cleaning, and the move is a new row in the
+     * history. Ward access follows the bed's sector at once. Locks: admission, new bed, previous bed.
+     */
+    public function move(Request $request, Admission $admission): RedirectResponse
+    {
+        abort_unless(in_array($admission->unit_id, BedController::managedUnitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        [$bedId, $typed] = self::bedData($request);
+
+        DB::transaction(function () use ($admission, $bedId, $typed) {
+            $locked = Admission::query()->whereKey($admission->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== 'admitted' || $locked->bed_id === null) {
+                throw ValidationException::withMessages(['bed_id' => 'Esta internação não está num leito. Confira a lista atualizada.']);
+            }
+            if ($bedId === $locked->bed_id) {
+                throw ValidationException::withMessages(['bed_id' => 'O paciente já está neste leito.']);
+            }
+            $previous = Bed::query()->findOrFail($locked->bed_id);
+            [$bed, $justification, $outsideRule] = self::occupy($locked, $bedId, $typed);
+            $released = Bed::query()->whereKey($previous->id)->where('status', 'occupied')
+                ->update(['status' => 'cleaning', 'status_changed_at' => now(), 'updated_at' => now()]);
+            if ($released === 0) {
+                throw ValidationException::withMessages(['bed_id' => 'O leito atual deixou de estar ocupado. Confira o mapa de leitos antes de transferir.']);
+            }
+            BedController::event($previous, 'occupied', 'cleaning');
+            $locked->forceFill(['bed_id' => $bed->id, 'compatibility_justification' => $justification])->save();
+            self::movement($locked, ['kind' => 'bed', 'from_bed_id' => $previous->id, 'to_bed_id' => $bed->id, 'reason' => $justification]);
+            AuditEvent::record('admission.moved', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'from_bed_id' => $previous->id, 'bed_id' => $bed->id, 'outside_rule' => $outsideRule ?: null]));
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Paciente transferido de leito. O leito anterior foi para higienização.']);
+
+        return back();
+    }
+
+    /**
+     * A new row in the admission's history (step 4.5): insert-only, clinical.
+     *
+     * @param  array<string, int|string|null>  $values
+     */
+    public static function movement(Admission $admission, array $values): void
+    {
+        DB::table('admission_movements')->insert([...$values, 'tenant_id' => $admission->tenant_id, 'admission_id' => $admission->id, 'user_id' => Auth::id(), 'occurred_at' => now()]);
+    }
+
+    /**
+     * The chosen bed and the justification typed (empty when none).
+     *
+     * @return array{int, string}
+     */
+    private static function bedData(Request $request): array
+    {
         $data = $request->validate([
             'bed_id' => ['required', 'integer'],
             'compatibility_justification' => ['nullable', 'string', 'max:500'],
         ], [], ['bed_id' => 'leito', 'compatibility_justification' => 'justificativa']);
 
-        DB::transaction(function () use ($admission, $data, $request) {
-            $locked = Admission::query()->whereKey($admission->id)->lockForUpdate()->firstOrFail();
-            if ($locked->status !== 'requested') {
-                throw ValidationException::withMessages(['bed_id' => 'Esta internação já recebeu leito. Confira a lista atualizada.']);
-            }
-            $bed = Bed::query()->whereKey($data['bed_id'])->where('unit_id', $locked->unit_id)->whereNull('deactivated_at')->first()
-                ?? throw ValidationException::withMessages(['bed_id' => 'Escolha um leito livre desta unidade.']);
-            $patient = Patient::query()->findOrFail($locked->patient_id);
-            $mismatches = self::mismatches($bed, $patient, $locked->isolation);
-            $justification = trim((string) ($data['compatibility_justification'] ?? ''));
-            if ($mismatches !== [] && $justification === '') {
-                throw ValidationException::withMessages(['compatibility_justification' => 'Leito fora da regra ('.implode('; ', $mismatches).'). Registre a justificativa para alocar mesmo assim.']);
-            }
+        return [(int) $data['bed_id'], trim((string) ($data['compatibility_justification'] ?? ''))];
+    }
 
-            $changed = Bed::query()->whereKey($bed->id)->whereNull('deactivated_at')->where('status', 'free')
-                ->update(['status' => 'occupied', 'block_reason' => null, 'status_changed_at' => now(), 'updated_at' => now()]);
-            if ($changed === 0) {
-                throw ValidationException::withMessages(['bed_id' => 'O leito deixou de estar livre nesse meio-tempo. Escolha outro.']);
-            }
-            BedController::event($bed, 'free', 'occupied');
-            $locked->forceFill([
-                'status' => 'admitted', 'bed_id' => $bed->id, 'admitted_at' => now(), 'admitted_by_user_id' => $request->user()->id,
-                'compatibility_justification' => $mismatches === [] ? null : $justification,
-            ])->save();
-            if ($locked->emergency_episode_id !== null) {
-                EmergencyEpisode::query()->whereKey($locked->emergency_episode_id)->where('status', 'admission_requested')->update(['status' => 'admitted']);
-            }
-            // Ids and flags only; the justification stays in the clinical table.
-            AuditEvent::record('admission.admitted', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'bed_id' => $bed->id, 'outside_rule' => $mismatches !== [] ?: null]));
-        });
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Leito alocado. Paciente internado.']);
+    /**
+     * Takes a free active bed of the admission's unit for it (conditional update), with a justification when
+     * the bed is outside the sex or isolation rule. Returns the bed, the justification kept and the flag.
+     *
+     * @return array{Bed, string|null, bool}
+     */
+    private static function occupy(Admission $admission, int $bedId, string $justification): array
+    {
+        $bed = Bed::query()->whereKey($bedId)->where('unit_id', $admission->unit_id)->whereNull('deactivated_at')->first()
+            ?? throw ValidationException::withMessages(['bed_id' => 'Escolha um leito livre desta unidade.']);
+        $mismatches = self::mismatches($bed, Patient::query()->findOrFail($admission->patient_id), $admission->isolation);
+        if ($mismatches !== [] && $justification === '') {
+            throw ValidationException::withMessages(['compatibility_justification' => 'Leito fora da regra ('.implode('; ', $mismatches).'). Registre a justificativa para usar este leito mesmo assim.']);
+        }
+        $changed = Bed::query()->whereKey($bed->id)->whereNull('deactivated_at')->where('status', 'free')
+            ->update(['status' => 'occupied', 'block_reason' => null, 'status_changed_at' => now(), 'updated_at' => now()]);
+        if ($changed === 0) {
+            throw ValidationException::withMessages(['bed_id' => 'O leito deixou de estar livre nesse meio-tempo. Escolha outro.']);
+        }
+        BedController::event($bed, 'free', 'occupied');
 
-        return back();
+        return [$bed, $mismatches === [] ? null : $justification, $mismatches !== []];
     }
 
     /**
@@ -162,7 +233,8 @@ class AdmissionController extends Controller
             ->whereExists(fn ($query) => $query->from('beds')->whereColumn('beds.sector_id', 'sectors.id')->whereNull('beds.deactivated_at'))
             ->orderBy('name')->get(['id', 'name']);
         $professionals = Professional::query()
-            ->whereIn('membership_id', Membership::query()->whereNull('revoked_at')->select('id'))
+            ->whereIn('membership_id', Membership::query()->whereNull('revoked_at')
+                ->whereIn('user_id', User::query()->whereNull('deactivated_at')->select('id'))->select('id'))
             ->whereIn('id', Qualification::query()->where('unit_id', $unitId)->where('status', QualificationStatus::Approved)
                 ->whereDate('valid_from', '<=', $today)->where(fn ($query) => $query->whereNull('valid_until')->orWhereDate('valid_until', '>=', $today))
                 ->select('professional_id'))

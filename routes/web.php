@@ -89,8 +89,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('ward', [WardController::class, 'index'])->name('ward.index');
     Route::get('ward/{admission}', [WardController::class, 'show'])->name('ward.show');
     Route::post('ward/{admission}/documents', [ClinicalDocumentController::class, 'storeForAdmission'])->middleware('throttle:30,1')->name('ward.documents.store');
+    Route::post('ward/{admission}/hand-over', [WardController::class, 'handOver'])->middleware('throttle:30,1')->name('ward.hand-over');
     Route::post('ward/{admission}/notes', [WardController::class, 'storeNote'])->middleware('throttle:60,1')->name('ward.notes.store');
     Route::get('admissions', [AdmissionController::class, 'index'])->name('admissions.index');
+    Route::post('admissions/{admission}/move', [AdmissionController::class, 'move'])->middleware('throttle:60,1')->name('admissions.move');
     Route::post('admissions/{admission}/allocate', [AdmissionController::class, 'allocate'])->middleware('throttle:60,1')->name('admissions.allocate');
     Route::get('beds', [BedController::class, 'index'])->name('beds.index');
     Route::post('units/{unit}/beds', [BedController::class, 'store'])->middleware('throttle:60,1')->name('beds.store');
