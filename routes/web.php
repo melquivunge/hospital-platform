@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdmissionController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AttendanceOccurrenceController;
@@ -84,6 +85,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('emergency-episodes/{episode}/evade', [EmergencyController::class, 'evade'])->middleware('throttle:60,1')->name('emergency.evade');
     Route::get('triage-levels', [TriageLevelController::class, 'index'])->name('triage-levels.index');
     Route::put('triage-levels/{triageLevel}', [TriageLevelController::class, 'update'])->name('triage-levels.update');
+    Route::get('admissions', [AdmissionController::class, 'index'])->name('admissions.index');
+    Route::post('admissions/{admission}/allocate', [AdmissionController::class, 'allocate'])->middleware('throttle:60,1')->name('admissions.allocate');
     Route::get('beds', [BedController::class, 'index'])->name('beds.index');
     Route::post('units/{unit}/beds', [BedController::class, 'store'])->middleware('throttle:60,1')->name('beds.store');
     Route::post('beds/{bed}/deactivate', [BedController::class, 'deactivate'])->middleware('throttle:60,1')->name('beds.deactivate');

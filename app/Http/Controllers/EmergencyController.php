@@ -223,8 +223,10 @@ class EmergencyController extends Controller
     /**
      * Step 4.3: the outcome of an emergency visit, recorded when the attending professional closes it.
      * Called inside the visit's transaction, after the visit row is locked (visit → episode).
+     *
+     * @param  array{requested_sector_id: int, responsible_professional_id: int, isolation: bool}|null  $admission  required for an admission request (step 4.4a)
      */
-    public static function end(Visit $visit, string $outcome, int $userId): void
+    public static function end(Visit $visit, string $outcome, int $userId, ?array $admission = null): void
     {
         $episode = EmergencyEpisode::query()->whereKey($visit->emergency_episode_id)->lockForUpdate()->firstOrFail();
         if ($episode->status !== 'in_care') {
@@ -232,6 +234,9 @@ class EmergencyController extends Controller
         }
         $episode->forceFill(['status' => $outcome, 'ended_at' => now(), 'ended_by_user_id' => $userId])->save();
         AuditEvent::record('emergency.ended', $episode->tenant_id, $episode, ['unit_id' => $episode->unit_id, 'outcome' => $outcome, 'visit_id' => $visit->id]);
+        if ($outcome === 'admission_requested') {
+            AdmissionController::request($episode, $admission ?? throw ValidationException::withMessages(['requested_sector_id' => 'Informe o setor e o médico responsável da internação.']), $userId);
+        }
     }
 
     /**

@@ -115,6 +115,8 @@ class VisitController extends Controller
 
         return Inertia::render('visits/show', [
             'visit' => ['id' => $visit->id, 'openedAt' => $visit->opened_at->setTimezone($timezone)->format('d/m/Y H:i'), 'emergency' => $visit->emergency_episode_id !== null],
+            // Step 4.4a: choices for an admission request when closing an emergency visit.
+            'admissionOptions' => $visit->emergency_episode_id === null ? null : [...AdmissionController::requestOptions($visit->unit_id), 'me' => $professional->id],
             'patient' => self::patientHeader($patient),
             'record' => self::signedRecord($ids, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
@@ -135,7 +137,18 @@ class VisitController extends Controller
             ['outcome' => 'desfecho'],
         )['outcome'];
 
-        DB::transaction(function () use ($visit, $request, $outcome) {
+        // Step 4.4a: an admission request names the sector and the responsible doctor.
+        $admission = null;
+        if ($outcome === 'admission_requested') {
+            $data = $request->validate([
+                'requested_sector_id' => ['required', 'integer'],
+                'responsible_professional_id' => ['required', 'integer'],
+                'isolation' => ['boolean'],
+            ], [], ['requested_sector_id' => 'setor de internação', 'responsible_professional_id' => 'médico responsável']);
+            $admission = ['requested_sector_id' => (int) $data['requested_sector_id'], 'responsible_professional_id' => (int) $data['responsible_professional_id'], 'isolation' => (bool) ($data['isolation'] ?? false)];
+        }
+
+        DB::transaction(function () use ($visit, $request, $outcome, $admission) {
             $locked = Visit::query()->whereKey($visit->id)->lockForUpdate()->firstOrFail();
             if ($locked->closed_at !== null) {
                 throw ValidationException::withMessages(['visit' => 'Este atendimento já foi encerrado.']);
@@ -150,7 +163,7 @@ class VisitController extends Controller
             }
             AuditEvent::record('visit.closed', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id]);
             if ($outcome !== null) {
-                EmergencyController::end($locked, $outcome, $request->user()->id);
+                EmergencyController::end($locked, $outcome, $request->user()->id, $admission);
             }
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Atendimento encerrado.']);

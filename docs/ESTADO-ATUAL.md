@@ -4,7 +4,7 @@ Atualizado em 18/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.3 (atendimento de urgência); depois a 4.4 (internação), plano em plans/web-v3-internacao.md.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.4a (pedido de internação e leito); depois a 4.4b (acesso da equipe do setor e evolução de internação), plano em plans/web-v3-internacao.md.
 
 ## Onde está cada coisa
 
@@ -64,7 +64,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #38 | Etapa 3.8: revisão integrada da entrega 3 | Mesclado |
 | #39 | Etapa 4.1: leitos | Mesclado |
 | #40 | Etapa 4.2: chegada e classificação de risco | Mesclado |
-| — | Etapa 4.3: atendimento de urgência (branch `feat/emergency-care`) | Em revisão |
+| #41 | Etapa 4.3: atendimento de urgência | Mesclado |
+| — | Etapa 4.4a: pedido de internação e alocação de leito (branch `feat/admission`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -157,8 +158,8 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Corrida real (cliente "Rede Corrida Agenda", processos e conexões próprias, 6 rodadas alternando a ordem): duas recepções registrando a chegada do mesmo paciente: sempre um episódio e um evento de auditoria, a outra recusada; duas classificações simultâneas do mesmo episódio: uma vence, a outra é recusada com mensagem.
   - Navegador (1440 e 390 px): ajuste de tempo-alvo, chegada de paciente cadastrado e de não identificado, classificação e reclassificação; sem erro de JavaScript ou 5xx, sem rolagem horizontal, um `h1`. O teste no navegador achou um defeito corrigido: depois de classificar, o formulário ficava aberto com os valores antigos.
   - Revisão de segurança independente (sem crítico). Corrigido: unificação podia deixar a mesma pessoa com dois episódios abertos (alto); habilitação vencida ou ainda não vigente classificava; classificações carregadas só para quem classifica; ficha aberta por cadastro unificado mostra o principal; só a mudança de nome tira o "não identificado". Ida e volta da migration no banco local.
-  - Decisão técnica a confirmar: a classificação não abre o prontuário nem grava leitura em `clinical_reads` (mais restrito que o contrato, que previa acesso durante a classificação). Os episódios só ficam "aguardando" até a 4.3, que traz atendimento, alta e evasão.
-- **4.3 (atendimento de urgência)** (branch `feat/emergency-care`):
+  - Decisão do usuário (18/10/2026): a classificação não abre o prontuário nem grava leitura em `clinical_reads`; o prontuário abre pelo atendimento ou pelo acesso de emergência. Os episódios só ficavam "aguardando" até a 4.3.
+- **4.3 (atendimento de urgência)** (PR #41):
   - O atendimento (`visits`) nasce de um agendamento **ou** de um episódio de urgência: exatamente um dos dois (restrição no banco), `emergency_episode_id` único. O gatilho de imutabilidade do atendimento passou a comparar com `IS DISTINCT FROM` (com coluna anulável, `<>` deixaria passar a troca de origem).
   - "Chamar e atender" na fila: profissional com habilitação vigente na unidade, só paciente já classificado e aguardando. Lock no episódio: duas chamadas resultam num atendimento só (o mesmo profissional cai nele; outro recebe "já está em atendimento com ..."). Evolução, adendo, documentos e trilha de leitura são os da entrega 3, sem mudança; o atendimento aparece em "Meus atendimentos" (Urgência em andamento).
   - Episódio: aguardando → em atendimento → alta da urgência, pedido de internação ou evasão, com horário e autor (`ended_at`, `ended_by_user_id`, restrição no banco). O atendimento de urgência só encerra com desfecho e com os rascunhos assinados. Evasão pela fila só para quem ainda aguarda (recepção ou profissional da unidade); em atendimento, a evasão é o desfecho registrado por quem atende. Auditoria `emergency.ended` com o desfecho, só ids.
@@ -166,8 +167,17 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - A migration converteu os episódios `closed` do banco local em `discharged`. A primeira tentativa no banco local falhou (índice antigo ainda ativo durante a conversão, vários episódios do mesmo paciente); corrigido e reaplicado, ida e volta testada. O `down` recusa voltar se já existir atendimento de urgência (atendimentos nunca são apagados).
   - Corrida real (6 rodadas): duas chamadas simultâneas do mesmo paciente, sempre um atendimento e um evento `visit.opened`; chamada × evasão, uma vence e a outra é recusada com mensagem.
   - Navegador (1440 e 390 px): chegada, classificação, chamar e atender, rascunho, encerramento recusado sem assinatura, assinatura, fila da recepção com "Em atendimento com ...", encerramento com pedido de internação; sem erro de JavaScript ou 5xx, sem rolagem horizontal, um `h1`.
-  - Revisão de segurança independente: sem crítico ou alto. Decisões a confirmar: a recepção vê o nome de quem atende; quem tem a habilitação vencida no meio do atendimento ainda o encerra (igual ao ambulatório).
+  - Revisão de segurança independente: sem crítico ou alto. Decisões do usuário (18/10/2026): a recepção vê o nome de quem atende; quem tem a habilitação vencida no meio do atendimento ainda o encerra (igual ao ambulatório), mas não chama nem classifica.
   - Limite até a 4.4: no pedido de internação, o atendimento da urgência encerra e o prontuário deixa de abrir até a internação (setor pedido e médico responsável entram na 4.4).
+- **4.4a (pedido de internação e alocação de leito; a 4.4 foi dividida em 4.4a e 4.4b)** (branch `feat/admission`):
+  - O pedido nasce no encerramento do atendimento de urgência com o desfecho "Pedido de internação": setor de internação da unidade (setor com leitos ativos), médico responsável (habilitação aprovada e vigente na unidade, com conta ativa; o próprio profissional vem marcado) e "precisa de isolamento". `admissions` é clínica (RLS).
+  - Tela "Internações" (papel Gestão de leitos da unidade): pedidos aguardando leito e internados, só com identificação (nome, sexo, idade, setor pedido, responsável, isolamento). Cada leito livre mostra o que fica fora da regra para aquele paciente; fora da regra de sexo ou de isolamento, a alocação exige justificativa, guardada só na tabela clínica (a auditoria `admission.admitted` leva só ids e a marca "fora da regra").
+  - Alocar: lock no pedido, leito livre → ocupado por atualização condicional (com linha em `bed_events`), internação `admitted` e o episódio de urgência sai da fila (`admitted`).
+  - Banco: uma internação ativa por paciente e um paciente por leito (índices únicos parciais); a unificação recusa dois cadastros com internação ativa, e o pedido confere todos os cadastros do mesmo prontuário.
+  - Corrida real (6 rodadas, alternando a ordem): duas pessoas da gestão de leitos alocando o mesmo leito a dois pacientes; sempre um internado e o outro recusado com mensagem, um evento "ocupado" por rodada.
+  - Navegador (1440 e 390 px): pedido com isolamento, aviso de leito fora da regra, alocação recusada sem justificativa e aceita com ela; sem erro de JavaScript ou 5xx, sem rolagem horizontal.
+  - Revisão de segurança independente: sem crítico ou alto. Corrigido: unificação com duas internações ativas; responsável com conta revogada; pedido simultâneo dava erro 500. Aceito: os internados continuam listados para a gestão de leitos até a alta (4.7).
+  - Ainda não: acesso da equipe do setor ao prontuário e evolução de internação (4.4b, ADR-0004). O `down` da migration apaga as internações e não libera os leitos (só para desenvolvimento).
 - **Entrega 4 (urgência, internação e leitos) em definição** (18/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4". Decisões do usuário: jornada primeiro (prescrição e farmácia na entrega 4b), escala de risco própria de 5 níveis (sem Manchester), papel Gestão de leitos, transferência dentro da rede; acesso na internação pelo médico responsável e pela equipe do setor ([ADR-0004](adr/0004-ward-team-record-access.md), aceita); "Não identificado" unificável depois; compatibilidade do leito com aviso e justificativa; sumário de alta obrigatório exceto óbito e evasão; tempo-alvo com destaque visual; censo diário. Plano em `plans/web-v3-internacao.md` (3.8, depois 4.1 a 4.8). ADR-0004 e plano aceitos e **implementação autorizada** pelo usuário (18/10/2026), uma etapa por vez, começando pela 3.8.
 
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
@@ -357,7 +367,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 325 testes passando (etapa 4.3), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 330 testes passando (etapa 4.4a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
