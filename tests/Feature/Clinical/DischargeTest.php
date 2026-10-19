@@ -156,17 +156,6 @@ class DischargeTest extends ClinicalTestCase
         $this->actingAs($this->wardNurse->user)->post(route('clinical-notes.sign', $nurseDraft), ['body' => $nurseDraft->body, 'password' => 'password'])->assertForbidden();
     }
 
-    public function test_an_admission_waiting_for_a_bed_is_not_discharged(): void
-    {
-        $bed = $this->bed('A-1');
-        $admission = $this->admitted($bed);
-        DB::table('admissions')->where('id', $admission->id)->update(['status' => 'requested', 'bed_id' => null, 'admitted_at' => null, 'admitted_by_user_id' => null]);
-
-        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'at_request', 'summary' => 'Pedido.', 'password' => 'password'])->assertSessionHasErrors('type');
-        $this->assertSame(['requested', 'occupied'], [$admission->fresh()->status, $bed->fresh()->status]);
-        $this->assertSame(0, ClinicalNote::withoutTenantScope()->count());
-    }
-
     public function test_the_census_matches_the_bed_map_without_patient_data(): void
     {
         $occupied = $this->bed('A-1');

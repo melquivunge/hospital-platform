@@ -1,4 +1,4 @@
-import { Form, Head, router } from '@inertiajs/react';
+import { Form, Head, router, usePage } from '@inertiajs/react';
 import { Hospital } from 'lucide-react';
 import AdmissionController from '@/actions/App/Http/Controllers/AdmissionController';
 import TransferController from '@/actions/App/Http/Controllers/TransferController';
@@ -61,13 +61,16 @@ export default function Admissions({
     admissions,
     transfers,
     freeBeds,
+    professionals,
 }: {
     units: { id: number; name: string }[];
     unit: { id: number; name: string };
     admissions: Admission[];
     transfers: Transfer[];
     freeBeds: FreeBed[];
+    professionals: { id: number; name: string }[];
 }) {
+    const { errors } = usePage().props;
     const requested = admissions.filter((item) => item.status === 'requested');
     const admitted = admissions.filter((item) => item.status === 'admitted');
 
@@ -147,12 +150,19 @@ export default function Admissions({
                         <h2 id="transfers-heading" className="font-semibold">
                             Transferências entre unidades ({transfers.length})
                         </h2>
+                        <InputError
+                            message={
+                                errors.transfer ??
+                                errors.responsible_professional_id
+                            }
+                        />
                         <ul className="grid gap-3">
                             {transfers.map((transfer) => (
                                 <TransferItem
                                     key={transfer.id}
                                     transfer={transfer}
                                     freeBeds={freeBeds}
+                                    professionals={professionals}
                                 />
                             ))}
                         </ul>
@@ -328,6 +338,7 @@ type Transfer = {
     to: string | null;
     sector: string | null;
     responsible: string | null;
+    responsibleId: number;
     bed: string | null;
 };
 
@@ -344,9 +355,11 @@ const transferStatus = {
 function TransferItem({
     transfer,
     freeBeds,
+    professionals,
 }: {
     transfer: Transfer;
     freeBeds: FreeBed[];
+    professionals: { id: number; name: string }[];
 }) {
     const who = transfer.patient ?? 'paciente';
 
@@ -443,16 +456,55 @@ function TransferItem({
                     </>
                 )}
                 {transfer.incoming && transfer.status === 'departed' && (
-                    <Form {...TransferController.receive.form(transfer.id)}>
+                    <Form
+                        {...TransferController.receive.form(transfer.id)}
+                        className="flex flex-wrap items-end gap-3"
+                    >
                         {({ processing }) => (
-                            <Button
-                                type="submit"
-                                disabled={processing}
-                                aria-label={`Registrar recebimento: ${who}`}
-                                className="min-h-11"
-                            >
-                                Registrar recebimento
-                            </Button>
+                            <>
+                                <div className="grid gap-2">
+                                    <Label
+                                        htmlFor={`receive-responsible-${transfer.id}`}
+                                    >
+                                        Médico responsável
+                                    </Label>
+                                    <select
+                                        id={`receive-responsible-${transfer.id}`}
+                                        name="responsible_professional_id"
+                                        required
+                                        defaultValue={
+                                            professionals.some(
+                                                (option) =>
+                                                    option.id ===
+                                                    transfer.responsibleId,
+                                            )
+                                                ? transfer.responsibleId
+                                                : ''
+                                        }
+                                        className={selectClassName}
+                                    >
+                                        <option value="" disabled>
+                                            Selecione
+                                        </option>
+                                        {professionals.map((option) => (
+                                            <option
+                                                key={option.id}
+                                                value={option.id}
+                                            >
+                                                {option.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={processing}
+                                    aria-label={`Registrar recebimento: ${who}`}
+                                    className="min-h-11"
+                                >
+                                    Registrar recebimento
+                                </Button>
+                            </>
                         )}
                     </Form>
                 )}

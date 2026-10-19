@@ -35,7 +35,7 @@ export default function WardShow({
 }: {
     admission: {
         id: number;
-        status: 'requested' | 'admitted';
+        status: 'requested' | 'admitted' | 'in_transit';
         bed: string | null;
         since: string;
         responsible: string | null;
@@ -61,9 +61,11 @@ export default function WardShow({
             <Page width="narrow">
                 <PageHeader
                     eyebrow={
-                        admission.status === 'admitted'
-                            ? `Internado desde ${admission.since}`
-                            : `Aguardando leito desde ${admission.since}`
+                        {
+                            admitted: `Internado desde ${admission.since}`,
+                            in_transit: `Em transferência; internado desde ${admission.since}`,
+                            requested: `Aguardando leito desde ${admission.since}`,
+                        }[admission.status]
                     }
                     title={patient.name}
                     description={[
@@ -242,7 +244,9 @@ function Discharge({
                                     </option>
                                 ))}
                             </select>
-                            <InputError message={errors.type} />
+                            <InputError
+                                message={errors.type ?? errors.bed_id}
+                            />
                         </div>
                         {withSummary ? (
                             <>

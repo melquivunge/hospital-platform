@@ -9,7 +9,24 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { index } from '@/routes/job-functions';
 
-type JobFunction = { id: number; name: string };
+type JobFunction = { id: number; name: string; attends_patients: boolean };
+
+/** Step 4.9: only functions that attend patients call from the emergency queue (it opens the record). */
+function AttendsCheck({ checked }: { checked: boolean }) {
+    return (
+        <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="hidden" name="attends_patients" value="0" />
+            <input
+                type="checkbox"
+                name="attends_patients"
+                value="1"
+                defaultChecked={checked}
+                className="size-4 accent-primary"
+            />
+            Atende pacientes (chama da fila da urgência)
+        </label>
+    );
+}
 
 export default function JobFunctionsIndex({
     functions,
@@ -101,6 +118,7 @@ export default function JobFunctionsIndex({
                                         Adicionar
                                     </Button>
                                 </div>
+                                <AttendsCheck checked />
                                 <InputError
                                     id="new-function-error"
                                     message={errors.name}
@@ -153,6 +171,7 @@ function RenameForm({ jobFunction }: { jobFunction: JobFunction }) {
                             Salvar
                         </Button>
                     </div>
+                    <AttendsCheck checked={jobFunction.attends_patients} />
                     <InputError id={`${inputId}-error`} message={errors.name} />
                 </>
             )}

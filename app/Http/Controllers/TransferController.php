@@ -150,7 +150,13 @@ class TransferController extends Controller
     public function receive(Request $request, AdmissionTransfer $transfer): RedirectResponse
     {
         self::authorizeUnit($request, $transfer->to_unit_id);
-        self::step($transfer, 'departed', function (AdmissionTransfer $locked, Admission $admission) use ($request) {
+        // Step 4.9: the destination may name another responsible (the one chosen may have left in between).
+        $other = $request->validate(['responsible_professional_id' => ['nullable', 'integer']], [], ['responsible_professional_id' => 'médico responsável'])['responsible_professional_id'] ?? null;
+        self::step($transfer, 'departed', function (AdmissionTransfer $locked, Admission $admission) use ($request, $other) {
+            $chosenAtReception = $other !== null && (int) $other !== $locked->responsible_professional_id;
+            if ($chosenAtReception) {
+                $locked->responsible_professional_id = (int) $other;
+            }
             self::responsibleStillValid($locked);
             $bed = Bed::query()->findOrFail($locked->reserved_bed_id);
             self::bedTo($bed, 'reserved', 'occupied', 'O leito reservado mudou de estado. Confira o mapa de leitos.');
@@ -161,7 +167,7 @@ class TransferController extends Controller
             ])->save();
             AdmissionController::movement($admission, ['kind' => 'bed', 'from_bed_id' => $locked->from_bed_id, 'to_bed_id' => $bed->id, 'reason' => $locked->compatibility_justification]);
             if ($previousResponsible !== $locked->responsible_professional_id) {
-                AdmissionController::movement($admission, ['kind' => 'responsible', 'from_professional_id' => $previousResponsible, 'to_professional_id' => $locked->responsible_professional_id, 'reason' => 'Transferência entre unidades']);
+                AdmissionController::movement($admission, ['kind' => 'responsible', 'from_professional_id' => $previousResponsible, 'to_professional_id' => $locked->responsible_professional_id, 'reason' => $chosenAtReception ? 'Transferência entre unidades (responsável escolhido no recebimento)' : 'Transferência entre unidades']);
             }
             $locked->forceFill(['status' => 'completed', 'received_by_user_id' => $request->user()->id, 'received_at' => now()])->save();
         });
@@ -194,11 +200,11 @@ class TransferController extends Controller
     private static function responsibleStillValid(AdmissionTransfer $transfer): void
     {
         if (! in_array($transfer->responsible_professional_id, array_column(AdmissionController::requestOptions($transfer->to_unit_id)['professionals'], 'id'), true)) {
-            throw ValidationException::withMessages(['transfer' => 'O médico responsável escolhido no destino não está mais habilitado. Cancele e peça a transferência de novo.']);
+            throw ValidationException::withMessages(['transfer' => 'O médico responsável escolhido não está habilitado nesta unidade. Escolha outro para receber o paciente.']);
         }
     }
 
-    private static function bedTo(Bed $bed, string $from, string $to, string $message): void
+    public static function bedTo(Bed $bed, string $from, string $to, string $message): void
     {
         $changed = Bed::query()->whereKey($bed->id)->whereNull('deactivated_at')->where('status', $from)
             ->update(['status' => $to, 'block_reason' => null, 'status_changed_at' => now(), 'updated_at' => now()]);
@@ -208,7 +214,7 @@ class TransferController extends Controller
         BedController::event($bed, $from, $to);
     }
 
-    private static function audit(string $action, AdmissionTransfer $transfer): void
+    public static function audit(string $action, AdmissionTransfer $transfer): void
     {
         AuditEvent::record($action, $transfer->tenant_id, $transfer, ['admission_id' => $transfer->admission_id, 'from_unit_id' => $transfer->from_unit_id, 'to_unit_id' => $transfer->to_unit_id]);
     }

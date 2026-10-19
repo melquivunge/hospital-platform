@@ -14,10 +14,19 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $id
  * @property int $tenant_id
  * @property string $name
+ * @property bool $attends_patients step 4.9: calls patients from the emergency queue
  */
-#[Fillable(['name'])]
+#[Fillable(['name', 'attends_patients'])]
 class JobFunction extends Model
 {
     /** @use HasFactory<JobFunctionFactory> */
     use BelongsToTenant, HasFactory;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return ['attends_patients' => 'boolean'];
+    }
 }

@@ -26,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $reason
  * @property int $requested_by_user_id
  * @property Carbon $requested_at
+ * @property Carbon|null $departed_at
  */
 #[Fillable(['admission_id', 'from_unit_id', 'from_bed_id', 'to_unit_id', 'requested_sector_id', 'responsible_professional_id', 'requested_by_user_id', 'requested_at'])]
 class AdmissionTransfer extends Model

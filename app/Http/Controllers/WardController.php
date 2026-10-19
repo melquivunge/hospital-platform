@@ -8,6 +8,7 @@ use App\Models\AdmissionTransfer;
 use App\Models\AuditEvent;
 use App\Models\Bed;
 use App\Models\ClinicalNote;
+use App\Models\EmergencyEpisode;
 use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\Qualification;
@@ -79,7 +80,9 @@ class WardController extends Controller
             'patient' => VisitController::patientHeader($patient),
             'history' => self::history($admission, $timezone),
             // Step 4.5: only the responsible doctor hands the admission over.
+            // Not while a transfer between units is open (refused on the server too).
             'handOver' => $admission->responsible_professional_id === ClinicalAccess::professional($request->user())?->id
+                && ! AdmissionTransfer::query()->where('admission_id', $admission->id)->whereIn('status', AdmissionTransfer::OPEN)->exists()
                 ? array_values(array_filter(AdmissionController::requestOptions($admission->unit_id)['professionals'], fn (array $option) => $option['id'] !== $admission->responsible_professional_id))
                 : null,
             // Step 4.6: the open transfer, and where the responsible doctor can send the patient.
@@ -90,8 +93,8 @@ class WardController extends Controller
                     ->map(fn (Unit $unit) => ['id' => $unit->id, 'name' => $unit->name, ...AdmissionController::requestOptions($unit->id)])
                     ->filter(fn (array $unit) => $unit['sectors'] !== [] && $unit['professionals'] !== [])->all())
                 : null,
-            // Step 4.7: the responsible doctor discharges an admitted patient with no transfer open.
-            'discharge' => $open === null && $admission->status === 'admitted' && $admission->responsible_professional_id === ClinicalAccess::professional($request->user())?->id
+            // Step 4.7: the responsible doctor discharges, with no transfer open before the departure (4.9).
+            'discharge' => ($open === null || $open->status === 'departed') && $admission->responsible_professional_id === ClinicalAccess::professional($request->user())?->id
                 ? [
                     'types' => array_map(fn (string $value, string $label) => ['value' => $value, 'label' => $label, 'summary' => in_array($value, Admission::SUMMARY_REQUIRED, true)], array_keys(Admission::DISCHARGE_TYPES), Admission::DISCHARGE_TYPES),
                     'otherDrafts' => ClinicalNote::query()->where('admission_id', $admission->id)->where('status', 'draft')->where('author_user_id', '<>', $request->user()->id)->count(),
@@ -183,6 +186,8 @@ class WardController extends Controller
      * carry a summary signed with the password (a clinical note of the admission, immutable); death and
      * evasion record when it happened and who registered it. The bed goes to cleaning and the ward access
      * ends with the admission. Drafts of other authors stay unsigned and are never deleted (ADR-0004).
+     * Step 4.9: an admission still waiting for a bed or in transit is discharged too (no bed to release):
+     * the emergency episode ends, and the departed transfer is cancelled, freeing the reserved bed.
      */
     public function discharge(Request $request, Admission $admission): RedirectResponse
     {
@@ -206,17 +211,21 @@ class WardController extends Controller
 
         DB::transaction(function () use ($admission, $professional, $data, $withSummary, $at, $request) {
             $locked = Admission::query()->whereKey($admission->id)->lockForUpdate()->firstOrFail();
-            if ($locked->status !== 'admitted' || $locked->responsible_professional_id !== $professional->id) {
+            if (! in_array($locked->status, Admission::ACTIVE, true) || $locked->responsible_professional_id !== $professional->id) {
                 throw ValidationException::withMessages(['type' => 'A internação mudou nesse meio-tempo. Recarregue a página.']);
             }
-            if (AdmissionTransfer::query()->where('admission_id', $locked->id)->whereIn('status', AdmissionTransfer::OPEN)->exists()) {
+            // Before the departure the transfer is cancelled by hand; in transit, the discharge ends it.
+            $transfer = AdmissionTransfer::query()->where('admission_id', $locked->id)->whereIn('status', AdmissionTransfer::OPEN)->lockForUpdate()->first();
+            if ($transfer !== null && $transfer->status !== 'departed') {
                 throw ValidationException::withMessages(['type' => 'Há uma transferência entre unidades em andamento. Cancele-a antes da alta.']);
             }
             // The time is typed to the minute: within the admission's minute it is the admission itself.
-            if ($at->lt($locked->admitted_at->copy()->startOfMinute())) {
+            // In transit, not before the departure either.
+            $start = $transfer->departed_at ?? $locked->admitted_at ?? $locked->requested_at;
+            if ($at->lt($start->copy()->startOfMinute())) {
                 throw ValidationException::withMessages(['occurred_at' => 'O horário não pode ser anterior à internação.']);
             }
-            $at = $at->max($locked->admitted_at);
+            $at = $at->max($start);
             // The doctor's own draft would be orphaned (and the summary is one note per author): signed first.
             if (ClinicalNote::query()->where('admission_id', $locked->id)->where('author_user_id', $request->user()->id)->where('status', 'draft')->exists()) {
                 throw ValidationException::withMessages(['type' => 'Assine seu rascunho de evolução desta internação antes da alta.']);
@@ -230,20 +239,28 @@ class WardController extends Controller
                 ]);
                 $summary->forceFill(['status' => 'signed', 'signed_at' => now()])->save();
             }
-            $bed = Bed::query()->findOrFail($locked->bed_id);
-            $released = Bed::query()->whereKey($bed->id)->where('status', 'occupied')->update(['status' => 'cleaning', 'status_changed_at' => now(), 'updated_at' => now()]);
-            if ($released === 0) {
-                throw ValidationException::withMessages(['type' => 'O leito deixou de estar ocupado. Confira com a gestão de leitos.']);
+            $bed = $locked->bed_id === null ? null : Bed::query()->findOrFail($locked->bed_id);
+            if ($bed !== null) {
+                TransferController::bedTo($bed, 'occupied', 'cleaning', 'O leito deixou de estar ocupado. Confira com a gestão de leitos.');
             }
-            BedController::event($bed, 'occupied', 'cleaning');
+            if ($transfer !== null) {
+                TransferController::bedTo(Bed::query()->findOrFail($transfer->reserved_bed_id), 'reserved', 'free', 'O leito reservado no destino mudou de estado. Confira com a gestão de leitos.');
+                $transfer->forceFill(['status' => 'cancelled', 'reason' => 'Alta durante a transferência.', 'reserved_bed_id' => null])->save();
+                TransferController::audit('transfer.cancelled', $transfer);
+            }
+            // Waiting for a bed, the patient was still in the emergency department: the episode ends too.
+            if ($locked->emergency_episode_id !== null) {
+                EmergencyEpisode::query()->whereKey($locked->emergency_episode_id)->where('status', 'admission_requested')
+                    ->update(['status' => $data['type'] === 'evasion' ? 'evaded' : 'discharged']);
+            }
             $locked->forceFill([
                 'status' => 'discharged', 'discharge_type' => $data['type'], 'discharged_at' => $at,
                 'discharged_by_user_id' => $request->user()->id, 'discharge_summary_id' => $summary?->id,
             ])->save();
             // Ids only: the discharge type (death included) stays in the clinical table.
-            AuditEvent::record('admission.discharged', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'bed_id' => $bed->id, 'summary_id' => $summary?->id]));
+            AuditEvent::record('admission.discharged', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'bed_id' => $bed?->id, 'summary_id' => $summary?->id]));
         });
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Alta registrada. O leito foi para higienização.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => $admission->bed_id === null ? 'Alta registrada.' : 'Alta registrada. O leito foi para higienização.']);
 
         return to_route('ward.index');
     }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Clinical\ClinicalAccess;
 use App\Models\AuditEvent;
 use App\Models\EmergencyEpisode;
+use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\Patient;
 use App\Models\Professional;
@@ -64,6 +65,7 @@ class EmergencyController extends Controller
             'unit' => $unit->only('id', 'name'),
             'canArrive' => in_array($unit->id, $reception, true),
             'canTriage' => $canTriage,
+            'canCall' => in_array($unit->id, self::triageUnitIds($request, attending: true), true),
             'levels' => $scale->values()->map->only('level', 'name', 'color', 'target_minutes'),
             'patient' => $patient === null ? null : ['id' => $patient->id, 'name' => $patient->social_name ?? $patient->name],
             'episodes' => $episodes->map(function (EmergencyEpisode $episode) use ($scale, $canTriage, $unit, $professional) {
@@ -166,7 +168,8 @@ class EmergencyController extends Controller
      */
     public function call(Request $request, EmergencyEpisode $episode): RedirectResponse
     {
-        abort_unless(in_array($episode->unit_id, self::triageUnitIds($request), true), 403);
+        // Step 4.9: calling opens the record, so only functions that attend patients call.
+        abort_unless(in_array($episode->unit_id, self::triageUnitIds($request, attending: true), true), 403);
         $professional = ClinicalAccess::professional($request->user()) ?? abort(403);
 
         $visit = DB::transaction(function () use ($episode, $professional, $request) {
@@ -245,7 +248,7 @@ class EmergencyController extends Controller
      *
      * @return list<int>
      */
-    public static function triageUnitIds(Request $request): array
+    public static function triageUnitIds(Request $request, bool $attending = false): array
     {
         $professional = ClinicalAccess::professional($request->user());
         if ($professional === null) {
@@ -253,6 +256,7 @@ class EmergencyController extends Controller
         }
 
         return array_values(Qualification::query()->where('professional_id', $professional->id)->where('status', QualificationStatus::Approved)
+            ->when($attending, fn ($query) => $query->whereIn('job_function_id', JobFunction::query()->where('attends_patients', true)->select('id')))
             ->with('unit:id,timezone')->get()
             ->filter(function (Qualification $qualification) {
                 $today = now($qualification->unit->timezone ?? 'UTC')->toDateString();

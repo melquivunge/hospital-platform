@@ -86,6 +86,7 @@ export default function Emergency({
     unit,
     canArrive,
     canTriage,
+    canCall,
     levels,
     patient,
     episodes,
@@ -94,6 +95,7 @@ export default function Emergency({
     unit: { id: number; name: string };
     canArrive: boolean;
     canTriage: boolean;
+    canCall: boolean;
     levels: Level[];
     patient: { id: number; name: string } | null;
     episodes: Episode[];
@@ -170,6 +172,7 @@ export default function Emergency({
                                     }
                                     levels={levels}
                                     canTriage={canTriage}
+                                    canCall={canCall}
                                     canArrive={canArrive}
                                 />
                             ))}
@@ -345,12 +348,14 @@ function EpisodeCard({
     level,
     levels,
     canTriage,
+    canCall,
     canArrive,
 }: {
     episode: Episode;
     level: Level | null;
     levels: Level[];
     canTriage: boolean;
+    canCall: boolean;
     canArrive: boolean;
 }) {
     const name = episode.unidentified
@@ -427,7 +432,7 @@ function EpisodeCard({
                     </Button>
                 )}
                 {episode.status === 'waiting' &&
-                    canTriage &&
+                    canCall &&
                     episode.level !== null && (
                         <Form {...EmergencyController.call.form(episode.id)}>
                             {({ processing }) => (

@@ -27,8 +27,9 @@ class CensusController extends Controller
         abort_if($units->isEmpty(), 403);
         $unit = $units->firstWhere('id', $request->integer('unit')) ?? $units->first();
         $beds = Bed::query()->where('unit_id', $unit->id)->whereNull('deactivated_at')->get(['id', 'sector_id', 'status']);
+        // Stays only: a discharge before a bed or in transit (step 4.9) occupied no bed of the unit.
         // ponytail: averaged in PHP over one unit and 30 days of discharges; move to SQL if this grows large.
-        $stays = Admission::query()->where('unit_id', $unit->id)->where('status', 'discharged')
+        $stays = Admission::query()->where('unit_id', $unit->id)->where('status', 'discharged')->whereNotNull('bed_id')
             ->where('discharged_at', '>=', now()->subDays(self::STAY_WINDOW_DAYS))->with('bed:id,sector_id')
             ->get(['id', 'bed_id', 'admitted_at', 'discharged_at']);
         // Sectors with beds or with stays (a bed deactivated after the discharge): the rows add up to the total.
