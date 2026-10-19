@@ -473,3 +473,76 @@ As questões abertas deste contrato foram respondidas; todas as propostas foram 
 - **Esclarecimento de produto:** concluído (decisões complementares acima).
 - **Arquitetura:** reaproveita as ADRs 0001 e 0003; o acesso pela equipe do setor é a [ADR-0004](docs/adr/0004-ward-team-record-access.md), aceita pelo usuário.
 - **Plano em etapas:** `plans/web-v3-internacao.md`. **Implementação autorizada pelo usuário em 18/10/2026**, começando pela 3.8.
+
+## Contrato da entrega 4b — prescrição e farmácia
+
+Método: ECC Product Capability. Data: 19/10/2026. Estado: **aprovado; ADR-0005, ADR-0006 e plano aceitos e implementação autorizada pelo usuário em 19/10/2026, uma etapa por vez.**
+
+### Capacidade
+
+O médico prescreve para o paciente internado ou em atendimento de urgência usando o catálogo de medicamentos da rede, e assina a prescrição. O farmacêutico da unidade avalia a prescrição e a farmácia dispensa os itens. A enfermagem do setor registra cada administração no horário previsto. Resultado esperado: o ciclo prescrição → validação → dispensação → administração fica rastreável por item e por horário, e as alergias do paciente são conferidas na prescrição. Essa base serve depois a exames e cirurgia (entrega 5) e ao faturamento (entrega 6).
+
+### Restrições e invariantes (fixas, herdadas das entregas 3 e 4)
+
+- **Tabelas clínicas:** prescrição, itens, validação, dispensação, administração e alergias ficam em tabelas clínicas com RLS forçado ([ADR-0003](docs/adr/0003-rls-on-clinical-tables.md)).
+- **Acesso:** continua centralizado em `ClinicalAccess`, com cada leitura gravada na trilha. Nada clínico vai para logs, notificações, URLs ou contexto de auditoria.
+- **Assinatura:** a prescrição assinada não muda. Corrigir significa suspender o item e prescrever outro. A prescrição é assinada com **certificado ICP-Brasil em nuvem** ([ADR-0006](docs/adr/0006-icp-brasil-cloud-signature.md)); até as credenciais do fornecedor existirem, vale a assinatura com senha, identificada como tal.
+- **Quem prescreve:** só o médico com acesso ao paciente pela internação ativa ou pelo atendimento aberto. Por proposta, só funções que "atendem pacientes"; se a prescrição deve exigir também o conselho CRM, é a questão 7.
+- **Administração:** cada registro é uma linha nova, feita, recusada ou não realizada com motivo, nunca reescrita. Administrar exige item validado e dispensado, salvo exceção registrada com motivo (questão 1).
+- **Concorrência:** duas pessoas dispensando ou administrando o mesmo horário ao mesmo tempo produzem um único registro. Isso será verificado com corrida real.
+- **Fim do acesso:** na alta, a prescrição ativa é encerrada e os horários pendentes deixam de ser administráveis.
+
+### Atores e superfícies (proposta)
+
+| Ator | Superfície | Limite |
+|---|---|---|
+| Médico (função que atende, com acesso ao paciente) | Prescrever, copiar a prescrição anterior, suspender item, ver alergias e o histórico de administração | Só pacientes com acesso pela `ClinicalAccess` |
+| Farmacêutico (papel novo **Farmácia**, por unidade) | Fila de prescrições a avaliar; aprovar, aprovar com observação ou recusar item com motivo; dispensar | Vê a prescrição, as alergias, a idade, o peso (se houver) e o setor, não a evolução; cada leitura vai para a trilha (precisa de ADR nova) |
+| Enfermagem do setor (ADR-0004) | Aprazamento e checagem: administrar, recusar ou não realizar com motivo | Pacientes do setor do leito |
+| Administrador de rede | Catálogo de medicamentos (princípio ativo, forma, concentração, via, unidade, marca de controlado ou alto alerta) | Não prescreve por ser administrador |
+| Gestor da unidade | Indicadores sem conteúdo clínico (prescrições pendentes de validação, atrasos de administração) | Não lê prescrição |
+
+### Estados e transições (proposta)
+
+- **Prescrição:** rascunho → assinada → (validada por item) → encerrada (vence, é substituída pela do dia seguinte ou termina com a alta). Item suspenso com motivo e autor.
+- **Item:** pendente de validação → aprovado, aprovado com observação ou recusado (com motivo) → dispensado (por horário ou por período, questão 2) → horários aprazados.
+- **Horário de administração:** previsto → administrado (horário real e autor), recusado pelo paciente, não realizado (com motivo) ou atrasado (atraso calculado, sem estado gravado).
+- **Alergia:** registrada no paciente (substância, reação, gravidade, autor). Prescrever o medicamento correspondente exige justificativa registrada (questão 5).
+
+### Interface e dados (proposta)
+
+- Novas entidades: catálogo de medicamentos da rede (não clínico), alergia, prescrição, item de prescrição, validação farmacêutica, dispensação e administração (clínicas). Aproveitam atendimento, internação, setor do leito, habilitações, assinatura com senha, trilha de leitura, notificações e auditoria.
+- A farmácia ler a prescrição é uma base nova de acesso clínico, que precisa de uma **ADR-0005** antes da implementação.
+
+### Não objetivos desta entrega (proposta)
+
+- Controle de estoque com lote, validade, inventário e compras (proposta para uma entrega 4c; ver questão 3).
+- Receita de controle especial para uso fora do hospital (Portaria 344/98, notificação de receita) e livro de registro de controlados.
+- Integração com base licenciada de interações ou bulário (as regras vêm de uma tabela da rede, decisão de 19/10/2026) e cálculo de dose por peso.
+- Bombas de infusão, código de barras ou pulseira na beira do leito.
+- Prescrição ambulatorial (receita para casa) e faturamento de materiais e medicamentos.
+
+### Decisões do usuário (19/10/2026)
+
+Todas as propostas abaixo foram aceitas: ciclo completo (1), dispensação por 24 horas com devolução (2), estoque fora, numa entrega 4c (3), prescrição válida por 24 horas e renovada por cópia revisada (4), alergia com aviso e justificativa (5), dupla checagem para controlados e alto alerta (6), prescrição só por função que atende e com CRM (7).
+
+### Decisões complementares do usuário (19/10/2026, riscos do plano)
+
+- **Interações e dose máxima:** a rede mantém uma tabela, cadastrada pela farmácia ou pela administração, com importação CSV. Cada medicamento tem dose máxima por administração e por dia, e cada par de interação tem gravidade (leve, moderada, grave, contraindicada). Na prescrição, dose acima do máximo ou interação com outro item ativo gera um alerta, que exige justificativa registrada. A farmácia vê os alertas e as justificativas na avaliação. A cobertura depende do cadastro; uma base licenciada fica fora por ora.
+- **ICP-Brasil:** a prescrição é assinada com certificado digital ICP-Brasil em nuvem, por um prestador de serviço de confiança (PSC) credenciado, via API. O fornecedor e as credenciais dependem de contrato do usuário (bloqueio externo). A integração é construída e testada com um assinador de teste, e a evolução e o sumário continuam com senha até nova decisão.
+
+### Questões (respondidas)
+
+1. **Recorte do ciclo.** Proposta: prescrição, validação farmacêutica, dispensação e administração pela enfermagem, tudo nesta entrega. Alternativa: só prescrição e administração, com a farmácia numa entrega seguinte.
+2. **Dispensação.** Proposta: dispensa por período de 24 horas por item, com devolução registrada. Alternativa: dose unitária por horário.
+3. **Estoque.** Proposta: fica fora desta entrega; a dispensação é registrada sem baixa de estoque. Alternativa: estoque simples, com saldo por unidade, já agora.
+4. **Validade da prescrição.** Proposta: 24 horas, renovada todo dia por cópia da anterior revisada; vencida, deixa de gerar horários. Alternativa: válida até ser suspensa.
+5. **Alergia.** Proposta: aviso que exige justificativa registrada para prescrever (sem bloqueio). Alternativa: bloqueio, liberado só pela farmácia.
+6. **Medicamentos controlados e de alto alerta.** Proposta: marcação no catálogo, destaque na tela e dupla checagem na administração (segunda pessoa confirma com a própria senha). Alternativa: só a marcação.
+7. **Quem prescreve.** Proposta: profissional cuja função "atende pacientes" e com conselho CRM no cadastro. Alternativa: qualquer função que atenda pacientes (permitiria a prescrição de enfermagem, que tem regras próprias).
+
+### Encaminhamento ECC
+
+- **Esclarecimento de produto:** concluído (decisões acima).
+- **Arquitetura:** [ADR-0005](docs/adr/0005-pharmacy-prescription-access.md) e [ADR-0006](docs/adr/0006-icp-brasil-cloud-signature.md), aceitas.
+- **Plano em etapas:** `plans/web-v4-prescricao.md`, aceito. **Implementação autorizada pelo usuário em 19/10/2026**, começando pela 4b.1.
