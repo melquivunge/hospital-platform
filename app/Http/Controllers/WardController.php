@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
+use App\Models\AdmissionTransfer;
 use App\Models\AuditEvent;
 use App\Models\Bed;
 use App\Models\ClinicalNote;
 use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\Qualification;
+use App\Models\Unit;
 use App\Professionals\QualificationStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -79,6 +81,14 @@ class WardController extends Controller
             'handOver' => $admission->responsible_professional_id === ClinicalAccess::professional($request->user())?->id
                 ? array_values(array_filter(AdmissionController::requestOptions($admission->unit_id)['professionals'], fn (array $option) => $option['id'] !== $admission->responsible_professional_id))
                 : null,
+            // Step 4.6: the open transfer, and where the responsible doctor can send the patient.
+            'transfer' => ($open = AdmissionTransfer::query()->where('admission_id', $admission->id)->whereIn('status', AdmissionTransfer::OPEN)->with('toUnit:id,name')->first()) === null
+                ? null : ['id' => $open->id, 'status' => $open->status, 'to' => $open->toUnit?->name, 'mine' => $open->requested_by_user_id === $request->user()->id],
+            'transferOptions' => $open === null && $admission->status === 'admitted' && $admission->responsible_professional_id === ClinicalAccess::professional($request->user())?->id
+                ? array_values(Unit::query()->whereKeyNot($admission->unit_id)->orderBy('name')->get(['id', 'name'])
+                    ->map(fn (Unit $unit) => ['id' => $unit->id, 'name' => $unit->name, ...AdmissionController::requestOptions($unit->id)])
+                    ->filter(fn (array $unit) => $unit['sectors'] !== [] && $unit['professionals'] !== [])->all())
+                : null,
             'record' => VisitController::signedRecord($ids, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
             // Drafts are seen only by their author: the admission note and addenda to the record.
@@ -140,6 +150,10 @@ class WardController extends Controller
             $locked = Admission::query()->whereKey($admission->id)->lockForUpdate()->firstOrFail();
             if (! in_array($locked->status, Admission::ACTIVE, true) || $locked->responsible_professional_id !== $professional->id) {
                 throw ValidationException::withMessages(['professional_id' => 'A internação mudou nesse meio-tempo. Recarregue a página.']);
+            }
+            // Step 4.6: the transfer names the destination's responsible; no hand-over while it is open.
+            if (AdmissionTransfer::query()->where('admission_id', $locked->id)->whereIn('status', AdmissionTransfer::OPEN)->exists()) {
+                throw ValidationException::withMessages(['professional_id' => 'Há uma transferência entre unidades em andamento. Conclua ou cancele antes de passar a responsabilidade.']);
             }
             // Checked again under the lock: a qualification or account may have ended in between.
             if (! in_array($to, array_column(AdmissionController::requestOptions($locked->unit_id)['professionals'], 'id'), true)) {

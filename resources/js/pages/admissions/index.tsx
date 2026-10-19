@@ -1,11 +1,13 @@
 import { Form, Head, router } from '@inertiajs/react';
 import { Hospital } from 'lucide-react';
 import AdmissionController from '@/actions/App/Http/Controllers/AdmissionController';
+import TransferController from '@/actions/App/Http/Controllers/TransferController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { sexLabels } from '@/components/patient-display';
 import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/admissions';
 
@@ -57,11 +59,13 @@ export default function Admissions({
     units,
     unit,
     admissions,
+    transfers,
     freeBeds,
 }: {
     units: { id: number; name: string }[];
     unit: { id: number; name: string };
     admissions: Admission[];
+    transfers: Transfer[];
     freeBeds: FreeBed[];
 }) {
     const requested = admissions.filter((item) => item.status === 'requested');
@@ -134,6 +138,26 @@ export default function Admissions({
                         </ul>
                     )}
                 </section>
+
+                {transfers.length > 0 && (
+                    <section
+                        aria-labelledby="transfers-heading"
+                        className="mb-8 grid gap-3"
+                    >
+                        <h2 id="transfers-heading" className="font-semibold">
+                            Transferências entre unidades ({transfers.length})
+                        </h2>
+                        <ul className="grid gap-3">
+                            {transfers.map((transfer) => (
+                                <TransferItem
+                                    key={transfer.id}
+                                    transfer={transfer}
+                                    freeBeds={freeBeds}
+                                />
+                            ))}
+                        </ul>
+                    </section>
+                )}
 
                 <section
                     aria-labelledby="admitted-heading"
@@ -290,6 +314,223 @@ function Allocate({
                 </>
             )}
         </Form>
+    );
+}
+
+type Transfer = {
+    id: number;
+    status: 'requested' | 'accepted' | 'departed';
+    incoming: boolean;
+    patient: string | null;
+    sex: string | null;
+    isolation: boolean;
+    from: string | null;
+    to: string | null;
+    sector: string | null;
+    responsible: string | null;
+    bed: string | null;
+};
+
+const transferStatus = {
+    requested: 'Aguardando aceite do destino',
+    accepted: 'Aceita, leito reservado',
+    departed: 'Paciente em transferência',
+};
+
+/**
+ * Step 4.6: at the destination, accept (reserve a bed), refuse or receive; at the origin, record the
+ * departure or cancel.
+ */
+function TransferItem({
+    transfer,
+    freeBeds,
+}: {
+    transfer: Transfer;
+    freeBeds: FreeBed[];
+}) {
+    const who = transfer.patient ?? 'paciente';
+
+    return (
+        <li className="grid gap-3 rounded-xl border bg-card p-4 text-sm">
+            <span className="grid gap-0.5">
+                <span className="font-semibold">
+                    {transfer.incoming ? 'Chegando' : 'Saindo'}: {who}
+                </span>
+                <span className="text-muted-foreground">
+                    {[
+                        `${transfer.from} → ${transfer.to}`,
+                        `setor pedido: ${transfer.sector}`,
+                        `responsável no destino: ${transfer.responsible}`,
+                        transfer.isolation && 'precisa de isolamento',
+                        transfer.bed && `leito reservado: ${transfer.bed}`,
+                    ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                </span>
+                <span className="font-medium">
+                    {transferStatus[transfer.status]}
+                </span>
+            </span>
+            <div className="flex flex-wrap items-start gap-3">
+                {transfer.incoming && transfer.status === 'requested' && (
+                    <>
+                        <Form
+                            {...TransferController.accept.form(transfer.id)}
+                            errorBag={`transfer-${transfer.id}`}
+                            options={{ preserveScroll: true }}
+                            className="grid flex-1 gap-2"
+                        >
+                            {({ processing, errors }) => (
+                                <>
+                                    <Label
+                                        htmlFor={`transfer-bed-${transfer.id}`}
+                                    >
+                                        Leito a reservar
+                                    </Label>
+                                    <select
+                                        id={`transfer-bed-${transfer.id}`}
+                                        name="bed_id"
+                                        required
+                                        defaultValue=""
+                                        className={selectClassName}
+                                    >
+                                        <option value="" disabled>
+                                            {freeBeds.length === 0
+                                                ? 'Nenhum leito livre'
+                                                : 'Selecione um leito livre'}
+                                        </option>
+                                        {freeBeds.map((bed) => (
+                                            <option key={bed.id} value={bed.id}>
+                                                {bed.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <InputError message={errors.bed_id} />
+                                    <Label
+                                        htmlFor={`transfer-just-${transfer.id}`}
+                                    >
+                                        Justificativa (só para leito fora da
+                                        regra)
+                                    </Label>
+                                    <textarea
+                                        id={`transfer-just-${transfer.id}`}
+                                        name="compatibility_justification"
+                                        maxLength={500}
+                                        className={textareaClassName}
+                                    />
+                                    <InputError
+                                        message={
+                                            errors.compatibility_justification
+                                        }
+                                    />
+                                    <Button
+                                        type="submit"
+                                        disabled={processing}
+                                        aria-label={`Aceitar transferência: ${who}`}
+                                        className="min-h-11 justify-self-start"
+                                    >
+                                        Aceitar e reservar
+                                    </Button>
+                                </>
+                            )}
+                        </Form>
+                        <ReasonAction
+                            form={TransferController.refuse.form(transfer.id)}
+                            id={`refuse-${transfer.id}`}
+                            label={`Recusar transferência: ${who}`}
+                            text="Recusar"
+                        />
+                    </>
+                )}
+                {transfer.incoming && transfer.status === 'departed' && (
+                    <Form {...TransferController.receive.form(transfer.id)}>
+                        {({ processing }) => (
+                            <Button
+                                type="submit"
+                                disabled={processing}
+                                aria-label={`Registrar recebimento: ${who}`}
+                                className="min-h-11"
+                            >
+                                Registrar recebimento
+                            </Button>
+                        )}
+                    </Form>
+                )}
+                {!transfer.incoming && transfer.status === 'accepted' && (
+                    <Form {...TransferController.depart.form(transfer.id)}>
+                        {({ processing }) => (
+                            <Button
+                                type="submit"
+                                disabled={processing}
+                                aria-label={`Registrar saída: ${who}`}
+                                className="min-h-11"
+                            >
+                                Registrar saída
+                            </Button>
+                        )}
+                    </Form>
+                )}
+                {!transfer.incoming && transfer.status !== 'departed' && (
+                    <ReasonAction
+                        form={TransferController.cancel.form(transfer.id)}
+                        id={`cancel-${transfer.id}`}
+                        label={`Cancelar transferência: ${who}`}
+                        text="Cancelar"
+                    />
+                )}
+            </div>
+        </li>
+    );
+}
+
+/** A refusal or cancellation: always with a reason. */
+function ReasonAction({
+    form,
+    id,
+    label,
+    text,
+}: {
+    form: { action: string; method: 'post' };
+    id: string;
+    label: string;
+    text: string;
+}) {
+    return (
+        <details>
+            <summary
+                aria-label={label}
+                className="inline-flex min-h-11 cursor-pointer items-center rounded-md px-3 text-muted-foreground hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+                {text}
+            </summary>
+            <Form
+                {...form}
+                options={{ preserveScroll: true }}
+                className="mt-2 grid gap-2"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <Label htmlFor={id}>Motivo</Label>
+                        <Input
+                            id={id}
+                            name="reason"
+                            required
+                            maxLength={500}
+                            className="h-11"
+                        />
+                        <InputError message={errors.reason} />
+                        <Button
+                            type="submit"
+                            variant="destructive"
+                            disabled={processing}
+                            className="min-h-11 justify-self-start"
+                        >
+                            Confirmar
+                        </Button>
+                    </>
+                )}
+            </Form>
+        </details>
     );
 }
 

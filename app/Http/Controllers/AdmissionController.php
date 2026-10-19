@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
+use App\Models\AdmissionTransfer;
 use App\Models\AuditEvent;
 use App\Models\Bed;
 use App\Models\EmergencyEpisode;
@@ -64,6 +65,24 @@ class AdmissionController extends Controller
                 'justification' => $admission->compatibility_justification,
                 'history' => $admission->status === 'admitted' ? WardController::history($admission, $timezone, bedsOnly: true) : [],
             ])->values(),
+            // Step 4.6: open transfers into and out of this unit, identification only.
+            'transfers' => AdmissionTransfer::query()->whereIn('status', AdmissionTransfer::OPEN)
+                ->where(fn ($query) => $query->where('to_unit_id', $unit->id)->orWhere('from_unit_id', $unit->id))
+                ->with(['admission.patient:id,name,social_name,sex', 'fromUnit:id,name', 'toUnit:id,name', 'requestedSector:id,name', 'responsible:id,name', 'reservedBed:id,code,room,sector_id', 'reservedBed.sector:id,name'])
+                ->orderBy('requested_at')->get()
+                ->map(fn (AdmissionTransfer $transfer) => [
+                    'id' => $transfer->id,
+                    'status' => $transfer->status,
+                    'incoming' => $transfer->to_unit_id === $unit->id,
+                    'patient' => $transfer->admission?->patient->social_name ?? $transfer->admission?->patient?->name,
+                    'sex' => $transfer->admission?->patient?->sex,
+                    'isolation' => (bool) $transfer->admission?->isolation,
+                    'from' => $transfer->fromUnit?->name,
+                    'to' => $transfer->toUnit?->name,
+                    'sector' => $transfer->requestedSector?->name,
+                    'responsible' => $transfer->responsible?->name,
+                    'bed' => $transfer->reservedBed === null ? null : "{$transfer->reservedBed->sector?->name} · quarto {$transfer->reservedBed->room} · leito {$transfer->reservedBed->code}",
+                ])->values(),
             'freeBeds' => Bed::query()->where('unit_id', $unit->id)->whereNull('deactivated_at')->where('status', 'free')
                 ->with('sector:id,name')->orderBy('sector_id')->orderBy('room')->orderBy('code')->get()
                 ->map(fn (Bed $bed) => ['id' => $bed->id, 'sectorId' => $bed->sector_id, 'label' => "{$bed->sector?->name} · quarto {$bed->room} · leito {$bed->code}", 'sex' => $bed->sex_restriction, 'isolation' => $bed->isolation])
@@ -116,6 +135,9 @@ class AdmissionController extends Controller
             $locked = Admission::query()->whereKey($admission->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== 'admitted' || $locked->bed_id === null) {
                 throw ValidationException::withMessages(['bed_id' => 'Esta internação não está num leito. Confira a lista atualizada.']);
+            }
+            if (AdmissionTransfer::query()->where('admission_id', $locked->id)->whereIn('status', AdmissionTransfer::OPEN)->exists()) {
+                throw ValidationException::withMessages(['bed_id' => 'Há uma transferência entre unidades em andamento. Conclua ou cancele antes de trocar de leito.']);
             }
             if ($bedId === $locked->bed_id) {
                 throw ValidationException::withMessages(['bed_id' => 'O paciente já está neste leito.']);
@@ -249,7 +271,7 @@ class AdmissionController extends Controller
     /**
      * @return list<string>
      */
-    private static function mismatches(Bed $bed, Patient $patient, bool $isolation): array
+    public static function mismatches(Bed $bed, Patient $patient, bool $isolation): array
     {
         return array_values(array_filter([
             $bed->sex_restriction !== null && $patient->sex !== $bed->sex_restriction ? 'restrição de sexo do leito' : null,
