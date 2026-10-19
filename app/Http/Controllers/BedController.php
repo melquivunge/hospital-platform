@@ -141,6 +141,16 @@ class BedController extends Controller
         return array_values(array_unique([...self::unitsWith($membership, 'configure'), ...self::unitsWith($membership, 'manage'), ...self::unitsWith($membership, 'clean')]));
     }
 
+    /**
+     * Units where the member allocates and manages beds (step 4.4a: admissions).
+     *
+     * @return list<int>
+     */
+    public static function managedUnitIds(?Membership $membership): array
+    {
+        return self::unitsWith($membership, 'manage');
+    }
+
     private static function transition(Bed $bed, string $from, string $to, ?string $reason, string $message): RedirectResponse
     {
         DB::transaction(function () use ($bed, $from, $to, $reason) {
@@ -156,7 +166,7 @@ class BedController extends Controller
         return back();
     }
 
-    private static function event(Bed $bed, ?string $from, string $to, ?string $reason = null): void
+    public static function event(Bed $bed, ?string $from, string $to, ?string $reason = null): void
     {
         DB::table('bed_events')->insert([
             'tenant_id' => $bed->tenant_id, 'bed_id' => $bed->id, 'from_status' => $from, 'to_status' => $to,

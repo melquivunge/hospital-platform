@@ -75,6 +75,8 @@ class HandleInertiaRequests extends Middleware
                 && EmergencyController::visible($request, UnitPolicy::currentMembership($request->user())),
             'canManageTriageLevels' => fn () => $request->user() !== null
                 && (UnitPolicy::currentMembership($request->user())?->hasRole(Role::NetworkAdmin) ?? false),
+            'canManageAdmissions' => fn () => $request->user() !== null
+                && BedController::managedUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canViewBeds' => fn () => $request->user() !== null
                 && BedController::visibleUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canManageInsurers' => fn () => $request->user() !== null

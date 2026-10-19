@@ -13,6 +13,7 @@ import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { selectClassName } from '@/components/role-fields';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/visits';
 
@@ -28,12 +29,14 @@ export default function VisitShow({
     record,
     drafts,
     documents,
+    admissionOptions,
 }: {
     visit: { id: number; openedAt: string | null; emergency: boolean };
     patient: RecordPatient;
     record: RecordNote[];
     drafts: Draft[];
     documents: ClinicalDocument[];
+    admissionOptions: AdmissionOptions | null;
 }) {
     const { errors } = usePage().props;
     const visitDraft = drafts.some((draft) => draft.addendumOf === null);
@@ -64,7 +67,12 @@ export default function VisitShow({
                     }
                 />
                 <InputError message={errors.visit} className="mb-4" />
-                {visit.emergency && <CloseEmergency visitId={visit.id} />}
+                {admissionOptions && (
+                    <CloseEmergency
+                        visitId={visit.id}
+                        options={admissionOptions}
+                    />
+                )}
 
                 <div className="grid gap-8">
                     <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
@@ -284,8 +292,22 @@ const outcomes = [
     { value: 'evaded', label: 'Evasão (saiu durante o atendimento)' },
 ];
 
-/** Step 4.3: an emergency visit closes with its outcome. */
-function CloseEmergency({ visitId }: { visitId: number }) {
+type AdmissionOptions = {
+    sectors: { id: number; name: string }[];
+    professionals: { id: number; name: string }[];
+    me: number;
+};
+
+/** Step 4.3: an emergency visit closes with its outcome; an admission request (4.4a) names sector and doctor. */
+function CloseEmergency({
+    visitId,
+    options,
+}: {
+    visitId: number;
+    options: AdmissionOptions;
+}) {
+    const [outcome, setOutcome] = useState('');
+
     return (
         <details className="mb-6 rounded-xl border bg-card px-5 py-3">
             <summary className="flex min-h-11 cursor-pointer items-center font-medium">
@@ -311,6 +333,9 @@ function CloseEmergency({ visitId }: { visitId: number }) {
                                         name="outcome"
                                         value={outcome.value}
                                         required
+                                        onChange={() =>
+                                            setOutcome(outcome.value)
+                                        }
                                         className="size-4 accent-primary"
                                     />
                                     {outcome.label}
@@ -318,6 +343,79 @@ function CloseEmergency({ visitId }: { visitId: number }) {
                             ))}
                             <InputError message={errors.outcome} />
                         </fieldset>
+                        {outcome === 'admission_requested' && (
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="grid content-start gap-2">
+                                    <Label htmlFor="requested_sector_id">
+                                        Setor de internação
+                                    </Label>
+                                    <select
+                                        id="requested_sector_id"
+                                        name="requested_sector_id"
+                                        required
+                                        defaultValue=""
+                                        className={selectClassName}
+                                    >
+                                        <option value="" disabled>
+                                            Selecione
+                                        </option>
+                                        {options.sectors.map((sector) => (
+                                            <option
+                                                key={sector.id}
+                                                value={sector.id}
+                                            >
+                                                {sector.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <InputError
+                                        message={errors.requested_sector_id}
+                                    />
+                                </div>
+                                <div className="grid content-start gap-2">
+                                    <Label htmlFor="responsible_professional_id">
+                                        Médico responsável
+                                    </Label>
+                                    <select
+                                        id="responsible_professional_id"
+                                        name="responsible_professional_id"
+                                        required
+                                        defaultValue={options.me}
+                                        className={selectClassName}
+                                    >
+                                        {options.professionals.map(
+                                            (professional) => (
+                                                <option
+                                                    key={professional.id}
+                                                    value={professional.id}
+                                                >
+                                                    {professional.name}
+                                                </option>
+                                            ),
+                                        )}
+                                    </select>
+                                    <InputError
+                                        message={
+                                            errors.responsible_professional_id
+                                        }
+                                    />
+                                </div>
+                                <label className="flex min-h-11 items-center gap-2 text-sm">
+                                    <input
+                                        type="hidden"
+                                        name="isolation"
+                                        value="0"
+                                    />
+                                    <input
+                                        type="checkbox"
+                                        name="isolation"
+                                        value="1"
+                                        className="size-4 accent-primary"
+                                    />
+                                    Precisa de isolamento
+                                </label>
+                            </div>
+                        )}
                         <p className="text-sm text-muted-foreground">
                             Assine os rascunhos antes. Depois de encerrar, o
                             prontuário deixa de abrir para você por este

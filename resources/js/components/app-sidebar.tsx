@@ -12,6 +12,7 @@ import {
     ChartColumn,
     FileUp,
     Gauge,
+    Hospital,
     Siren,
     Building2,
     Landmark,
@@ -41,6 +42,7 @@ import { index as imports } from '@/routes/imports';
 import { index as jobFunctions } from '@/routes/job-functions';
 import { index as patientMerges } from '@/routes/patient-merges';
 import { index as appointments, queue } from '@/routes/appointments';
+import { index as admissions } from '@/routes/admissions';
 import { index as beds } from '@/routes/beds';
 import { index as emergency } from '@/routes/emergency';
 import { index as triageLevels } from '@/routes/triage-levels';
@@ -93,6 +95,7 @@ export function AppSidebar() {
         canViewClinicalAccess,
         canViewBeds,
         canViewEmergency,
+        canManageAdmissions,
         canManageTriageLevels,
     } = usePage().props;
     const navItems: NavItem[] = [
@@ -186,6 +189,9 @@ export function AppSidebar() {
             : []),
         ...(canViewBeds
             ? [{ title: 'Leitos', href: beds(), icon: BedDouble }]
+            : []),
+        ...(canManageAdmissions
+            ? [{ title: 'Internações', href: admissions(), icon: Hospital }]
             : []),
         ...(canViewClinicalAccess
             ? [

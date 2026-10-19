@@ -93,6 +93,11 @@ class Patient extends Model
                 && EmergencyEpisode::query()->where('patient_id', $duplicate->id)->whereIn('status', EmergencyEpisode::OPEN)->exists()) {
                 throw ValidationException::withMessages(['merge' => 'Os dois cadastros estão na urgência ao mesmo tempo. Encerre um dos episódios antes de unificar.']);
             }
+            // Step 4.4a: one active admission per person, as for emergency episodes.
+            if (Admission::query()->where('patient_id', $primary->id)->whereIn('status', Admission::ACTIVE)->exists()
+                && Admission::query()->where('patient_id', $duplicate->id)->whereIn('status', Admission::ACTIVE)->exists()) {
+                throw ValidationException::withMessages(['merge' => 'Os dois cadastros têm internação em andamento. Encerre uma delas antes de unificar.']);
+            }
 
             $duplicate->forceFill(['merged_into_id' => $primary->id])->save();
             $merge = PatientMerge::query()->create([

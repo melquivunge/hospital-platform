@@ -428,8 +428,8 @@ O paciente chega à urgência de uma unidade, com ou sem cadastro, e é classifi
 
 | Ator | Superfície | Limite |
 |---|---|---|
-| Recepção da urgência (papel Recepção existente) | Chegada do paciente, cadastro provisório ou "não identificado" | Não classifica nem vê o prontuário |
-| Classificação de risco (profissional de enfermagem) | Sinais vitais, queixa principal e nível de risco; reclassificação | Vê o prontuário só enquanto classifica (acesso pelo episódio) |
+| Recepção da urgência (papel Recepção existente) | Chegada do paciente, cadastro provisório ou "não identificado"; evasão de quem ainda aguarda | Não classifica nem vê o prontuário; vê o nível e o nome de quem atende (decisão do usuário, 18/10/2026) |
+| Classificação de risco (profissional habilitado na unidade) | Sinais vitais, queixa principal e nível de risco; reclassificação | Não abre o prontuário: vê só a classificação do episódio (decisão do usuário, 18/10/2026); o prontuário abre pelo atendimento ou pelo acesso de emergência |
 | Profissional assistente da urgência | Fila por risco e espera, atendimento de urgência (reaproveita o atendimento e a evolução da entrega 3), decisão de alta ou internação | Prontuário pelo episódio ativo |
 | Gestão de leitos (papel novo, por unidade) | Mapa de leitos, alocação, reserva, bloqueio, transferência interna, aceite de transferência vinda de outra unidade | Não vê conteúdo clínico, só o necessário para alocar (nome, sexo, idade, isolamento, setor pedido) |
 | Equipe do setor de internação | Evolução, movimentação solicitada, sumário de alta | Ver questão aberta sobre o acesso na internação |
