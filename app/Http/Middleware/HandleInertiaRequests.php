@@ -9,6 +9,7 @@ use App\Http\Controllers\EmergencyController;
 use App\Models\ImportBatch;
 use App\Models\Insurer;
 use App\Models\JobFunction;
+use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\Patient;
 use App\Models\PatientMerge;
@@ -81,6 +82,8 @@ class HandleInertiaRequests extends Middleware
                 && BedController::visibleUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canViewCensus' => fn () => $request->user() !== null
                 && BedController::censusUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
+            'canManageMedications' => fn () => $request->user() !== null
+                && $request->user()->can('manage', Medication::class),
             'canManageInsurers' => fn () => $request->user() !== null
                 && $request->user()->can('manage', Insurer::class),
             'canViewMyShifts' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null

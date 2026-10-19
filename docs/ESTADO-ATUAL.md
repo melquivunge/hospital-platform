@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: etapa 4b.1 (catálogo de medicamentos, regras de segurança e alergias), plano em `plans/web-v4-prescricao.md`.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.1a (catálogo e regras de segurança); depois a 4b.1b (importação CSV do catálogo e das regras) e a 4b.1c (alergias), plano em `plans/web-v4-prescricao.md`.
 
 ## Onde está cada coisa
 
@@ -73,7 +73,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #47 | Etapa 4.7: alta e censo | Mesclado |
 | #48 | Etapa 4.8: revisão integrada da entrega 4 | Mesclado |
 | #49 | Etapa 4.9: pendências da revisão de segurança | Mesclado |
-| — | Entrega 4b: contrato, ADR-0005 e plano (branch `docs/delivery-4b-contract`) | Em revisão |
+| #50 | Entrega 4b: contrato, ADR-0005, ADR-0006 e plano | Mesclado |
+| — | Etapa 4b.1a: catálogo de medicamentos e regras de segurança (branch `feat/medication-catalog`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -229,6 +230,14 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
+- **4b.1a (catálogo de medicamentos e regras de segurança; a 4b.1 foi dividida em 4b.1a, 4b.1b importação CSV e 4b.1c alergias):**
+  - Tela "Medicamentos" (administrador de rede): apresentações com princípio ativo (DCB), forma, concentração, unidade de dose, vias permitidas, marcação de controlado e de alto alerta, dose máxima por administração e por dia (opcionais). A apresentação é única por princípio ativo, forma e concentração, sem diferenciar maiúsculas nem espaços. Desativa em vez de excluir. Busca por princípio ativo, até 100 resultados.
+  - Interações entre **princípios ativos** (valem para todas as apresentações), com gravidade (leve, moderada, grave, contraindicada) e orientação ao prescritor. Cada par fica gravado uma vez, em ordem fixa (restrição no banco), e só com princípios ativos do catálogo. Desativa em vez de excluir.
+  - Sem dado de paciente: tabelas da rede, fora do RLS. A auditoria guarda os campos alterados e os valores das regras (`medication.*`, `medication_interaction.*`).
+  - A tela avisa que só gera alerta o que estiver cadastrado.
+  - Navegador (administrador, 360, 768 e 1440 px): cadastro de duas apresentações, recusa da dose diária menor que a por administração, interação grave e busca; sem erro de JavaScript ou 5xx, sem rolagem horizontal. A primeira versão do roteiro enviava o segundo formulário enquanto a tela ainda era limpa pelo primeiro; o roteiro foi corrigido e o resultado conferido no banco.
+  - Corrigido pelos testes: dose máxima por dia era recusada com a dose por administração vazia; valores decimais apareciam como alterados sem mudança.
+  - Revisão independente (sem crítico/alto). Corrigido: o princípio ativo não muda na edição (as interações apontam para ele; para mudar, desativa-se e cadastra-se outra apresentação); dose com mais de 3 casas é recusada (antes dava 500); busca com valor que não é texto é ignorada; textos normalizados (espaços e acentos em NFC); contagem de interações com total; formulários de edição atualizados depois de salvar.
 - **Entrega 4b (prescrição e farmácia) em definição** (19/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4b". Decisões do usuário (todas as propostas aceitas): ciclo completo (prescrição, avaliação farmacêutica, dispensação e administração), dispensação por 24 horas com devolução, estoque numa entrega 4c, prescrição válida por 24 horas e renovada por cópia revisada, alergia com aviso e justificativa, dupla checagem para controlados e alto alerta, prescrição só por função que atende e com CRM. Riscos tratados (19/10/2026): tabela da rede de doses máximas e interações, com alerta e justificativa; prescrição assinada com ICP-Brasil em nuvem ([ADR-0006](adr/0006-icp-brasil-cloud-signature.md)), com fornecedor e credenciais ainda pendentes (bloqueio externo). [ADR-0005](adr/0005-pharmacy-prescription-access.md), ADR-0006 e plano `plans/web-v4-prescricao.md` (4b.1 a 4b.6) **aceitos; implementação autorizada em 19/10/2026**.
 - **4.9 (pendências da revisão de segurança da 4.8; o usuário mandou seguir com as recomendações em 19/10/2026):**
   - Alta também para quem aguarda leito ou está em trânsito, pelo médico responsável. O episódio da urgência é encerrado (evadido na evasão, alta nos demais tipos) e a transferência já saída é cancelada com o leito reservado de volta a livre (auditoria `transfer.cancelled`). As restrições no banco foram ajustadas: internação com alta pode não ter leito nem data de internação, e transferência cancelada pode ter saída registrada. O censo ignora altas sem leito.
@@ -425,7 +434,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 351 testes passando (etapa 4.9), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 354 testes passando (etapa 4b.1a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

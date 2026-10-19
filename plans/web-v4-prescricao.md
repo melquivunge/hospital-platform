@@ -21,6 +21,7 @@ Os mesmos das entregas 3 e 4:
 - Regras de segurança da rede: dose máxima por administração e por dia em cada medicamento, e pares de interação com gravidade (leve, moderada, grave, contraindicada), cadastrados e importados por CSV, sempre com autor e histórico.
 - Alergias no paciente (substância ou medicamento do catálogo, reação, gravidade, autor), registradas por quem tem acesso clínico. Só de inserção, com inativação justificada.
 - **Saída:** catálogo utilizável e alergias visíveis no cabeçalho do prontuário.
+- Divisão (19/10/2026): 4b.1a catálogo e regras de segurança; 4b.1b importação CSV do catálogo e das regras; 4b.1c alergias.
 
 ### 4b.2 Prescrição
 - O médico (função que atende, com CRM, com acesso pela internação ou pelo atendimento) monta a prescrição do dia. Cada item tem medicamento, dose, via, frequência ou horários, "se necessário" com condição, início e observação.
