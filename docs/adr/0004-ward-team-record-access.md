@@ -21,6 +21,11 @@ A [ADR-0003](0003-rls-on-clinical-tables.md) centralizou o acesso clínico em `A
 - Antes da internação ter leito (pedido aguardando), só o médico responsável lê; a equipe do setor passa a ler quando o paciente ocupa o leito.
 - A alta (etapa 4.7) precisa decidir o destino dos rascunhos de evolução ainda abertos, que deixam de poder ser assinados quando o acesso termina.
 
+### Esclarecimento da implementação (etapa 4.7, 19/10/2026)
+
+- O médico responsável só dá alta depois de assinar o próprio rascunho de evolução da internação.
+- Os rascunhos de outros profissionais ficam como estão: não entram no prontuário, não são apagados e não podem mais ser assinados por essa internação. A tela de alta avisa quantos são, para que a equipe assine antes.
+
 ## Alternativas
 
 ### Só quem abre atendimento (regra do ambulatório)

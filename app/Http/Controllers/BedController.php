@@ -151,6 +151,16 @@ class BedController extends Controller
         return self::unitsWith($membership, 'manage');
     }
 
+    /**
+     * Units whose census the member sees (step 4.7): those they configure or manage.
+     *
+     * @return list<int>
+     */
+    public static function censusUnitIds(?Membership $membership): array
+    {
+        return array_values(array_unique([...self::unitsWith($membership, 'configure'), ...self::unitsWith($membership, 'manage')]));
+    }
+
     private static function transition(Bed $bed, string $from, string $to, ?string $reason, string $message): RedirectResponse
     {
         DB::transaction(function () use ($bed, $from, $to, $reason) {

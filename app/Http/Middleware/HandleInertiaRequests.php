@@ -79,6 +79,8 @@ class HandleInertiaRequests extends Middleware
                 && BedController::managedUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canViewBeds' => fn () => $request->user() !== null
                 && BedController::visibleUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
+            'canViewCensus' => fn () => $request->user() !== null
+                && BedController::censusUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canManageInsurers' => fn () => $request->user() !== null
                 && $request->user()->can('manage', Insurer::class),
             'canViewMyShifts' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null

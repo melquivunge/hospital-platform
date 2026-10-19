@@ -11,6 +11,7 @@ import {
     CalendarDays,
     GitMerge,
     ChartColumn,
+    ChartPie,
     FileUp,
     Gauge,
     Hospital,
@@ -45,6 +46,7 @@ import { index as patientMerges } from '@/routes/patient-merges';
 import { index as appointments, queue } from '@/routes/appointments';
 import { index as admissions } from '@/routes/admissions';
 import { index as beds } from '@/routes/beds';
+import { index as census } from '@/routes/census';
 import { index as emergency } from '@/routes/emergency';
 import { index as triageLevels } from '@/routes/triage-levels';
 import { index as clinicalAccess } from '@/routes/clinical-access';
@@ -96,6 +98,7 @@ export function AppSidebar() {
         canAttend,
         canViewClinicalAccess,
         canViewBeds,
+        canViewCensus,
         canViewEmergency,
         canManageAdmissions,
         canManageTriageLevels,
@@ -195,6 +198,9 @@ export function AppSidebar() {
             : []),
         ...(canManageAdmissions
             ? [{ title: 'Internações', href: admissions(), icon: Hospital }]
+            : []),
+        ...(canViewCensus
+            ? [{ title: 'Censo', href: census(), icon: ChartPie }]
             : []),
         ...(canViewClinicalAccess
             ? [
