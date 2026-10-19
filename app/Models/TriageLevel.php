@@ -41,7 +41,8 @@ class TriageLevel extends Model
     {
         if (! self::query()->exists()) {
             foreach (self::DEFAULTS as $level => [$name, $color, $minutes]) {
-                self::query()->firstOrCreate(['level' => $level], ['name' => $name, 'color' => $color, 'target_minutes' => $minutes]);
+                // createOrFirst: two first reads at once meet the unique index instead of a 500.
+                self::query()->createOrFirst(['level' => $level], ['name' => $name, 'color' => $color, 'target_minutes' => $minutes]);
             }
         }
 
