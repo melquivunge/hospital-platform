@@ -4,7 +4,7 @@ Atualizado em 18/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: entrega 4, etapa 4.2 (chegada e classificação de risco), plano em plans/web-v3-internacao.md.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.2 (urgência: chegada e classificação de risco); depois a 4.3 (atendimento de urgência), plano em plans/web-v3-internacao.md.
 
 ## Onde está cada coisa
 
@@ -62,7 +62,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #36 | Etapa 3.7: documentos anexos | Mesclado |
 | #37 | Entrega 4: contrato, ADR-0004 e plano | Mesclado |
 | #38 | Etapa 3.8: revisão integrada da entrega 3 | Mesclado |
-| — | Etapa 4.1: leitos (branch `feat/beds`) | Em revisão |
+| #39 | Etapa 4.1: leitos | Mesclado |
+| — | Etapa 4.2: chegada e classificação de risco (branch `feat/emergency-triage`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -145,11 +146,17 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Corrida real (duas pessoas da gestão de leitos no mesmo leito, 6 rodadas): uma ação vence, a outra é recusada com mensagem.
   - Navegador (1440 e 390 px): cadastro, bloqueio com motivo, liberação, higienização e pronto; sem erro de JavaScript ou 5xx.
   - Revisão independente (aprovada, sem crítico/alto). Corrigido: a desativação entra no histórico do leito; o rollback remove antes as atribuições dos papéis novos (ida e volta testada no banco local); limites de requisição em todas as ações; testes de conta revogada, gestor de outra unidade e administrador (configura, não opera).
-  - Próxima: **4.2** (chegada e classificação de risco).
-- **4.2 (chegada e classificação de risco) — EM ANDAMENTO, não verificada** (branch `feat/emergency-triage`, commit local "wip", sem push):
-  - Feito: migration `2026_10_18_002300_create_emergency_triage_tables.php` (`triage_levels` da rede com padrões; `patients.unidentified/apparent_age/description`; `emergency_episodes` clínica com um episódio aberto por paciente; `triages` clínica só de inserção com sinais vitais e `previous_id`); modelos `EmergencyEpisode`, `Triage`, `TriageLevel`; `EmergencyController` (fila, chegada de paciente existente ou "Não identificado", classificação e reclassificação; recepção não vê queixa nem sinais vitais) e `TriageLevelController` (administrador ajusta nome e tempo-alvo); rotas `emergency.*` e `triage-levels.*`; props `canViewEmergency`/`canManageTriageLevels`; menu "Urgência" e "Classificação de risco"; botão "Chegada na urgência" na ficha do paciente.
-  - Falta: telas `resources/js/pages/emergency/index.tsx` e `resources/js/pages/triage-levels/index.tsx`; testes (`tests/Feature/Clinical/EmergencyTest.php`); build, suíte, PHPStan; corrida real (duas chegadas do mesmo paciente; duas classificações simultâneas); navegador 1440/390; revisão de segurança; registrar aqui e abrir o PR.
-  - Decisão técnica a confirmar: a classificação não abre o prontuário (mais restrito que o contrato, que previa acesso durante a classificação).
+  - Próxima: **4.2** (chegada e classificação de risco), feita a seguir.
+- **4.2 (chegada e classificação de risco)** (branch `feat/emergency-triage`):
+  - Tela "Classificação de risco" (administrador de rede): escala de 5 níveis da rede com ordem e cores fixas (vermelho a azul); a rede ajusta nome e tempo-alvo. Os padrões (0, 10, 60, 120 e 240 min) são ponto de partida, não protocolo licenciado; validar com a equipe clínica antes do uso real. Auditoria `triage_level.updated` com os nomes dos campos.
+  - Tela "Urgência" (recepção e profissionais habilitados na unidade, com seletor de unidade): a recepção registra a chegada de paciente cadastrado (botão "Chegada na urgência" na ficha, só o id na URL) ou de **"Não identificado"** (sexo, idade aparente, descrição; cadastro provisório). Um episódio aberto por pessoa na rede: índice único no banco e conferência de todos os cadastros unificados no mesmo prontuário.
+  - Fila: primeiro quem aguarda classificação, depois nível e espera; tempo-alvo estourado com borda e aviso em texto. A recepção vê nome e nível, nunca queixa nem sinais vitais (não são carregados para ela).
+  - Classificação por profissional com habilitação aprovada **e vigente hoje** na unidade (datas no fuso da unidade, como na elegibilidade) e conta ativa: nível, queixa principal e sinais vitais opcionais com faixas no banco. `triages` é clínica (RLS), só de inserção (gatilho, inclusive TRUNCATE); a reclassificação aponta para a anterior (`previous_id` único: cadeia linear). O formulário envia a classificação que a pessoa viu; se outra entrou no meio, é recusada com mensagem (sem sobrescrever às cegas). Auditoria `emergency.arrived|triaged` só com ids.
+  - "Não identificado" unificável depois: ao receber um nome na edição do cadastro, deixa de ser não identificado (idade aparente e descrição são limpas) e o par aparece na fila de unificação. A unificação é recusada se os dois cadastros estiverem na urgência ao mesmo tempo.
+  - Corrida real (cliente "Rede Corrida Agenda", processos e conexões próprias, 6 rodadas alternando a ordem): duas recepções registrando a chegada do mesmo paciente: sempre um episódio e um evento de auditoria, a outra recusada; duas classificações simultâneas do mesmo episódio: uma vence, a outra é recusada com mensagem.
+  - Navegador (1440 e 390 px): ajuste de tempo-alvo, chegada de paciente cadastrado e de não identificado, classificação e reclassificação; sem erro de JavaScript ou 5xx, sem rolagem horizontal, um `h1`. O teste no navegador achou um defeito corrigido: depois de classificar, o formulário ficava aberto com os valores antigos.
+  - Revisão de segurança independente (sem crítico). Corrigido: unificação podia deixar a mesma pessoa com dois episódios abertos (alto); habilitação vencida ou ainda não vigente classificava; classificações carregadas só para quem classifica; ficha aberta por cadastro unificado mostra o principal; só a mudança de nome tira o "não identificado". Ida e volta da migration no banco local.
+  - Decisão técnica a confirmar: a classificação não abre o prontuário nem grava leitura em `clinical_reads` (mais restrito que o contrato, que previa acesso durante a classificação). Os episódios só ficam "aguardando" até a 4.3, que traz atendimento, alta e evasão.
 - **Entrega 4 (urgência, internação e leitos) em definição** (18/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4". Decisões do usuário: jornada primeiro (prescrição e farmácia na entrega 4b), escala de risco própria de 5 níveis (sem Manchester), papel Gestão de leitos, transferência dentro da rede; acesso na internação pelo médico responsável e pela equipe do setor ([ADR-0004](adr/0004-ward-team-record-access.md), aceita); "Não identificado" unificável depois; compatibilidade do leito com aviso e justificativa; sumário de alta obrigatório exceto óbito e evasão; tempo-alvo com destaque visual; censo diário. Plano em `plans/web-v3-internacao.md` (3.8, depois 4.1 a 4.8). ADR-0004 e plano aceitos e **implementação autorizada** pelo usuário (18/10/2026), uma etapa por vez, começando pela 3.8.
 
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
@@ -339,7 +346,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 312 testes passando (etapa 4.1), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 321 testes passando (etapa 4.2), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -51,5 +52,13 @@ class EmergencyEpisode extends Model
     public function triages(): HasMany
     {
         return $this->hasMany(Triage::class, 'episode_id');
+    }
+
+    /**
+     * @return HasOne<Triage, $this>
+     */
+    public function latestTriage(): HasOne
+    {
+        return $this->hasOne(Triage::class, 'episode_id')->latestOfMany();
     }
 }

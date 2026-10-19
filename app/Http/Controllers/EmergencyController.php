@@ -42,9 +42,14 @@ class EmergencyController extends Controller
         $canTriage = in_array($unit->id, $triage, true);
         $scale = TriageLevel::scale();
         $patient = in_array($unit->id, $reception, true) && $request->filled('patient') ? Patient::query()->find($request->integer('patient')) : null;
+        if ($patient?->merged_into_id !== null) {
+            $patient = Patient::query()->find($patient->merged_into_id);
+        }
 
+        // The latest classification (complaint and vital signs) is loaded only for who classifies.
         $episodes = EmergencyEpisode::query()->where('unit_id', $unit->id)->where('status', 'waiting')
-            ->with(['patient:id,name,social_name,unidentified,apparent_age,sex,description', 'triages' => fn ($query) => $query->orderByDesc('id')])
+            ->with('patient:id,name,social_name,unidentified,apparent_age,sex,description')->withCount('triages')
+            ->when($canTriage, fn ($query) => $query->with('latestTriage'))
             ->get()
             ->sortBy(fn (EmergencyEpisode $episode) => [$episode->current_level === null ? 0 : 1, $episode->current_level ?? 0, $episode->arrived_at->timestamp])
             ->values();
@@ -55,11 +60,11 @@ class EmergencyController extends Controller
             'canArrive' => in_array($unit->id, $reception, true),
             'canTriage' => $canTriage,
             'levels' => $scale->values()->map->only('level', 'name', 'color', 'target_minutes'),
-            'patient' => $patient === null ? null : ['id' => $patient->merged_into_id ?? $patient->id, 'name' => $patient->social_name ?? $patient->name],
+            'patient' => $patient === null ? null : ['id' => $patient->id, 'name' => $patient->social_name ?? $patient->name],
             'episodes' => $episodes->map(function (EmergencyEpisode $episode) use ($scale, $canTriage, $unit) {
                 $waiting = (int) $episode->arrived_at->diffInMinutes(now());
                 $level = $episode->current_level === null ? null : $scale->get($episode->current_level);
-                $latest = $episode->triages->first();
+                $latest = $canTriage ? $episode->latestTriage : null;
 
                 return [
                     'id' => $episode->id,
@@ -70,9 +75,8 @@ class EmergencyController extends Controller
                     'waitingMinutes' => $waiting,
                     'level' => $episode->current_level,
                     'overdue' => $level !== null && $waiting > $level->target_minutes,
-                    'classifications' => $episode->triages->count(),
-                    // The complaint and the vital signs are shown only to who classifies.
-                    'latest' => $canTriage && $latest !== null ? $latest->only('level', 'complaint', 'systolic', 'diastolic', 'heart_rate', 'respiratory_rate', 'temperature', 'spo2', 'pain', 'glucose') : null,
+                    'classifications' => (int) $episode->triages_count,
+                    'latest' => $latest !== null ? $latest->only('id', 'level', 'complaint', 'systolic', 'diastolic', 'heart_rate', 'respiratory_rate', 'temperature', 'spo2', 'pain', 'glucose') : null,
                 ];
             }),
         ]);
@@ -95,8 +99,13 @@ class EmergencyController extends Controller
                     $patient->forceFill(['unidentified' => true, 'apparent_age' => $data['apparent_age'] ?? null, 'description' => $data['description'], 'created_by_user_id' => $request->user()->id])->save();
                     AuditEvent::record('patient.created', $patient->tenant_id, $patient, ['unit_id' => $unit->id, 'status' => $patient->status, 'unidentified' => true]);
                 } else {
-                    $found = Patient::query()->find($data['patient_id']) ?? throw ValidationException::withMessages(['patient_id' => 'Paciente não encontrado.']);
-                    $patient = $found->merged_into_id === null ? $found : Patient::query()->findOrFail($found->merged_into_id);
+                    // Shared lock: a merge in the middle cannot leave the episode on the duplicate.
+                    $found = Patient::query()->sharedLock()->find((int) $data['patient_id']) ?? throw ValidationException::withMessages(['patient_id' => 'Paciente não encontrado.']);
+                    $patient = $found->merged_into_id === null ? $found : Patient::query()->sharedLock()->findOrFail($found->merged_into_id);
+                    // One open episode per person: registrations merged into this one count too.
+                    if (EmergencyEpisode::query()->whereIn('patient_id', ClinicalAccess::recordIds($patient))->where('status', '<>', 'closed')->exists()) {
+                        throw ValidationException::withMessages(['patient_id' => 'Este paciente já está na urgência.']);
+                    }
                 }
                 $episode = EmergencyEpisode::query()->create(['unit_id' => $unit->id, 'patient_id' => $patient->id, 'arrived_at' => now(), 'arrived_by_user_id' => $request->user()->id]);
                 AuditEvent::record('emergency.arrived', $episode->tenant_id, $episode, ['unit_id' => $unit->id, 'patient_id' => $patient->id]);
@@ -117,14 +126,21 @@ class EmergencyController extends Controller
         foreach (Triage::VITALS as $field => [$min, $max]) {
             $rules[$field] = ['nullable', 'numeric', "between:{$min},{$max}"];
         }
-        $data = $request->validate($rules, [], ['level' => 'nível de risco', 'complaint' => 'queixa principal']);
+        $data = $request->validate([...$rules, 'previous_id' => ['nullable', 'integer']], [], ['level' => 'nível de risco', 'complaint' => 'queixa principal']);
+        // The classification the person saw: another one recorded meanwhile is not silently overridden.
+        $seen = isset($data['previous_id']) ? (int) $data['previous_id'] : null;
+        unset($data['previous_id']);
 
-        DB::transaction(function () use ($episode, $data, $professional, $request) {
+        DB::transaction(function () use ($episode, $data, $seen, $professional, $request) {
             $locked = EmergencyEpisode::query()->whereKey($episode->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== 'waiting') {
                 throw ValidationException::withMessages(['level' => 'Este paciente não está mais aguardando na urgência.']);
             }
-            $previous = Triage::query()->where('episode_id', $locked->id)->max('id');
+            $max = Triage::query()->where('episode_id', $locked->id)->max('id');
+            $previous = $max === null ? null : (int) $max;
+            if ($previous !== $seen) {
+                throw ValidationException::withMessages(['level' => 'Outra classificação deste paciente foi registrada enquanto você preenchia. Recarregue a página e confira antes de reclassificar.']);
+            }
             $triage = Triage::query()->create([...$data, 'episode_id' => $locked->id, 'previous_id' => $previous, 'professional_id' => $professional->id, 'user_id' => $request->user()->id, 'created_at' => now()]);
             $locked->forceFill(['current_level' => $triage->level, 'triaged_at' => $locked->triaged_at ?? now()])->save();
             AuditEvent::record('emergency.triaged', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'reclassification' => $previous !== null ?: null]));
@@ -135,16 +151,27 @@ class EmergencyController extends Controller
     }
 
     /**
-     * Units where the signed-in professional classifies risk: approved qualifications.
+     * Units where the signed-in professional classifies risk: approved qualifications valid today, with the
+     * dates local to the unit (as in Eligibility).
      *
      * @return list<int>
      */
     public static function triageUnitIds(Request $request): array
     {
         $professional = ClinicalAccess::professional($request->user());
+        if ($professional === null) {
+            return [];
+        }
 
-        return $professional === null ? [] : array_values(array_map('intval', Qualification::query()->where('professional_id', $professional->id)
-            ->where('status', QualificationStatus::Approved)->distinct()->pluck('unit_id')->all()));
+        return array_values(Qualification::query()->where('professional_id', $professional->id)->where('status', QualificationStatus::Approved)
+            ->with('unit:id,timezone')->get()
+            ->filter(function (Qualification $qualification) {
+                $today = now($qualification->unit->timezone ?? 'UTC')->toDateString();
+
+                return $qualification->valid_from->toDateString() <= $today
+                    && ($qualification->valid_until === null || $qualification->valid_until->toDateString() >= $today);
+            })
+            ->map(fn (Qualification $qualification) => (int) $qualification->unit_id)->unique()->all());
     }
 
     /**

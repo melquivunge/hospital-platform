@@ -88,6 +88,12 @@ class Patient extends Model
                 throw ValidationException::withMessages(['merge' => 'O cadastro escolhido como duplicado é o principal de outra unificação. Escolha-o como principal ou desfaça a outra unificação antes.']);
             }
 
+            // Step 4.2: one open emergency episode per person; the arrival checks the merged record too.
+            if (EmergencyEpisode::query()->where('patient_id', $primary->id)->where('status', '<>', 'closed')->exists()
+                && EmergencyEpisode::query()->where('patient_id', $duplicate->id)->where('status', '<>', 'closed')->exists()) {
+                throw ValidationException::withMessages(['merge' => 'Os dois cadastros estão na urgência ao mesmo tempo. Encerre um dos episódios antes de unificar.']);
+            }
+
             $duplicate->forceFill(['merged_into_id' => $primary->id])->save();
             $merge = PatientMerge::query()->create([
                 'primary_patient_id' => $primary->id, 'duplicate_patient_id' => $duplicate->id, 'reason' => $reason,

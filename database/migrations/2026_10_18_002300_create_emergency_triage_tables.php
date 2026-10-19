@@ -89,14 +89,14 @@ return new class extends Migration
             $table->foreign(['tenant_id', 'previous_id'])->references(['tenant_id', 'id'])->on('triages')->restrictOnDelete();
             $table->foreign(['tenant_id', 'professional_id'])->references(['tenant_id', 'id'])->on('professionals')->restrictOnDelete();
         });
-        DB::statement("ALTER TABLE triages ADD CONSTRAINT triages_values_check CHECK (
+        DB::statement('ALTER TABLE triages ADD CONSTRAINT triages_values_check CHECK (
             level BETWEEN 1 AND 5 AND length(btrim(complaint)) > 0
             AND (systolic IS NULL OR systolic BETWEEN 30 AND 300) AND (diastolic IS NULL OR diastolic BETWEEN 10 AND 200)
             AND (heart_rate IS NULL OR heart_rate BETWEEN 10 AND 300) AND (respiratory_rate IS NULL OR respiratory_rate BETWEEN 2 AND 80)
             AND (temperature IS NULL OR temperature BETWEEN 25 AND 45) AND (spo2 IS NULL OR spo2 BETWEEN 30 AND 100)
             AND (pain IS NULL OR pain BETWEEN 0 AND 10) AND (glucose IS NULL OR glucose BETWEEN 10 AND 1500)
             AND previous_id IS DISTINCT FROM id
-        )");
+        )');
         DB::unprepared(<<<'SQL'
             CREATE OR REPLACE FUNCTION triages_insert_only() RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN

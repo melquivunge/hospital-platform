@@ -100,8 +100,16 @@ export default function PatientShow({
                                 </Button>
                             )}
                             {canBookAppointments && (
-                                <Button asChild variant="outline" className="min-h-11">
-                                    <Link href={emergency({ query: { patient: patient.id } })}>
+                                <Button
+                                    asChild
+                                    variant="outline"
+                                    className="min-h-11"
+                                >
+                                    <Link
+                                        href={emergency({
+                                            query: { patient: patient.id },
+                                        })}
+                                    >
                                         Chegada na urgência
                                     </Link>
                                 </Button>
