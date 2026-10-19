@@ -11,6 +11,8 @@ import {
     GitMerge,
     ChartColumn,
     FileUp,
+    Gauge,
+    Siren,
     Building2,
     Landmark,
     LayoutGrid,
@@ -40,6 +42,8 @@ import { index as jobFunctions } from '@/routes/job-functions';
 import { index as patientMerges } from '@/routes/patient-merges';
 import { index as appointments, queue } from '@/routes/appointments';
 import { index as beds } from '@/routes/beds';
+import { index as emergency } from '@/routes/emergency';
+import { index as triageLevels } from '@/routes/triage-levels';
 import { index as clinicalAccess } from '@/routes/clinical-access';
 import { index as insurers } from '@/routes/insurers';
 import { index as visits } from '@/routes/visits';
@@ -88,6 +92,8 @@ export function AppSidebar() {
         canAttend,
         canViewClinicalAccess,
         canViewBeds,
+        canViewEmergency,
+        canManageTriageLevels,
     } = usePage().props;
     const navItems: NavItem[] = [
         ...mainNavItems,
@@ -163,6 +169,18 @@ export function AppSidebar() {
                       title: 'Funções',
                       href: jobFunctions(),
                       icon: BriefcaseMedical,
+                  },
+              ]
+            : []),
+        ...(canViewEmergency
+            ? [{ title: 'Urgência', href: emergency(), icon: Siren }]
+            : []),
+        ...(canManageTriageLevels
+            ? [
+                  {
+                      title: 'Classificação de risco',
+                      href: triageLevels(),
+                      icon: Gauge,
                   },
               ]
             : []),

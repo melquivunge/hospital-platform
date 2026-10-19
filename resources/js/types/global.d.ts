@@ -31,6 +31,8 @@ declare module '@inertiajs/core' {
             canAttend: boolean;
             canViewClinicalAccess: boolean;
             canViewBeds: boolean;
+            canViewEmergency: boolean;
+            canManageTriageLevels: boolean;
             [key: string]: unknown;
         };
     }

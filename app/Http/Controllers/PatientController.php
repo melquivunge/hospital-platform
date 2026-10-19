@@ -160,6 +160,11 @@ class PatientController extends Controller
         }
         self::saving(fn () => DB::transaction(function () use ($request, $patient) {
             $patient->fill($request->safe()->except('confirm_new'));
+            // Step 4.2: naming an unidentified registration identifies it; a duplicate then shows up in
+            // the merge queue.
+            if ($patient->unidentified && $patient->isDirty('name')) {
+                $patient->forceFill(['unidentified' => false, 'apparent_age' => null, 'description' => null]);
+            }
             // Field names only: the trail keeps who changed what, not the personal data itself.
             $changed = array_values(array_diff(array_keys($patient->getDirty()), ['name_key', 'status', 'updated_at']));
             $patient->save();
