@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.9 (pendências da revisão de segurança da entrega 4); depois a entrega 4b (prescrição e farmácia), que ainda precisa de contrato e plano.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: aceite da ADR-0005 e do plano da entrega 4b (prescrição e farmácia, `plans/web-v4-prescricao.md`); depois a etapa 4b.1.
 
 ## Onde está cada coisa
 
@@ -72,7 +72,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #46 | Etapa 4.6: transferência entre unidades | Mesclado |
 | #47 | Etapa 4.7: alta e censo | Mesclado |
 | #48 | Etapa 4.8: revisão integrada da entrega 4 | Mesclado |
-| — | Etapa 4.9: pendências da revisão de segurança (branch `feat/inpatient-loose-ends`) | Em revisão |
+| #49 | Etapa 4.9: pendências da revisão de segurança | Mesclado |
+| — | Entrega 4b: contrato, ADR-0005 e plano (branch `docs/delivery-4b-contract`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -228,6 +229,7 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
+- **Entrega 4b (prescrição e farmácia) em definição** (19/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4b". Decisões do usuário (todas as propostas aceitas): ciclo completo (prescrição, avaliação farmacêutica, dispensação e administração), dispensação por 24 horas com devolução, estoque numa entrega 4c, prescrição válida por 24 horas e renovada por cópia revisada, alergia com aviso e justificativa, dupla checagem para controlados e alto alerta, prescrição só por função que atende e com CRM. [ADR-0005](adr/0005-pharmacy-prescription-access.md) (papel Farmácia lê só a prescrição, com trilha) e plano `plans/web-v4-prescricao.md` (4b.1 a 4b.5) **propostos, aguardando aceite**.
 - **4.9 (pendências da revisão de segurança da 4.8; o usuário mandou seguir com as recomendações em 19/10/2026):**
   - Alta também para quem aguarda leito ou está em trânsito, pelo médico responsável. O episódio da urgência é encerrado (evadido na evasão, alta nos demais tipos) e a transferência já saída é cancelada com o leito reservado de volta a livre (auditoria `transfer.cancelled`). As restrições no banco foram ajustadas: internação com alta pode não ter leito nem data de internação, e transferência cancelada pode ter saída registrada. O censo ignora altas sem leito.
   - Recebimento de transferência: a gestão de leitos do destino escolhe o responsável (vem preenchido com o do pedido), conferido como habilitado no destino sob o lock. Os erros dos passos da transferência passaram a aparecer na tela "Internações" (antes ficavam invisíveis, defeito da 4.6).

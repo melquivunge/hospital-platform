@@ -476,7 +476,7 @@ As questões abertas deste contrato foram respondidas; todas as propostas foram 
 
 ## Contrato da entrega 4b — prescrição e farmácia
 
-Método: ECC Product Capability. Data: 19/10/2026. Estado: **proposta; aguarda as decisões do usuário (questões abertas abaixo). Nenhuma implementação autorizada.**
+Método: ECC Product Capability. Data: 19/10/2026. Estado: **decisões de produto tomadas pelo usuário em 19/10/2026 (todas as propostas aceitas); ADR-0005 e plano aguardam aceite. Nenhuma implementação autorizada ainda.**
 
 ### Capacidade
 
@@ -522,7 +522,11 @@ O médico prescreve para o paciente internado ou em atendimento de urgência usa
 - Bombas de infusão, código de barras ou pulseira na beira do leito.
 - Prescrição ambulatorial (receita para casa) e faturamento de materiais e medicamentos.
 
-### Questões abertas (decisão do usuário antes do plano)
+### Decisões do usuário (19/10/2026)
+
+Todas as propostas abaixo foram aceitas: ciclo completo (1), dispensação por 24 horas com devolução (2), estoque fora, numa entrega 4c (3), prescrição válida por 24 horas e renovada por cópia revisada (4), alergia com aviso e justificativa (5), dupla checagem para controlados e alto alerta (6), prescrição só por função que atende e com CRM (7).
+
+### Questões (respondidas)
 
 1. **Recorte do ciclo.** Proposta: prescrição, validação farmacêutica, dispensação e administração pela enfermagem, tudo nesta entrega. Alternativa: só prescrição e administração, com a farmácia numa entrega seguinte.
 2. **Dispensação.** Proposta: dispensa por período de 24 horas por item, com devolução registrada. Alternativa: dose unitária por horário.
@@ -534,6 +538,6 @@ O médico prescreve para o paciente internado ou em atendimento de urgência usa
 
 ### Encaminhamento ECC
 
-- **Esclarecimento de produto:** pendente das questões 1 a 7.
-- **Arquitetura:** ADR-0005 (acesso da farmácia à prescrição) depois das decisões.
-- **Plano em etapas:** `plans/web-v4-prescricao.md`, depois das decisões. A implementação só começa com autorização do usuário.
+- **Esclarecimento de produto:** concluído (decisões acima).
+- **Arquitetura:** [ADR-0005](docs/adr/0005-pharmacy-prescription-access.md), proposta, aguarda aceite.
+- **Plano em etapas:** `plans/web-v4-prescricao.md`, proposto, aguarda aceite. A implementação só começa com autorização do usuário.
