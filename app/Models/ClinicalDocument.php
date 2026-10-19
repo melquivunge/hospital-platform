@@ -15,7 +15,8 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $tenant_id
  * @property int $patient_id
- * @property int $visit_id
+ * @property int|null $visit_id
+ * @property int|null $admission_id
  * @property int $uploaded_by_user_id
  * @property int $professional_id
  * @property string $original_name
@@ -27,7 +28,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $withdrawn_at
  * @property string|null $withdraw_reason
  */
-#[Fillable(['patient_id', 'visit_id', 'uploaded_by_user_id', 'professional_id', 'original_name', 'mime_type', 'size_bytes', 'path', 'sha256', 'created_at'])]
+#[Fillable(['patient_id', 'visit_id', 'admission_id', 'uploaded_by_user_id', 'professional_id', 'original_name', 'mime_type', 'size_bytes', 'path', 'sha256', 'created_at'])]
 class ClinicalDocument extends Model
 {
     use BelongsToTenant;

@@ -19,15 +19,16 @@ export type ClinicalDocument = {
 };
 
 /**
- * Documents of the record (step 3.7). With `visitId` the professional attaches files and withdraws their
- * own; without it the list is read-only (emergency access). Downloads are plain links: the server logs each.
+ * Documents of the record (step 3.7). With `attach` (the open visit or, since step 4.4b, the admission) the
+ * professional attaches files and withdraws their own; without it the list is read-only (emergency access).
+ * Downloads are plain links: the server logs each.
  */
 export function ClinicalDocuments({
     documents,
-    visitId,
+    attach,
 }: {
     documents: ClinicalDocument[];
-    visitId?: number;
+    attach?: { action: string; method: 'post' };
 }) {
     return (
         <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
@@ -83,7 +84,7 @@ export function ClinicalDocuments({
                                     {document.withdrawReason}
                                 </p>
                             ) : (
-                                visitId !== undefined &&
+                                attach !== undefined &&
                                 document.canWithdraw && (
                                     <WithdrawForm document={document} />
                                 )
@@ -92,15 +93,19 @@ export function ClinicalDocuments({
                     ))}
                 </ul>
             )}
-            {visitId !== undefined && <AttachForm visitId={visitId} />}
+            {attach !== undefined && <AttachForm attach={attach} />}
         </section>
     );
 }
 
-function AttachForm({ visitId }: { visitId: number }) {
+function AttachForm({
+    attach,
+}: {
+    attach: { action: string; method: 'post' };
+}) {
     return (
         <Form
-            {...ClinicalDocumentController.store.form(visitId)}
+            {...attach}
             options={{ preserveScroll: true }}
             resetOnSuccess
             className="grid gap-3 border-t pt-4"

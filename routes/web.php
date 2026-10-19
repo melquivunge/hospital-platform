@@ -88,6 +88,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::put('triage-levels/{triageLevel}', [TriageLevelController::class, 'update'])->name('triage-levels.update');
     Route::get('ward', [WardController::class, 'index'])->name('ward.index');
     Route::get('ward/{admission}', [WardController::class, 'show'])->name('ward.show');
+    Route::post('ward/{admission}/documents', [ClinicalDocumentController::class, 'storeForAdmission'])->middleware('throttle:30,1')->name('ward.documents.store');
     Route::post('ward/{admission}/notes', [WardController::class, 'storeNote'])->middleware('throttle:60,1')->name('ward.notes.store');
     Route::get('admissions', [AdmissionController::class, 'index'])->name('admissions.index');
     Route::post('admissions/{admission}/allocate', [AdmissionController::class, 'allocate'])->middleware('throttle:60,1')->name('admissions.allocate');

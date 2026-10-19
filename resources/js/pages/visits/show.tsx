@@ -1,5 +1,6 @@
 import { Form, Head, usePage } from '@inertiajs/react';
 import { useState } from 'react';
+import ClinicalDocumentController from '@/actions/App/Http/Controllers/ClinicalDocumentController';
 import VisitController from '@/actions/App/Http/Controllers/VisitController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
@@ -73,7 +74,7 @@ export default function VisitShow({
                 >
                     <ClinicalDocuments
                         documents={documents}
-                        visitId={visit.id}
+                        attach={ClinicalDocumentController.store.form(visit.id)}
                     />
                 </NotesWorkspace>
             </Page>

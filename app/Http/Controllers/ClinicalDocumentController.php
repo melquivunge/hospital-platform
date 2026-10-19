@@ -23,7 +23,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 /**
- * Clinical documents (step 3.7): attached during an open visit, downloaded only with clinical access (each
+ * Clinical documents (step 3.7): attached during an open visit or, since step 4.4b, an admission the
+ * professional has access to; downloaded only with clinical access (each
  * download logged), withdrawn with a reason (the file stays). The type is checked by content, never by the
  * name, and the file is always served as a download.
  */
@@ -33,6 +34,39 @@ class ClinicalDocumentController extends Controller
     {
         $professional = self::professional($request);
         abort_unless($visit->professional_id === $professional->id && $visit->closed_at === null, 403);
+
+        return self::attach($request, $professional, $visit->tenant_id, $visit->patient_id, ['visit_id' => $visit->id], 'Este atendimento', function () use ($visit) {
+            // Locked like close(): nothing is attached to a visit closed in the meantime.
+            if (Visit::query()->whereKey($visit->id)->lockForUpdate()->value('closed_at') !== null) {
+                throw ValidationException::withMessages(['file' => 'Este atendimento já foi encerrado.']);
+            }
+        });
+    }
+
+    /**
+     * Step 4.4b (ADR-0004): the responsible doctor or the ward team attaches during the admission.
+     */
+    public function storeForAdmission(Request $request, Admission $admission): RedirectResponse
+    {
+        $professional = self::professional($request);
+        $patient = Patient::query()->findOrFail($admission->patient_id);
+        abort_unless(ClinicalAccess::activeAdmission($request->user(), $patient)?->id === $admission->id, 403);
+
+        return self::attach($request, $professional, $admission->tenant_id, $admission->patient_id, ['admission_id' => $admission->id], 'Esta internação', function () use ($admission, $patient, $request) {
+            // Locked like the admission notes: still active, and the access checked again under the lock.
+            if (! in_array(Admission::query()->whereKey($admission->id)->lockForUpdate()->value('status'), Admission::ACTIVE, true)) {
+                throw ValidationException::withMessages(['file' => 'Esta internação foi encerrada.']);
+            }
+            abort_unless(ClinicalAccess::activeAdmission($request->user(), $patient)?->id === $admission->id, 403);
+        });
+    }
+
+    /**
+     * @param  array{visit_id: int}|array{admission_id: int}  $origin
+     * @param  callable(): void  $lockOrigin  runs first inside the transaction
+     */
+    private static function attach(Request $request, Professional $professional, int $tenantId, int $patientId, array $origin, string $label, callable $lockOrigin): RedirectResponse
+    {
         $request->validate([
             'file' => ['required', 'file', 'max:'.ClinicalDocument::MAX_KILOBYTES, 'extensions:'.implode(',', array_keys(ClinicalDocument::TYPES))],
         ], [
@@ -49,26 +83,23 @@ class ClinicalDocumentController extends Controller
             throw ValidationException::withMessages(['file' => 'O conteúdo do arquivo não é um '.strtoupper($extension === 'jpeg' ? 'jpg' : $extension).' válido.']);
         }
 
-        $path = $file->storeAs("clinical/{$visit->tenant_id}", Str::random(40).'.'.$extension, 'local');
+        $path = $file->storeAs("clinical/{$tenantId}", Str::random(40).'.'.$extension, 'local');
         if ($path === false) {
             throw new RuntimeException('Clinical document could not be stored.');
         }
         try {
-            DB::transaction(function () use ($visit, $request, $professional, $file, $path, $detected) {
-                // Locked like close(): nothing is attached to a visit closed in the meantime.
-                if (Visit::query()->whereKey($visit->id)->lockForUpdate()->value('closed_at') !== null) {
-                    throw ValidationException::withMessages(['file' => 'Este atendimento já foi encerrado.']);
-                }
-                if (ClinicalDocument::query()->where('visit_id', $visit->id)->count() >= ClinicalDocument::MAX_PER_VISIT) {
-                    throw ValidationException::withMessages(['file' => 'Este atendimento já tem '.ClinicalDocument::MAX_PER_VISIT.' documentos.']);
+            DB::transaction(function () use ($origin, $label, $lockOrigin, $patientId, $request, $professional, $file, $path, $detected) {
+                $lockOrigin();
+                if (ClinicalDocument::query()->where($origin)->count() >= ClinicalDocument::MAX_PER_VISIT) {
+                    throw ValidationException::withMessages(['file' => $label.' já tem '.ClinicalDocument::MAX_PER_VISIT.' documentos.']);
                 }
                 $document = ClinicalDocument::query()->create([
-                    'patient_id' => $visit->patient_id, 'visit_id' => $visit->id, 'uploaded_by_user_id' => $request->user()->id,
+                    ...$origin, 'patient_id' => $patientId, 'uploaded_by_user_id' => $request->user()->id,
                     'professional_id' => $professional->id, 'original_name' => self::cleanName($file->getClientOriginalName()),
                     'mime_type' => $detected, 'size_bytes' => $file->getSize(), 'path' => $path,
                     'sha256' => hash_file('sha256', $file->getRealPath()), 'created_at' => now(),
                 ]);
-                AuditEvent::record('clinical_document.attached', $document->tenant_id, $document, ['visit_id' => $visit->id]);
+                AuditEvent::record('clinical_document.attached', $document->tenant_id, $document, $origin);
             });
         } catch (Throwable $exception) {
             Storage::disk('local')->delete($path);
@@ -110,8 +141,11 @@ class ClinicalDocumentController extends Controller
     public function withdraw(Request $request, ClinicalDocument $document): RedirectResponse
     {
         self::professional($request);
-        // Only while the document's own visit is open: a closed visit's record is never changed.
-        abort_unless($document->uploaded_by_user_id === $request->user()->id && Visit::query()->whereKey($document->visit_id)->whereNull('closed_at')->exists(), 403);
+        // Only while the document's own visit is open, or its admission still gives the uploader access.
+        $open = $document->visit_id !== null
+            ? Visit::query()->whereKey($document->visit_id)->whereNull('closed_at')->exists()
+            : ClinicalAccess::activeAdmission($request->user(), Patient::query()->findOrFail($document->patient_id))?->id === $document->admission_id;
+        abort_unless($document->uploaded_by_user_id === $request->user()->id && $open, 403);
         $data = $request->validate(['reason' => ['required', 'string', 'max:255']], [], ['reason' => 'motivo']);
 
         DB::transaction(function () use ($document, $request, $data) {
