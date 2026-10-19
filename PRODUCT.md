@@ -476,7 +476,7 @@ As questões abertas deste contrato foram respondidas; todas as propostas foram 
 
 ## Contrato da entrega 4b — prescrição e farmácia
 
-Método: ECC Product Capability. Data: 19/10/2026. Estado: **decisões de produto tomadas pelo usuário em 19/10/2026 (todas as propostas aceitas); ADR-0005 e plano aguardam aceite. Nenhuma implementação autorizada ainda.**
+Método: ECC Product Capability. Data: 19/10/2026. Estado: **aprovado; ADR-0005, ADR-0006 e plano aceitos e implementação autorizada pelo usuário em 19/10/2026, uma etapa por vez.**
 
 ### Capacidade
 
@@ -486,7 +486,7 @@ O médico prescreve para o paciente internado ou em atendimento de urgência usa
 
 - **Tabelas clínicas:** prescrição, itens, validação, dispensação, administração e alergias ficam em tabelas clínicas com RLS forçado ([ADR-0003](docs/adr/0003-rls-on-clinical-tables.md)).
 - **Acesso:** continua centralizado em `ClinicalAccess`, com cada leitura gravada na trilha. Nada clínico vai para logs, notificações, URLs ou contexto de auditoria.
-- **Assinatura:** a prescrição assinada não muda. Corrigir significa suspender o item e prescrever outro. A assinatura usa a senha, sem ICP-Brasil, que continua sendo um limite conhecido.
+- **Assinatura:** a prescrição assinada não muda. Corrigir significa suspender o item e prescrever outro. A prescrição é assinada com **certificado ICP-Brasil em nuvem** ([ADR-0006](docs/adr/0006-icp-brasil-cloud-signature.md)); até as credenciais do fornecedor existirem, vale a assinatura com senha, identificada como tal.
 - **Quem prescreve:** só o médico com acesso ao paciente pela internação ativa ou pelo atendimento aberto. Por proposta, só funções que "atendem pacientes"; se a prescrição deve exigir também o conselho CRM, é a questão 7.
 - **Administração:** cada registro é uma linha nova, feita, recusada ou não realizada com motivo, nunca reescrita. Administrar exige item validado e dispensado, salvo exceção registrada com motivo (questão 1).
 - **Concorrência:** duas pessoas dispensando ou administrando o mesmo horário ao mesmo tempo produzem um único registro. Isso será verificado com corrida real.
@@ -518,13 +518,18 @@ O médico prescreve para o paciente internado ou em atendimento de urgência usa
 
 - Controle de estoque com lote, validade, inventário e compras (proposta para uma entrega 4c; ver questão 3).
 - Receita de controle especial para uso fora do hospital (Portaria 344/98, notificação de receita) e livro de registro de controlados.
-- Integração com bulário, interações medicamentosas automáticas e cálculo de dose por peso.
+- Integração com base licenciada de interações ou bulário (as regras vêm de uma tabela da rede, decisão de 19/10/2026) e cálculo de dose por peso.
 - Bombas de infusão, código de barras ou pulseira na beira do leito.
 - Prescrição ambulatorial (receita para casa) e faturamento de materiais e medicamentos.
 
 ### Decisões do usuário (19/10/2026)
 
 Todas as propostas abaixo foram aceitas: ciclo completo (1), dispensação por 24 horas com devolução (2), estoque fora, numa entrega 4c (3), prescrição válida por 24 horas e renovada por cópia revisada (4), alergia com aviso e justificativa (5), dupla checagem para controlados e alto alerta (6), prescrição só por função que atende e com CRM (7).
+
+### Decisões complementares do usuário (19/10/2026, riscos do plano)
+
+- **Interações e dose máxima:** a rede mantém uma tabela, cadastrada pela farmácia ou pela administração, com importação CSV. Cada medicamento tem dose máxima por administração e por dia, e cada par de interação tem gravidade (leve, moderada, grave, contraindicada). Na prescrição, dose acima do máximo ou interação com outro item ativo gera um alerta, que exige justificativa registrada. A farmácia vê os alertas e as justificativas na avaliação. A cobertura depende do cadastro; uma base licenciada fica fora por ora.
+- **ICP-Brasil:** a prescrição é assinada com certificado digital ICP-Brasil em nuvem, por um prestador de serviço de confiança (PSC) credenciado, via API. O fornecedor e as credenciais dependem de contrato do usuário (bloqueio externo). A integração é construída e testada com um assinador de teste, e a evolução e o sumário continuam com senha até nova decisão.
 
 ### Questões (respondidas)
 
@@ -539,5 +544,5 @@ Todas as propostas abaixo foram aceitas: ciclo completo (1), dispensação por 2
 ### Encaminhamento ECC
 
 - **Esclarecimento de produto:** concluído (decisões acima).
-- **Arquitetura:** [ADR-0005](docs/adr/0005-pharmacy-prescription-access.md), proposta, aguarda aceite.
-- **Plano em etapas:** `plans/web-v4-prescricao.md`, proposto, aguarda aceite. A implementação só começa com autorização do usuário.
+- **Arquitetura:** [ADR-0005](docs/adr/0005-pharmacy-prescription-access.md) e [ADR-0006](docs/adr/0006-icp-brasil-cloud-signature.md), aceitas.
+- **Plano em etapas:** `plans/web-v4-prescricao.md`, aceito. **Implementação autorizada pelo usuário em 19/10/2026**, começando pela 4b.1.

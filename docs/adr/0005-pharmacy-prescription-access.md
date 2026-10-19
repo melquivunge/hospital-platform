@@ -1,7 +1,7 @@
 # ADR-0005: acesso da farmácia e da enfermagem à prescrição
 
 Data: 19/10/2026
-Estado: proposta (aguarda aceite do usuário)
+Estado: aceita pelo usuário (19/10/2026)
 
 ## Contexto
 
