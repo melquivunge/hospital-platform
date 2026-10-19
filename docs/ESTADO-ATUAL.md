@@ -4,7 +4,7 @@ Atualizado em 18/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.4a (pedido de internação e leito); depois a 4.4b (acesso da equipe do setor e evolução de internação), plano em plans/web-v3-internacao.md.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da etapa 4.4b (acesso da equipe do setor e evolução de internação); depois anexar documento na internação e a 4.5 (movimentação interna e higienização), plano em plans/web-v3-internacao.md.
 
 ## Onde está cada coisa
 
@@ -65,7 +65,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #39 | Etapa 4.1: leitos | Mesclado |
 | #40 | Etapa 4.2: chegada e classificação de risco | Mesclado |
 | #41 | Etapa 4.3: atendimento de urgência | Mesclado |
-| — | Etapa 4.4a: pedido de internação e alocação de leito (branch `feat/admission`) | Em revisão |
+| #42 | Etapa 4.4a: pedido de internação e alocação de leito | Mesclado |
+| — | Etapa 4.4b: acesso da equipe do setor e evolução de internação (branch `feat/ward-record`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -169,7 +170,7 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Navegador (1440 e 390 px): chegada, classificação, chamar e atender, rascunho, encerramento recusado sem assinatura, assinatura, fila da recepção com "Em atendimento com ...", encerramento com pedido de internação; sem erro de JavaScript ou 5xx, sem rolagem horizontal, um `h1`.
   - Revisão de segurança independente: sem crítico ou alto. Decisões do usuário (18/10/2026): a recepção vê o nome de quem atende; quem tem a habilitação vencida no meio do atendimento ainda o encerra (igual ao ambulatório), mas não chama nem classifica.
   - Limite até a 4.4: no pedido de internação, o atendimento da urgência encerra e o prontuário deixa de abrir até a internação (setor pedido e médico responsável entram na 4.4).
-- **4.4a (pedido de internação e alocação de leito; a 4.4 foi dividida em 4.4a e 4.4b)** (branch `feat/admission`):
+- **4.4a (pedido de internação e alocação de leito; a 4.4 foi dividida em 4.4a e 4.4b)** (PR #42):
   - O pedido nasce no encerramento do atendimento de urgência com o desfecho "Pedido de internação": setor de internação da unidade (setor com leitos ativos), médico responsável (habilitação aprovada e vigente na unidade, com conta ativa; o próprio profissional vem marcado) e "precisa de isolamento". `admissions` é clínica (RLS).
   - Tela "Internações" (papel Gestão de leitos da unidade): pedidos aguardando leito e internados, só com identificação (nome, sexo, idade, setor pedido, responsável, isolamento). Cada leito livre mostra o que fica fora da regra para aquele paciente; fora da regra de sexo ou de isolamento, a alocação exige justificativa, guardada só na tabela clínica (a auditoria `admission.admitted` leva só ids e a marca "fora da regra").
   - Alocar: lock no pedido, leito livre → ocupado por atualização condicional (com linha em `bed_events`), internação `admitted` e o episódio de urgência sai da fila (`admitted`).
@@ -178,6 +179,15 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Navegador (1440 e 390 px): pedido com isolamento, aviso de leito fora da regra, alocação recusada sem justificativa e aceita com ela; sem erro de JavaScript ou 5xx, sem rolagem horizontal.
   - Revisão de segurança independente: sem crítico ou alto. Corrigido: unificação com duas internações ativas; responsável com conta revogada; pedido simultâneo dava erro 500. Aceito: os internados continuam listados para a gestão de leitos até a alta (4.7).
   - Ainda não: acesso da equipe do setor ao prontuário e evolução de internação (4.4b, ADR-0004). O `down` da migration apaga as internações e não libera os leitos (só para desenvolvimento).
+- **4.4b (acesso da equipe do setor e evolução de internação, ADR-0004)** (branch `feat/ward-record`):
+  - `ClinicalAccess` ganhou a terceira base, **internação ativa**: o médico responsável lê e escreve desde o pedido; quem tem habilitação aprovada e vigente (data no fuso da unidade) no setor do leito atual lê e escreve enquanto o paciente estiver internado lá. Avaliada a cada requisição; cada leitura vai para `clinical_reads` com o motivo `admission` e a internação.
+  - Tela "Internados" (menu de quem tem conta de profissional): os internados nos setores da pessoa e aqueles de quem ela é responsável, só com identificação (sem leitura gravada, esclarecido na ADR-0004). "Prontuário" abre a internação: evoluções assinadas com adendos, documentos (download pela internação, gravado na trilha) e a evolução da internação, um rascunho por autor (índice no banco), assinado com a senha como na entrega 3. O botão "Prontuário" da ficha do paciente leva à internação quando há essa base.
+  - Banco: a evolução pertence a um atendimento, a uma internação ou é adendo (exatamente um, `num_nonnulls`); o gatilho de imutabilidade passou a guardar também a internação. O `down` recusa voltar se já houver evolução ou leitura de internação.
+  - A evolução e o adendo foram extraídos para `resources/js/components/clinical-notes.tsx`, usado pelo atendimento e pela internação (sem mudança de comportamento no atendimento).
+  - Corrida real (6 rodadas, um paciente novo por rodada): duas abas encerrando a urgência com pedido de internação geram uma internação e um evento; duas abas criando a evolução da internação geram um rascunho. A corrida achou um defeito corrigido: o rascunho de evolução da internação era tratado como adendo e travava o encerramento de outro atendimento do mesmo paciente (e aparecia nele); teste de regressão falhava antes e passa depois.
+  - Navegador (1440 e 390 px): lista, prontuário da internação, rascunho e assinatura; a gestão de leitos recebe 403 em "Internados"; sem erro de JavaScript ou 5xx, sem rolagem horizontal.
+  - Revisão de segurança independente: sem crítico ou alto. Corrigido: o acesso é conferido de novo depois do lock ao salvar a evolução. Registrado: rascunhos abertos na alta (a decidir na 4.7); a lista "Internados" sem leitura gravada.
+  - Ainda não: **anexar documento na internação** (a ADR-0004 prevê; hoje o anexo continua só no atendimento). Troca de leito e de setor vem na 4.5.
 - **Entrega 4 (urgência, internação e leitos) em definição** (18/10/2026): contrato no PRODUCT.md, seção "Contrato da entrega 4". Decisões do usuário: jornada primeiro (prescrição e farmácia na entrega 4b), escala de risco própria de 5 níveis (sem Manchester), papel Gestão de leitos, transferência dentro da rede; acesso na internação pelo médico responsável e pela equipe do setor ([ADR-0004](adr/0004-ward-team-record-access.md), aceita); "Não identificado" unificável depois; compatibilidade do leito com aviso e justificativa; sumário de alta obrigatório exceto óbito e evasão; tempo-alvo com destaque visual; censo diário. Plano em `plans/web-v3-internacao.md` (3.8, depois 4.1 a 4.8). ADR-0004 e plano aceitos e **implementação autorizada** pelo usuário (18/10/2026), uma etapa por vez, começando pela 3.8.
 
 - **Plano web V1 completo** (PRs #1 a #26). Antes de operação real: os limites listados em "Limites conhecidos da V1" no README. Hospedagem: adiada por decisão do usuário (18/10/2026).
@@ -367,7 +377,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 330 testes passando (etapa 4.4a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 335 testes passando (etapa 4.4b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

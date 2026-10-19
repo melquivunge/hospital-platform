@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property int $tenant_id
  * @property int $patient_id
  * @property int|null $visit_id
+ * @property int|null $admission_id
  * @property int|null $addendum_of_id
  * @property int $author_user_id
  * @property int $author_professional_id
@@ -26,7 +27,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $created_at
  * @property Carbon|null $signed_at
  */
-#[Fillable(['patient_id', 'visit_id', 'addendum_of_id', 'author_user_id', 'author_professional_id', 'body'])]
+#[Fillable(['patient_id', 'visit_id', 'admission_id', 'addendum_of_id', 'author_user_id', 'author_professional_id', 'body'])]
 class ClinicalNote extends Model
 {
     use BelongsToTenant;
@@ -53,6 +54,14 @@ class ClinicalNote extends Model
     public function visit(): BelongsTo
     {
         return $this->belongsTo(Visit::class);
+    }
+
+    /**
+     * @return BelongsTo<Admission, $this>
+     */
+    public function admission(): BelongsTo
+    {
+        return $this->belongsTo(Admission::class);
     }
 
     /**

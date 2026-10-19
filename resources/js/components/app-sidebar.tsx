@@ -2,6 +2,7 @@ import { Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeftRight,
     BedDouble,
+    BedSingle,
     BriefcaseMedical,
     CalendarCheck,
     CalendarPlus,
@@ -49,6 +50,7 @@ import { index as triageLevels } from '@/routes/triage-levels';
 import { index as clinicalAccess } from '@/routes/clinical-access';
 import { index as insurers } from '@/routes/insurers';
 import { index as visits } from '@/routes/visits';
+import { index as ward } from '@/routes/ward';
 import { index as patients } from '@/routes/patients';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
@@ -110,6 +112,7 @@ export function AppSidebar() {
                       href: visits(),
                       icon: ClipboardPlus,
                   },
+                  { title: 'Internados', href: ward(), icon: BedSingle },
               ]
             : []),
         ...(canBookAppointments

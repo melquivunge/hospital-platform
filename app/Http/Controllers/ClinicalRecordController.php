@@ -32,8 +32,8 @@ class ClinicalRecordController extends Controller
     private const LOG_LIMIT = 200;
 
     /**
-     * The record outside a visit: the open visit if there is one, the emergency view while a grant is
-     * valid, otherwise the request form.
+     * The record outside a visit: the open visit if there is one, then the active admission (step 4.4b),
+     * the emergency view while a grant is valid, otherwise the request form.
      */
     public function show(Request $request, Patient $patient): Response|RedirectResponse
     {
@@ -43,6 +43,10 @@ class ClinicalRecordController extends Controller
         }
         if (($visit = ClinicalAccess::activeVisit($request->user(), $patient)) !== null) {
             return to_route('visits.show', $visit);
+        }
+        // Step 4.4b: the responsible doctor and the ward team read and write on the admission page.
+        if (($admission = ClinicalAccess::activeAdmission($request->user(), $patient)) !== null) {
+            return to_route('ward.show', $admission);
         }
         $grant = ClinicalAccess::activeEmergency($request->user(), $patient);
         if ($grant === null) {
@@ -85,7 +89,8 @@ class ClinicalRecordController extends Controller
 
         // No duplicate grants (and no flood of notifications to the manager): an open visit or a valid grant
         // already opens the record.
-        if (ClinicalAccess::activeVisit($request->user(), $patient) !== null || ClinicalAccess::activeEmergency($request->user(), $patient) !== null) {
+        if (ClinicalAccess::activeVisit($request->user(), $patient) !== null || ClinicalAccess::activeAdmission($request->user(), $patient) !== null
+            || ClinicalAccess::activeEmergency($request->user(), $patient) !== null) {
             return to_route('clinical-record.show', $patient);
         }
         DB::transaction(function () use ($request, $professional, $patient, $data) {

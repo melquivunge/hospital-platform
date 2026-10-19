@@ -181,12 +181,7 @@ class VisitController extends Controller
         $data = $request->validate(['body' => self::BODY, 'addendum_of_id' => ['nullable', 'integer']], [], ['body' => 'texto']);
         $patient = $visit->patient()->firstOrFail();
 
-        $original = null;
-        if (($data['addendum_of_id'] ?? null) !== null) {
-            $original = ClinicalNote::query()->whereKey($data['addendum_of_id'])->whereIn('patient_id', ClinicalAccess::recordIds($patient))
-                ->whereNull('addendum_of_id')->where('status', 'signed')->first()
-                ?? throw ValidationException::withMessages(['body' => 'O adendo corrige uma evolução assinada deste paciente.']);
-        }
+        $original = self::addendumOf($data['addendum_of_id'] ?? null, $patient);
         DB::transaction(function () use ($data, $visit, $request, $professional, $original) {
             // Locked like close(): a draft never lands on a visit closed in the meantime.
             if (Visit::query()->whereKey($visit->id)->lockForUpdate()->value('closed_at') !== null) {
@@ -251,6 +246,16 @@ class VisitController extends Controller
     }
 
     /**
+     * The signed note of the patient's record that an addendum corrects, if one was named.
+     */
+    public static function addendumOf(mixed $id, Patient $patient): ?ClinicalNote
+    {
+        return $id === null ? null : ClinicalNote::query()->whereKey((int) $id)->whereIn('patient_id', ClinicalAccess::recordIds($patient))
+            ->whereNull('addendum_of_id')->where('status', 'signed')->first()
+            ?? throw ValidationException::withMessages(['body' => 'O adendo corrige uma evolução assinada deste paciente.']);
+    }
+
+    /**
      * Identification only, for the header of a record page.
      *
      * @return array<string, mixed>
@@ -278,9 +283,9 @@ class VisitController extends Controller
         $signed = fn (ClinicalNote $note) => ['id' => $note->id, 'body' => $note->body, 'signedAt' => $when($note->signed_at), 'author' => $note->author?->name];
 
         return array_values(ClinicalNote::query()->whereIn('patient_id', $patientIds)->whereNull('addendum_of_id')->where('status', 'signed')
-            ->with(['author:id,name', 'visit.unit:id,name', 'addenda' => fn ($query) => $query->where('status', 'signed')->with('author:id,name')->orderBy('signed_at')])
+            ->with(['author:id,name', 'visit.unit:id,name', 'admission.unit:id,name', 'addenda' => fn ($query) => $query->where('status', 'signed')->with('author:id,name')->orderBy('signed_at')])
             ->orderByDesc('signed_at')->get()
-            ->map(fn (ClinicalNote $note) => [...$signed($note), 'unit' => $note->visit?->unit?->name, 'addenda' => $note->addenda->map($signed)->values()->all()])
+            ->map(fn (ClinicalNote $note) => [...$signed($note), 'unit' => $note->visit?->unit->name ?? $note->admission?->unit->name, 'addenda' => $note->addenda->map($signed)->values()->all()])
             ->all());
     }
 
@@ -294,7 +299,7 @@ class VisitController extends Controller
     private static function drafts(Visit $visit, array $patientIds, int $userId): Builder
     {
         return ClinicalNote::query()->where('author_user_id', $userId)->where('status', 'draft')
-            ->where(fn (Builder $query) => $query->where('visit_id', $visit->id)->orWhere(fn (Builder $addenda) => $addenda->whereNull('visit_id')->whereIn('patient_id', $patientIds)));
+            ->where(fn (Builder $query) => $query->where('visit_id', $visit->id)->orWhere(fn (Builder $addenda) => $addenda->whereNotNull('addendum_of_id')->whereIn('patient_id', $patientIds)));
     }
 
     private static function professional(Request $request): Professional
@@ -304,14 +309,19 @@ class VisitController extends Controller
 
     /**
      * The author edits or signs a draft only while reading the record is allowed: the note of a visit only
-     * while that visit is open, an addendum while the author has an open visit of the patient.
+     * while that visit is open, the note of an admission while the author is on it (step 4.4b), an addendum
+     * while the author has an open visit or an active admission of the patient.
      */
     private static function ownDraft(Request $request, ClinicalNote $note): void
     {
         abort_unless($note->author_user_id === $request->user()->id && $note->status === 'draft', 403);
-        $open = $note->visit_id !== null
-            ? Visit::query()->whereKey($note->visit_id)->whereNull('closed_at')->exists()
-            : ClinicalAccess::activeVisit($request->user(), Patient::query()->findOrFail($note->patient_id)) !== null;
+        $patient = Patient::query()->findOrFail($note->patient_id);
+        $open = match (true) {
+            $note->visit_id !== null => Visit::query()->whereKey($note->visit_id)->whereNull('closed_at')->exists(),
+            // Step 4.4b: an admission note only while the author still has that admission as a basis.
+            $note->admission_id !== null => ClinicalAccess::activeAdmission($request->user(), $patient)?->id === $note->admission_id,
+            default => ClinicalAccess::activeVisit($request->user(), $patient) !== null || ClinicalAccess::activeAdmission($request->user(), $patient) !== null,
+        };
         abort_unless($open, 403);
     }
 
