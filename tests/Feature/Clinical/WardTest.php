@@ -3,6 +3,7 @@
 namespace Tests\Feature\Clinical;
 
 use App\Models\Admission;
+use App\Models\AuditEvent;
 use App\Models\Bed;
 use App\Models\ClinicalDocument;
 use App\Models\ClinicalNote;
@@ -118,6 +119,37 @@ class WardTest extends ClinicalTestCase
         $this->put(route('clinical-notes.update', $nurseNote), ['body' => 'Alterado.'])->assertForbidden();
         $this->actingAs($this->wardNurse->user)->post(route('clinical-notes.sign', $nurseNote), ['body' => 'Sem febre no plantão.', 'password' => 'password'])->assertSessionHasNoErrors();
         $this->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('record.0.body', 'Sem febre no plantão.')->has('drafts', 0));
+    }
+
+    public function test_the_ward_team_attaches_and_withdraws_documents_during_the_admission(): void
+    {
+        $admission = $this->admission($this->bed($this->ward, 'E-1'));
+        $upload = fn () => $this->post(route('ward.documents.store', $admission), ['file' => UploadedFile::fake()->createWithContent('gasometria.pdf', self::PDF)]);
+
+        $this->actingAs($this->icuNurse->user);
+        $upload()->assertForbidden();
+        $this->actingAs($this->wardNurse->user);
+        $upload()->assertSessionHasNoErrors();
+        $document = ClinicalDocument::withoutTenantScope()->where('admission_id', $admission->id)->sole();
+        $this->assertSame([null, $this->patient->id], [$document->visit_id, $document->patient_id]);
+        $this->assertSame(1, AuditEvent::where('action', 'clinical_document.attached')->where('context->admission_id', $admission->id)->count());
+
+        // The responsible doctor downloads it (logged); only the uploader withdraws, while still on the team.
+        $this->actingAs($this->doctorAccount->user)->get(route('clinical-documents.download', $document))->assertOk();
+        $this->assertSame(1, DB::table('clinical_reads')->where('user_id', $this->doctorAccount->user_id)->where('reason', 'admission')->count());
+        $this->post(route('clinical-documents.withdraw', $document), ['reason' => 'Não é meu.'])->assertForbidden();
+        $this->actingAs($this->wardNurse->user)->post(route('clinical-documents.withdraw', $document), ['reason' => 'Paciente errado.'])->assertSessionHasNoErrors();
+        $this->assertNotNull($document->fresh()->withdrawn_at);
+
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $row = (array) DB::table('clinical_documents')->where('id', $document->id)->first();
+        unset($row['id']);
+        try {
+            DB::transaction(fn () => DB::table('clinical_documents')->insert([...$row, 'path' => "clinical/{$this->unit->tenant_id}/x.pdf", 'visit_id' => Visit::query()->value('id'), 'withdrawn_at' => null, 'withdrawn_by_user_id' => null, 'withdraw_reason' => null]));
+            $this->fail('A document with two origins was accepted.');
+        } catch (QueryException $exception) {
+            $this->assertSame('23514', $exception->getCode());
+        }
     }
 
     public function test_an_admission_draft_never_blocks_nor_shows_in_another_visit(): void

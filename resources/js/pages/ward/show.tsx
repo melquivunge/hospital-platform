@@ -1,4 +1,5 @@
 import { Head } from '@inertiajs/react';
+import ClinicalDocumentController from '@/actions/App/Http/Controllers/ClinicalDocumentController';
 import WardController from '@/actions/App/Http/Controllers/WardController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
@@ -57,7 +58,12 @@ export default function WardShow({
                     drafts={drafts}
                     record={record}
                 >
-                    <ClinicalDocuments documents={documents} />
+                    <ClinicalDocuments
+                        documents={documents}
+                        attach={ClinicalDocumentController.storeForAdmission.form(
+                            admission.id,
+                        )}
+                    />
                 </NotesWorkspace>
             </Page>
         </>
