@@ -29,7 +29,7 @@ export default function VisitShow({
     drafts,
     documents,
 }: {
-    visit: { id: number; openedAt: string | null };
+    visit: { id: number; openedAt: string | null; emergency: boolean };
     patient: RecordPatient;
     record: RecordNote[];
     drafts: Draft[];
@@ -47,21 +47,24 @@ export default function VisitShow({
                     title={patient.name}
                     description={patientDescription(patient)}
                     actions={
-                        <Form {...VisitController.close.form(visit.id)}>
-                            {({ processing }) => (
-                                <Button
-                                    type="submit"
-                                    variant="outline"
-                                    disabled={processing}
-                                    className="min-h-11"
-                                >
-                                    Encerrar atendimento
-                                </Button>
-                            )}
-                        </Form>
+                        !visit.emergency && (
+                            <Form {...VisitController.close.form(visit.id)}>
+                                {({ processing }) => (
+                                    <Button
+                                        type="submit"
+                                        variant="outline"
+                                        disabled={processing}
+                                        className="min-h-11"
+                                    >
+                                        Encerrar atendimento
+                                    </Button>
+                                )}
+                            </Form>
+                        )
                     }
                 />
                 <InputError message={errors.visit} className="mb-4" />
+                {visit.emergency && <CloseEmergency visitId={visit.id} />}
 
                 <div className="grid gap-8">
                     <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
@@ -272,6 +275,65 @@ function DraftEditor({
             </div>
             <InputError message={errors.password} />
         </form>
+    );
+}
+
+const outcomes = [
+    { value: 'discharged', label: 'Alta da urgência' },
+    { value: 'admission_requested', label: 'Pedido de internação' },
+    { value: 'evaded', label: 'Evasão (saiu durante o atendimento)' },
+];
+
+/** Step 4.3: an emergency visit closes with its outcome. */
+function CloseEmergency({ visitId }: { visitId: number }) {
+    return (
+        <details className="mb-6 rounded-xl border bg-card px-5 py-3">
+            <summary className="flex min-h-11 cursor-pointer items-center font-medium">
+                Encerrar atendimento de urgência
+            </summary>
+            <Form
+                {...VisitController.close.form(visitId)}
+                className="grid gap-4 py-3"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <fieldset className="grid gap-2">
+                            <legend className="mb-2 text-sm font-medium">
+                                Desfecho
+                            </legend>
+                            {outcomes.map((outcome) => (
+                                <label
+                                    key={outcome.value}
+                                    className="flex min-h-11 items-center gap-2 text-sm"
+                                >
+                                    <input
+                                        type="radio"
+                                        name="outcome"
+                                        value={outcome.value}
+                                        required
+                                        className="size-4 accent-primary"
+                                    />
+                                    {outcome.label}
+                                </label>
+                            ))}
+                            <InputError message={errors.outcome} />
+                        </fieldset>
+                        <p className="text-sm text-muted-foreground">
+                            Assine os rascunhos antes. Depois de encerrar, o
+                            prontuário deixa de abrir para você por este
+                            atendimento.
+                        </p>
+                        <Button
+                            type="submit"
+                            disabled={processing}
+                            className="min-h-11 justify-self-start"
+                        >
+                            Encerrar atendimento
+                        </Button>
+                    </>
+                )}
+            </Form>
+        </details>
     );
 }
 

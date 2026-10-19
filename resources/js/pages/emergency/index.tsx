@@ -1,4 +1,4 @@
-import { Form, Head, Link, router } from '@inertiajs/react';
+import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { Siren, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import EmergencyController from '@/actions/App/Http/Controllers/EmergencyController';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/emergency';
 import { index as patients } from '@/routes/patients';
+import { show as showVisit } from '@/routes/visits';
 
 export type Color = 'red' | 'orange' | 'yellow' | 'green' | 'blue';
 
@@ -43,6 +44,9 @@ type Episode = {
     overdue: boolean;
     classifications: number;
     latest: (Vitals & { id: number; level: number; complaint: string }) | null;
+    status: 'waiting' | 'in_care' | 'admission_requested';
+    attendedBy: string | null;
+    myVisitId: number | null;
 };
 
 export const levelClasses: Record<Color, string> = {
@@ -95,6 +99,7 @@ export default function Emergency({
     episodes: Episode[];
 }) {
     const byLevel = new Map(levels.map((level) => [level.level, level]));
+    const { errors } = usePage().props;
 
     return (
         <>
@@ -130,6 +135,7 @@ export default function Emergency({
                 )}
 
                 {canArrive && <Arrival unitId={unit.id} patient={patient} />}
+                <InputError message={errors.call} className="mb-4" />
 
                 <section aria-labelledby="queue-heading" className="grid gap-3">
                     <h2
@@ -164,6 +170,7 @@ export default function Emergency({
                                     }
                                     levels={levels}
                                     canTriage={canTriage}
+                                    canArrive={canArrive}
                                 />
                             ))}
                         </ul>
@@ -338,11 +345,13 @@ function EpisodeCard({
     level,
     levels,
     canTriage,
+    canArrive,
 }: {
     episode: Episode;
     level: Level | null;
     levels: Level[];
     canTriage: boolean;
+    canArrive: boolean;
 }) {
     const name = episode.unidentified
         ? 'Não identificado'
@@ -362,7 +371,10 @@ function EpisodeCard({
                         </span>
                     )}
                     <span className="text-muted-foreground tabular-nums">
-                        Chegou às {episode.arrivedAt} · espera de{' '}
+                        Chegou às {episode.arrivedAt} ·{' '}
+                        {episode.status === 'waiting'
+                            ? 'espera de'
+                            : 'na urgência há'}{' '}
                         {duration(episode.waitingMinutes)}
                     </span>
                 </span>
@@ -399,18 +411,86 @@ function EpisodeCard({
                     )}
                 </div>
             )}
-            {canTriage && (
-                // Remounted after each classification: closed again, with the new values as defaults.
-                <details key={episode.latest?.id ?? 0}>
-                    <summary
-                        aria-label={`${latest ? 'Reclassificar' : 'Classificar'}: ${name}, chegada às ${episode.arrivedAt}`}
-                        className="inline-flex min-h-11 cursor-pointer items-center rounded-md border px-3 font-medium hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                    >
-                        {latest ? 'Reclassificar' : 'Classificar'}
-                    </summary>
-                    <TriageForm episode={episode} levels={levels} />
-                </details>
+            {episode.status !== 'waiting' && (
+                <p className="font-medium">
+                    {episode.status === 'in_care'
+                        ? `Em atendimento${episode.attendedBy ? ` com ${episode.attendedBy}` : ''}`
+                        : 'Aguardando internação'}
+                </p>
             )}
+            <div className="flex flex-wrap items-start gap-2">
+                {episode.myVisitId !== null && (
+                    <Button asChild className="min-h-11">
+                        <Link href={showVisit(episode.myVisitId)}>
+                            Continuar atendimento
+                        </Link>
+                    </Button>
+                )}
+                {episode.status === 'waiting' &&
+                    canTriage &&
+                    episode.level !== null && (
+                        <Form {...EmergencyController.call.form(episode.id)}>
+                            {({ processing }) => (
+                                <Button
+                                    type="submit"
+                                    disabled={processing}
+                                    aria-label={`Chamar e atender: ${name}, chegada às ${episode.arrivedAt}`}
+                                    className="min-h-11"
+                                >
+                                    Chamar e atender
+                                </Button>
+                            )}
+                        </Form>
+                    )}
+                {episode.status === 'waiting' && canTriage && (
+                    // Remounted after each classification: closed again, with the new values as defaults.
+                    <details
+                        key={episode.latest?.id ?? 0}
+                        className="basis-full"
+                    >
+                        <summary
+                            aria-label={`${latest ? 'Reclassificar' : 'Classificar'}: ${name}, chegada às ${episode.arrivedAt}`}
+                            className="inline-flex min-h-11 cursor-pointer items-center rounded-md border px-3 font-medium hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        >
+                            {latest ? 'Reclassificar' : 'Classificar'}
+                        </summary>
+                        <TriageForm episode={episode} levels={levels} />
+                    </details>
+                )}
+                {episode.status === 'waiting' && (canTriage || canArrive) && (
+                    <details className="basis-full">
+                        <summary
+                            aria-label={`Registrar evasão: ${name}, chegada às ${episode.arrivedAt}`}
+                            className="inline-flex min-h-11 cursor-pointer items-center rounded-md px-3 text-muted-foreground hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        >
+                            Registrar evasão
+                        </summary>
+                        <Form
+                            {...EmergencyController.evade.form(episode.id)}
+                            options={{ preserveScroll: true }}
+                            className="mt-2 flex flex-wrap items-center gap-3"
+                        >
+                            {({ processing }) => (
+                                <>
+                                    <p className="text-muted-foreground">
+                                        O paciente saiu sem ser atendido. O
+                                        horário e quem registrou ficam
+                                        guardados.
+                                    </p>
+                                    <Button
+                                        type="submit"
+                                        variant="destructive"
+                                        disabled={processing}
+                                        className="min-h-11"
+                                    >
+                                        Confirmar evasão
+                                    </Button>
+                                </>
+                            )}
+                        </Form>
+                    </details>
+                )}
+            </div>
         </li>
     );
 }

@@ -80,6 +80,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('emergency', [EmergencyController::class, 'index'])->name('emergency.index');
     Route::post('units/{unit}/emergency-arrivals', [EmergencyController::class, 'arrive'])->middleware('throttle:60,1')->name('emergency.arrive');
     Route::post('emergency-episodes/{episode}/triage', [EmergencyController::class, 'triage'])->middleware('throttle:60,1')->name('emergency.triage');
+    Route::post('emergency-episodes/{episode}/call', [EmergencyController::class, 'call'])->middleware('throttle:60,1')->name('emergency.call');
+    Route::post('emergency-episodes/{episode}/evade', [EmergencyController::class, 'evade'])->middleware('throttle:60,1')->name('emergency.evade');
     Route::get('triage-levels', [TriageLevelController::class, 'index'])->name('triage-levels.index');
     Route::put('triage-levels/{triageLevel}', [TriageLevelController::class, 'update'])->name('triage-levels.update');
     Route::get('beds', [BedController::class, 'index'])->name('beds.index');

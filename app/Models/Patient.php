@@ -89,8 +89,8 @@ class Patient extends Model
             }
 
             // Step 4.2: one open emergency episode per person; the arrival checks the merged record too.
-            if (EmergencyEpisode::query()->where('patient_id', $primary->id)->where('status', '<>', 'closed')->exists()
-                && EmergencyEpisode::query()->where('patient_id', $duplicate->id)->where('status', '<>', 'closed')->exists()) {
+            if (EmergencyEpisode::query()->where('patient_id', $primary->id)->whereIn('status', EmergencyEpisode::OPEN)->exists()
+                && EmergencyEpisode::query()->where('patient_id', $duplicate->id)->whereIn('status', EmergencyEpisode::OPEN)->exists()) {
                 throw ValidationException::withMessages(['merge' => 'Os dois cadastros estão na urgência ao mesmo tempo. Encerre um dos episódios antes de unificar.']);
             }
 

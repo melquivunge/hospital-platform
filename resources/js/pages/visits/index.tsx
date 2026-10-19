@@ -19,7 +19,18 @@ type Item = {
 };
 
 /** Patients who arrived for the professional and visits in progress (step 3.6a). */
-export default function Visits({ appointments }: { appointments: Item[] }) {
+export default function Visits({
+    appointments,
+    emergencies,
+}: {
+    appointments: Item[];
+    emergencies: {
+        id: number;
+        start: string;
+        unit: string | null;
+        patient: string | null;
+    }[];
+}) {
     const { errors } = usePage().props;
 
     return (
@@ -32,6 +43,42 @@ export default function Visits({ appointments }: { appointments: Item[] }) {
                     description="Pacientes que já chegaram para você e atendimentos em andamento. O prontuário abre só durante o atendimento, e cada leitura fica registrada."
                 />
                 <InputError message={errors.visit} className="mb-4" />
+
+                {emergencies.length > 0 && (
+                    <section
+                        aria-labelledby="emergency-heading"
+                        className="mb-6 grid gap-3"
+                    >
+                        <h2 id="emergency-heading" className="font-semibold">
+                            Urgência em andamento
+                        </h2>
+                        <ul className="divide-y rounded-xl border bg-card">
+                            {emergencies.map((item) => (
+                                <li
+                                    key={item.id}
+                                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-sm"
+                                >
+                                    <span className="grid gap-0.5">
+                                        <span className="font-medium">
+                                            {item.patient}
+                                        </span>
+                                        <span className="text-muted-foreground tabular-nums">
+                                            Desde {item.start} · {item.unit}
+                                        </span>
+                                    </span>
+                                    <Button asChild className="min-h-11">
+                                        <Link
+                                            href={show(item.id)}
+                                            aria-label={`Continuar atendimento de urgência: ${item.patient}`}
+                                        >
+                                            Continuar
+                                        </Link>
+                                    </Button>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
 
                 {appointments.length === 0 ? (
                     <div className="rounded-xl border bg-card px-5 py-12 text-center">

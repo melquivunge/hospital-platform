@@ -6,6 +6,7 @@ use App\Clinical\ClinicalAccess;
 use App\Models\Appointment;
 use App\Models\AuditEvent;
 use App\Models\ClinicalNote;
+use App\Models\EmergencyEpisode;
 use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\Visit;
@@ -16,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -52,6 +54,15 @@ class VisitController extends Controller
                     'status' => $appointment->status,
                     'walkIn' => $appointment->walk_in,
                     'visitId' => $appointment->visit?->id,
+                ]),
+            // Step 4.3: emergency visits in progress; new ones are called from the emergency queue.
+            'emergencies' => Visit::query()->where('professional_id', $professional->id)->whereNotNull('emergency_episode_id')->whereNull('closed_at')
+                ->with(['patient:id,name,social_name', 'unit:id,name,timezone'])->orderBy('opened_at')->get()
+                ->map(fn (Visit $visit) => [
+                    'id' => $visit->id,
+                    'start' => $visit->opened_at->setTimezone($visit->unit->timezone ?? 'UTC')->format('d/m H:i'),
+                    'unit' => $visit->unit?->name,
+                    'patient' => $visit->patient->social_name ?? $visit->patient->name ?? null,
                 ]),
         ]);
     }
@@ -103,7 +114,7 @@ class VisitController extends Controller
         $timezone = $visit->unit()->value('timezone') ?? 'UTC';
 
         return Inertia::render('visits/show', [
-            'visit' => ['id' => $visit->id, 'openedAt' => $visit->opened_at->setTimezone($timezone)->format('d/m/Y H:i')],
+            'visit' => ['id' => $visit->id, 'openedAt' => $visit->opened_at->setTimezone($timezone)->format('d/m/Y H:i'), 'emergency' => $visit->emergency_episode_id !== null],
             'patient' => self::patientHeader($patient),
             'record' => self::signedRecord($ids, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
@@ -117,8 +128,14 @@ class VisitController extends Controller
     {
         $professional = self::professional($request);
         abort_unless($visit->professional_id === $professional->id, 403);
+        // Step 4.3: an emergency visit ends with an outcome.
+        $outcome = $visit->emergency_episode_id === null ? null : (string) $request->validate(
+            ['outcome' => ['required', Rule::in(EmergencyEpisode::OUTCOMES)]],
+            ['outcome.required' => 'Escolha o desfecho do atendimento de urgência.'],
+            ['outcome' => 'desfecho'],
+        )['outcome'];
 
-        DB::transaction(function () use ($visit, $request) {
+        DB::transaction(function () use ($visit, $request, $outcome) {
             $locked = Visit::query()->whereKey($visit->id)->lockForUpdate()->firstOrFail();
             if ($locked->closed_at !== null) {
                 throw ValidationException::withMessages(['visit' => 'Este atendimento já foi encerrado.']);
@@ -128,12 +145,17 @@ class VisitController extends Controller
                 throw ValidationException::withMessages(['visit' => 'Assine os rascunhos antes de encerrar o atendimento.']);
             }
             $locked->forceFill(['closed_at' => now()])->save();
-            Appointment::query()->whereKey($locked->appointment_id)->update(['status' => 'completed']);
+            if ($locked->appointment_id !== null) {
+                Appointment::query()->whereKey($locked->appointment_id)->update(['status' => 'completed']);
+            }
             AuditEvent::record('visit.closed', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id]);
+            if ($outcome !== null) {
+                EmergencyController::end($locked, $outcome, $request->user()->id);
+            }
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Atendimento encerrado.']);
 
-        return to_route('visits.index');
+        return $outcome === null ? to_route('visits.index') : to_route('emergency.index', ['unit' => $visit->unit_id]);
     }
 
     /**
