@@ -32,6 +32,17 @@ class DeliverNotifications implements ShouldQueue
         'shift.swap_rejected', 'shift.swap_cancelled', 'shift.swap_expired',
         'attendance.occurrence_reported', 'attendance.occurrence_granted', 'attendance.occurrence_denied',
         'clinical.emergency_access',
+        'transfer.requested', 'transfer.accepted', 'transfer.refused', 'transfer.cancelled', 'transfer.departed', 'transfer.completed',
+    ];
+
+    /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
+    private const TRANSFER_TITLES = [
+        'transfer.requested' => 'Transferência entre unidades solicitada',
+        'transfer.accepted' => 'Transferência entre unidades aceita: leito reservado',
+        'transfer.refused' => 'Transferência entre unidades recusada',
+        'transfer.cancelled' => 'Transferência entre unidades cancelada',
+        'transfer.departed' => 'Paciente saiu para outra unidade',
+        'transfer.completed' => 'Transferência entre unidades concluída',
     ];
 
     public function handle(): void
@@ -92,6 +103,14 @@ class DeliverNotifications implements ShouldQueue
             $managers = $this->usersWithRole($tenant, Role::UnitManager, (int) ($context['unit_id'] ?? 0));
 
             return [[$managers !== [] ? $managers : $this->usersWithRole($tenant, Role::NetworkAdmin), 'Acesso de emergência a um prontuário', '/clinical-access']];
+        }
+        if (isset(self::TRANSFER_TITLES[$event->action])) {
+            $users = array_values(array_unique([
+                ...$this->usersWithRole($tenant, Role::BedManagement, (int) ($context['from_unit_id'] ?? 0)),
+                ...$this->usersWithRole($tenant, Role::BedManagement, (int) ($context['to_unit_id'] ?? 0)),
+            ]));
+
+            return [[$users, self::TRANSFER_TITLES[$event->action], '/admissions']];
         }
         $shift = $event->subject_type === 'App\Models\Shift' ? DB::table('shifts')->where('tenant_id', $tenant)->where('id', $event->subject_id)->first() : null;
 

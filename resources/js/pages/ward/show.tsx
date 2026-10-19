@@ -1,4 +1,6 @@
 import { Form, Head } from '@inertiajs/react';
+import { useState } from 'react';
+import TransferController from '@/actions/App/Http/Controllers/TransferController';
 import ClinicalDocumentController from '@/actions/App/Http/Controllers/ClinicalDocumentController';
 import WardController from '@/actions/App/Http/Controllers/WardController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
@@ -24,6 +26,8 @@ export default function WardShow({
     patient,
     history,
     handOver,
+    transfer,
+    transferOptions,
     record,
     drafts,
     documents,
@@ -38,6 +42,13 @@ export default function WardShow({
     patient: RecordPatient;
     history: { id: number; at: string; text: string; reason: string | null }[];
     handOver: { id: number; name: string }[] | null;
+    transfer: {
+        id: number;
+        status: 'requested' | 'accepted' | 'departed';
+        to: string | null;
+        mine: boolean;
+    } | null;
+    transferOptions: TransferUnit[] | null;
     record: RecordNote[];
     drafts: Draft[];
     documents: ClinicalDocument[];
@@ -61,6 +72,13 @@ export default function WardShow({
                         .filter(Boolean)
                         .join(' · ')}
                 />
+                {transfer && <TransferStatus transfer={transfer} />}
+                {transferOptions && transferOptions.length > 0 && (
+                    <RequestTransfer
+                        admissionId={admission.id}
+                        units={transferOptions}
+                    />
+                )}
                 {handOver && (
                     <details className="mb-6 rounded-xl border bg-card px-5 py-3">
                         <summary className="flex min-h-11 cursor-pointer items-center font-medium">
@@ -161,6 +179,170 @@ export default function WardShow({
                 </NotesWorkspace>
             </Page>
         </>
+    );
+}
+
+type TransferUnit = {
+    id: number;
+    name: string;
+    sectors: { id: number; name: string }[];
+    professionals: { id: number; name: string }[];
+};
+
+const transferLabels = {
+    requested: 'aguardando a gestão de leitos do destino',
+    accepted: 'aceita, leito reservado; aguardando a saída',
+    departed: 'paciente em transferência; aguardando o recebimento',
+};
+
+/** Step 4.6: the open transfer; the requester may cancel it before the departure. */
+function TransferStatus({
+    transfer,
+}: {
+    transfer: {
+        id: number;
+        status: 'requested' | 'accepted' | 'departed';
+        to: string | null;
+        mine: boolean;
+    };
+}) {
+    return (
+        <section className="mb-6 grid gap-3 rounded-xl border border-primary/40 bg-card p-5 text-sm">
+            <p className="font-medium">
+                Transferência para {transfer.to}:{' '}
+                {transferLabels[transfer.status]}
+            </p>
+            {transfer.mine && transfer.status !== 'departed' && (
+                <Form
+                    {...TransferController.cancel.form(transfer.id)}
+                    className="flex flex-wrap items-end gap-3"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor="cancel-reason">
+                                    Motivo do cancelamento
+                                </Label>
+                                <Input
+                                    id="cancel-reason"
+                                    name="reason"
+                                    required
+                                    maxLength={500}
+                                    className="h-11"
+                                />
+                                <InputError message={errors.reason} />
+                            </div>
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Cancelar transferência
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            )}
+        </section>
+    );
+}
+
+/** Step 4.6: the responsible doctor asks for a transfer to another unit of the network. */
+function RequestTransfer({
+    admissionId,
+    units,
+}: {
+    admissionId: number;
+    units: TransferUnit[];
+}) {
+    const [unitId, setUnitId] = useState(units[0].id);
+    const unit = units.find((option) => option.id === unitId) ?? units[0];
+
+    return (
+        <details className="mb-6 rounded-xl border bg-card px-5 py-3">
+            <summary className="flex min-h-11 cursor-pointer items-center font-medium">
+                Transferir para outra unidade
+            </summary>
+            <Form
+                {...TransferController.store.form(admissionId)}
+                className="grid gap-4 py-3 sm:grid-cols-3"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <div className="grid content-start gap-2">
+                            <Label htmlFor="to_unit_id">
+                                Unidade de destino
+                            </Label>
+                            <select
+                                id="to_unit_id"
+                                name="to_unit_id"
+                                value={unitId}
+                                onChange={(event) =>
+                                    setUnitId(Number(event.target.value))
+                                }
+                                className={selectClassName}
+                            >
+                                {units.map((option) => (
+                                    <option key={option.id} value={option.id}>
+                                        {option.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <InputError message={errors.to_unit_id} />
+                        </div>
+                        <div className="grid content-start gap-2">
+                            <Label htmlFor="transfer_sector_id">Setor</Label>
+                            <select
+                                key={`sector-${unit.id}`}
+                                id="transfer_sector_id"
+                                name="requested_sector_id"
+                                required
+                                className={selectClassName}
+                            >
+                                {unit.sectors.map((sector) => (
+                                    <option key={sector.id} value={sector.id}>
+                                        {sector.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <InputError message={errors.requested_sector_id} />
+                        </div>
+                        <div className="grid content-start gap-2">
+                            <Label htmlFor="transfer_responsible_id">
+                                Médico responsável no destino
+                            </Label>
+                            <select
+                                key={`responsible-${unit.id}`}
+                                id="transfer_responsible_id"
+                                name="responsible_professional_id"
+                                required
+                                className={selectClassName}
+                            >
+                                {unit.professionals.map((professional) => (
+                                    <option
+                                        key={professional.id}
+                                        value={professional.id}
+                                    >
+                                        {professional.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <InputError
+                                message={errors.responsible_professional_id}
+                            />
+                        </div>
+                        <Button
+                            type="submit"
+                            disabled={processing}
+                            className="min-h-11 justify-self-start sm:col-span-3"
+                        >
+                            Solicitar transferência
+                        </Button>
+                    </>
+                )}
+            </Form>
+        </details>
     );
 }
 

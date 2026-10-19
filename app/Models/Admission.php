@@ -32,7 +32,7 @@ class Admission extends Model
 {
     use BelongsToTenant;
 
-    public const ACTIVE = ['requested', 'admitted'];
+    public const ACTIVE = ['requested', 'admitted', 'in_transit'];
 
     public $timestamps = false;
 
