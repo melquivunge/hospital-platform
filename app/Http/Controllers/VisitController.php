@@ -119,6 +119,8 @@ class VisitController extends Controller
             // Step 4.4a: choices for an admission request when closing an emergency visit.
             'admissionOptions' => $visit->emergency_episode_id === null ? null : [...AdmissionController::requestOptions($visit->unit_id), 'me' => $professional->id],
             'patient' => self::patientHeader($patient),
+            'allergies' => PatientAllergyController::listing($ids, $timezone),
+            'allergyForm' => PatientAllergyController::form($patient),
             'record' => self::signedRecord($ids, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
             // Drafts are seen only by their author.

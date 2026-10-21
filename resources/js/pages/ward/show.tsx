@@ -9,6 +9,11 @@ import type { Draft } from '@/components/clinical-notes';
 import { NotesWorkspace, textareaClassName } from '@/components/clinical-notes';
 import type { RecordNote, RecordPatient } from '@/components/clinical-record';
 import { patientDescription } from '@/components/clinical-record';
+import type {
+    AllergyForm,
+    PatientAllergy,
+} from '@/components/patient-allergies';
+import { PatientAllergies } from '@/components/patient-allergies';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
@@ -24,6 +29,8 @@ import { index } from '@/routes/ward';
 export default function WardShow({
     admission,
     patient,
+    allergies,
+    allergyForm,
     history,
     handOver,
     transfer,
@@ -41,6 +48,8 @@ export default function WardShow({
         responsible: string | null;
     };
     patient: RecordPatient;
+    allergies: PatientAllergy[];
+    allergyForm: AllergyForm;
     history: { id: number; at: string; text: string; reason: string | null }[];
     handOver: { id: number; name: string }[] | null;
     transfer: {
@@ -76,6 +85,7 @@ export default function WardShow({
                         .filter(Boolean)
                         .join(' · ')}
                 />
+                <PatientAllergies allergies={allergies} form={allergyForm} />
                 {transfer && <TransferStatus transfer={transfer} />}
                 {transferOptions && transferOptions.length > 0 && (
                     <RequestTransfer

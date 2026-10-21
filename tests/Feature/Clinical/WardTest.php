@@ -142,6 +142,11 @@ class WardTest extends ClinicalTestCase
         $this->actingAs($this->wardNurse->user)->post(route('clinical-documents.withdraw', $document), ['reason' => 'Paciente errado.'])->assertSessionHasNoErrors();
         $this->assertNotNull($document->fresh()->withdrawn_at);
 
+        // Step 4b.1c: the bed's team records allergies too; another sector's team does not.
+        $this->post(route('patient-allergies.store', $this->patient), ['substance' => 'Látex', 'severity' => 'moderate'])->assertSessionHasNoErrors();
+        $this->actingAs($this->icuNurse->user)->post(route('patient-allergies.store', $this->patient), ['substance' => 'Iodo', 'severity' => 'mild'])->assertForbidden();
+        $this->actingAs($this->doctorAccount->user)->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('allergies.0.substance', 'Látex')->has('allergyForm'));
+
         app(CurrentTenant::class)->set($this->unit->tenant);
         $row = (array) DB::table('clinical_documents')->where('id', $document->id)->first();
         unset($row['id']);

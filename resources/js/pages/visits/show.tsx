@@ -8,6 +8,11 @@ import type { Draft } from '@/components/clinical-notes';
 import { NotesWorkspace } from '@/components/clinical-notes';
 import type { RecordNote, RecordPatient } from '@/components/clinical-record';
 import { patientDescription } from '@/components/clinical-record';
+import type {
+    AllergyForm,
+    PatientAllergy,
+} from '@/components/patient-allergies';
+import { PatientAllergies } from '@/components/patient-allergies';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
@@ -19,6 +24,8 @@ import { index } from '@/routes/visits';
 export default function VisitShow({
     visit,
     patient,
+    allergies,
+    allergyForm,
     record,
     drafts,
     documents,
@@ -26,6 +33,8 @@ export default function VisitShow({
 }: {
     visit: { id: number; openedAt: string | null; emergency: boolean };
     patient: RecordPatient;
+    allergies: PatientAllergy[];
+    allergyForm: AllergyForm;
     record: RecordNote[];
     drafts: Draft[];
     documents: ClinicalDocument[];
@@ -58,6 +67,7 @@ export default function VisitShow({
                         )
                     }
                 />
+                <PatientAllergies allergies={allergies} form={allergyForm} />
                 <InputError message={errors.visit} className="mb-4" />
                 {admissionOptions && (
                     <CloseEmergency
