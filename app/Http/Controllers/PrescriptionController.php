@@ -56,7 +56,7 @@ class PrescriptionController extends Controller
         $timezone = Unit::query()->whereKey($basis->unit_id)->value('timezone') ?? 'UTC';
         $ids = ClinicalAccess::recordIds($patient);
         $items = $prescription->items()->get()->all();
-        $current = PrescriptionSafety::alerts($items, $ids);
+        $current = self::draftAlerts($prescription, $items, $patient);
         if ($admission !== null) {
             $admission->load(['bed:id,code,room,sector_id', 'bed.sector:id,name']);
         }
@@ -145,7 +145,7 @@ class PrescriptionController extends Controller
             if (count($existing) >= self::MAX_ITEMS) {
                 throw ValidationException::withMessages(['medication_id' => 'A prescrição já tem '.self::MAX_ITEMS.' itens.']);
             }
-            $alerts = PrescriptionSafety::alerts([...$existing, $item], ClinicalAccess::recordIds($patient));
+            $alerts = self::draftAlerts($locked, [...$existing, $item], $patient);
             $item->alerts = end($alerts) ?: [];
             if ($item->alerts !== [] && $justification === null) {
                 throw ValidationException::withMessages(['justification' => 'Justifique para prescrever: '.implode(' ', $item->alerts)]);
@@ -170,7 +170,7 @@ class PrescriptionController extends Controller
             $locked = Prescription::query()->whereKey($prescription->id)->lockForUpdate()->firstOrFail();
             abort_if($locked->status !== 'draft', 409);
             $items = $locked->items()->get()->all();
-            $alerts = PrescriptionSafety::alerts($items, ClinicalAccess::recordIds($patient));
+            $alerts = self::draftAlerts($locked, $items, $patient);
             $index = array_search($item->id, array_map(fn (PrescriptionItem $each) => $each->id, $items), true);
             abort_if($index === false, 404);
             if ($alerts[$index] === []) {
@@ -235,7 +235,7 @@ class PrescriptionController extends Controller
                 throw ValidationException::withMessages(['password' => 'Inclua ao menos um item antes de assinar.']);
             }
             // Every alert found now must have been justified: rules, allergies or other items may have changed.
-            $alerts = PrescriptionSafety::alerts($items, ClinicalAccess::recordIds($patient));
+            $alerts = self::draftAlerts($locked, $items, $patient);
             $pending = [];
             foreach ($items as $index => $item) {
                 if ($alerts[$index] !== [] && ($item->justification === null || array_diff($alerts[$index], $item->alerts) !== [])) {
@@ -255,7 +255,8 @@ class PrescriptionController extends Controller
             $timezone = Unit::query()->whereKey($locked->unit_id)->value('timezone') ?? 'UTC';
             $doses = [];
             foreach ($items as $item) {
-                foreach ($item->schedule($until, $timezone) as $at) {
+                // Doses before the signature (a draft left open for hours) were never prescribed: not scheduled.
+                foreach (array_filter($item->schedule($until, $timezone), fn (CarbonImmutable $at) => $at->gte($now->subHour())) as $at) {
                     $doses[] = ['tenant_id' => $locked->tenant_id, 'prescription_item_id' => $item->id, 'scheduled_at' => $at];
                 }
             }
@@ -284,7 +285,12 @@ class PrescriptionController extends Controller
         abort_unless(self::active($prescription)?->id === $prescription->id, 403);
         $data = $request->validateWithBag("suspend{$item->id}", ['reason' => ['required', 'string', 'max:255']], [], ['reason' => 'motivo']);
 
-        DB::transaction(function () use ($item, $request, $data) {
+        DB::transaction(function () use ($item, $request, $data, $prescription, $admission, $visit) {
+            // Lock order: the encounter, then the item. A prescription signed in between is seen here.
+            $admission !== null ? Admission::query()->whereKey($admission->id)->lockForUpdate()->first() : Visit::query()->whereKey($visit?->id)->lockForUpdate()->first();
+            if (self::active($prescription)?->id !== $prescription->id) {
+                throw ValidationException::withMessages(['reason' => 'Esta prescrição foi substituída. Suspenda o item na prescrição válida.'])->errorBag("suspend{$item->id}");
+            }
             $locked = PrescriptionItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
             if ($locked->suspended_at !== null) {
                 throw ValidationException::withMessages(['reason' => 'Este item já foi suspenso.'])->errorBag("suspend{$item->id}");
@@ -295,6 +301,29 @@ class PrescriptionController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Item suspenso.']);
 
         return back();
+    }
+
+    /**
+     * The safety alerts of a draft, plus one for a medication suspended in the encounter after the draft began:
+     * a copied item must not come back silently (step 4b.2b review).
+     *
+     * @param  array<int, PrescriptionItem>  $items
+     * @return list<list<string>>
+     */
+    private static function draftAlerts(Prescription $draft, array $items, Patient $patient): array
+    {
+        $alerts = PrescriptionSafety::alerts($items, ClinicalAccess::recordIds($patient));
+        $timezone = Unit::query()->whereKey($draft->unit_id)->value('timezone') ?? 'UTC';
+        $suspended = PrescriptionItem::query()->whereIn('prescription_id', Prescription::query()
+            ->where($draft->admission_id !== null ? 'admission_id' : 'visit_id', $draft->admission_id ?? $draft->visit_id)->where('status', 'signed')->select('id'))
+            ->where('suspended_at', '>=', $draft->created_at)->get()->keyBy('medication_id');
+        foreach (array_values($items) as $index => $item) {
+            if (($stop = $suspended->get($item->medication_id)) !== null) {
+                $alerts[$index][] = 'Suspenso na prescrição válida em '.$stop->suspended_at?->setTimezone($timezone)->format('d/m H:i').": {$stop->suspension_reason}";
+            }
+        }
+
+        return $alerts;
     }
 
     /**
@@ -372,12 +401,17 @@ class PrescriptionController extends Controller
         $prescription = $existing();
         if ($prescription === null) {
             try {
-                $prescription = DB::transaction(fn () => Prescription::query()->create([
-                    'patient_id' => $patient->merged_into_id ?? $patient->id, 'unit_id' => $admission->unit_id ?? $visit?->unit_id,
-                    $column => $id, 'author_user_id' => $request->user()->id, 'professional_id' => $professional->id, 'created_at' => now(),
-                ]));
-                $copied = self::copyPrevious($prescription, $patient);
-                AuditEvent::record('prescription.created', $prescription->tenant_id, $prescription, ['copied_items' => $copied]);
+                // The draft and its copied items in one transaction: never a half-copied draft.
+                [$prescription, $copied] = DB::transaction(function () use ($patient, $admission, $visit, $column, $id, $request, $professional) {
+                    $prescription = Prescription::query()->create([
+                        'patient_id' => $patient->merged_into_id ?? $patient->id, 'unit_id' => $admission->unit_id ?? $visit?->unit_id,
+                        $column => $id, 'author_user_id' => $request->user()->id, 'professional_id' => $professional->id, 'created_at' => now(),
+                    ])->refresh();
+                    $copied = self::copyPrevious($prescription, $patient);
+                    AuditEvent::record('prescription.created', $prescription->tenant_id, $prescription, ['copied_items' => $copied]);
+
+                    return [$prescription, $copied];
+                });
                 if ($copied > 0) {
                     Inertia::flash('toast', ['type' => 'info', 'message' => "Rascunho criado com {$copied} ".($copied === 1 ? 'item copiado' : 'itens copiados').' da última prescrição. Revise antes de assinar.']);
                 }

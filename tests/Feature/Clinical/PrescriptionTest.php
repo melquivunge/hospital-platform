@@ -288,9 +288,36 @@ class PrescriptionTest extends ClinicalTestCase
         $this->assertSame('2026-11-14 12:00', $copies[0]->starts_at->utc()->format('Y-m-d H:i'));
         $this->assertSame(['copied_items' => 2], AuditEvent::where('action', 'prescription.created')->latest('id')->firstOrFail()->context);
         $this->get(route('prescriptions.edit', $next))->assertInertia(fn (Assert $page) => $page->has('items', 2)->where('items.1.pending', []));
+
+        // Warfarin is suspended on the still-valid prescription after the copy: the draft cannot bring it back silently.
+        $this->post(route('prescription-items.suspend', $warfarin), ['reason' => 'Sangramento gengival.'])->assertSessionHasNoErrors();
+        $this->post(route('prescriptions.sign', $next), ['password' => 'password'])->assertSessionHasErrors('password');
+        $this->get(route('prescriptions.edit', $next))->assertInertia(fn (Assert $page) => $page->where('items.0.pending', ['Suspenso na prescrição válida em 14/11 05:00: Sangramento gengival.']));
+        $this->delete(route('prescription-items.destroy', $copies[0]))->assertSessionHasNoErrors();
         $this->post(route('prescriptions.sign', $next), ['password' => 'password'])->assertSessionHasNoErrors();
 
         // Only items of the active prescription are suspended.
         $this->post(route('prescription-items.suspend', $warfarin), ['reason' => 'Tarde demais.'])->assertForbidden();
+    }
+
+    public function test_the_copy_drops_deactivated_medications_and_asks_again_for_new_alerts(): void
+    {
+        $prescription = $this->draft();
+        $this->add($prescription, 'varfarina', ['dose' => '5'])->assertSessionHasNoErrors();
+        $this->add($prescription, 'aas', ['dose' => '100', 'justification' => 'Síndrome coronariana.'])->assertSessionHasNoErrors();
+        $this->add($prescription, 'dipirona', ['dose' => '500'])->assertSessionHasNoErrors();
+        $this->post(route('prescriptions.sign', $prescription), ['password' => 'password'])->assertSessionHasNoErrors();
+
+        // Dipyrone leaves the catalog and a warfarin allergy is recorded before the renewal.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->catalog['dipirona']->forceFill(['active' => false])->save();
+        app(CurrentTenant::class)->set(null);
+        $this->post(route('patient-allergies.store', $this->patient), ['substance' => 'Varfarina', 'severity' => 'severe'])->assertSessionHasNoErrors();
+
+        $next = $this->draft();
+        $this->get(route('prescriptions.edit', $next))->assertInertia(fn (Assert $page) => $page->has('items', 2)
+            ->where('items.0.medication', 'Varfarina 5 mg (Comprimido)')->where('items.0.pending', ['Alergia registrada a Varfarina (grave).'])
+            ->where('items.1.pending', []));
+        $this->post(route('prescriptions.sign', $next), ['password' => 'password'])->assertSessionHasErrors('password');
     }
 }

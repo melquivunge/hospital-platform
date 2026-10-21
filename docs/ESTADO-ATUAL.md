@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.2a (prescrição com alertas e assinatura); depois a 4b.2b (cópia da anterior, suspensão de item e aprazamento), plano em `plans/web-v4-prescricao.md`.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.2b (cópia, suspensão e aprazamento); depois a 4b.3 (avaliação farmacêutica e dispensação), plano em `plans/web-v4-prescricao.md`.
 
 ## Onde está cada coisa
 
@@ -78,7 +78,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #52 | Etapa 4b.1b: importação CSV do catálogo e das interações | Mesclado |
 | #53 | Atualização do `vite-plus` para 1.3.0 (alertas altos do `npm audit`) | Mesclado |
 | #54 | Etapa 4b.1c: alergias do paciente | Mesclado |
-| — | Etapa 4b.2a: prescrição com alertas, justificativa e assinatura (branch `feat/prescription`) | Em revisão |
+| #55 | Etapa 4b.2a: prescrição com alertas, justificativa e assinatura | Mesclado |
+| — | Etapa 4b.2b: cópia, suspensão de item e aprazamento (branch `feat/prescription-renewal`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -234,7 +235,14 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
-- **4b.2a (prescrição; a 4b.2 foi dividida em 4b.2a e 4b.2b cópia, suspensão e aprazamento):**
+- **4b.2b (renovação, suspensão e aprazamento):**
+  - Nova prescrição nasce como cópia da última assinada do atendimento ou da internação (decisão 4): sem itens suspensos nem medicamentos desativados; os alertas são recalculados e a justificativa só fica se ainda cobre todos; o item por intervalo mantém a fase (08, 16, 00 continuam 08, 16, 00). Revisada, é assinada de novo.
+  - Suspender item da prescrição válida, com motivo, uma vez (o banco só aceita essa alteração num item assinado). Para mudar a dose: suspender e prescrever de novo.
+  - Aprazamento na assinatura: horários previstos de cada item (a cada N horas desde o início, ou os horários fixos de cada dia no fuso da unidade) dentro das 24 horas de validade; "se necessário" não tem horário. Horários só de inserção; aparecem no prontuário.
+  - Revisão independente (sem crítico/alto). Corrigido: item suspenso depois que o rascunho o copiou vira alerta pendente (não volta em silêncio); a suspensão confere de novo a prescrição válida sob o lock do atendimento; rascunho e itens copiados numa só transação; horários anteriores à assinatura não são aprazados. Regra registrada para a 4b.4: só se administra horário de item não suspenso da prescrição válida.
+  - Corrida real: duas suspensões simultâneas do mesmo item resultam numa só (4 rodadas).
+  - Navegador: assinatura, suspensão com motivo, nova prescrição avisando o que substitui, horários exibidos.
+- **4b.2a (prescrição, PR #55; a 4b.2 foi dividida em 4b.2a e 4b.2b cópia, suspensão e aprazamento):**
   - Quem prescreve: o médico (conselho CRM, habilitação aprovada e vigente na unidade, em função que atende pacientes) com acesso de escrita ao paciente: a internação (ADR-0004) ou o próprio atendimento de urgência aberto. A enfermagem do setor lê a prescrição, não prescreve. O atendimento ambulatorial não tem prescrição (receita para casa está fora da 4b).
   - Seção "Prescrição" no prontuário da internação e do atendimento de urgência: a prescrição válida (assinada há menos de 24 horas; a mais nova substitui a anterior), as anteriores e o acesso ao rascunho.
   - Rascunho do autor (um por atendimento ou internação): itens do catálogo ativo com dose na unidade do medicamento, via cadastrada, intervalo (1 a 24 h) ou horários fixos, "se necessário" com condição e intervalo mínimo, início no fuso da unidade e observação.
@@ -461,7 +469,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 366 testes passando (etapa 4b.2a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 369 testes passando (etapa 4b.2b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
