@@ -78,6 +78,8 @@ class WardController extends Controller
                 'responsible' => $admission->responsible?->name,
             ],
             'patient' => VisitController::patientHeader($patient),
+            'allergies' => PatientAllergyController::listing($ids, $timezone),
+            'allergyForm' => PatientAllergyController::form($patient),
             'history' => self::history($admission, $timezone),
             // Step 4.5: only the responsible doctor hands the admission over.
             // Not while a transfer between units is open (refused on the server too).

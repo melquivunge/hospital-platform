@@ -58,6 +58,7 @@ class ClinicalRecordController extends Controller
 
         return Inertia::render('clinical/record', [
             'patient' => VisitController::patientHeader($patient),
+            'allergies' => PatientAllergyController::listing(ClinicalAccess::recordIds($patient), $timezone),
             'expiresAt' => $grant->expires_at->setTimezone($timezone)->format('d/m/Y H:i'),
             'record' => VisitController::signedRecord(ClinicalAccess::recordIds($patient), $timezone),
             'documents' => ClinicalDocumentController::listing(ClinicalAccess::recordIds($patient), $timezone, $request->user()->id),

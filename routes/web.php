@@ -17,6 +17,7 @@ use App\Http\Controllers\InsurerController;
 use App\Http\Controllers\JobFunctionController;
 use App\Http\Controllers\MedicationController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PatientAllergyController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\PatientMergeController;
 use App\Http\Controllers\PeopleController;
@@ -82,6 +83,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('visits/{visit}/documents', [ClinicalDocumentController::class, 'store'])->middleware('throttle:30,1')->name('clinical-documents.store');
     Route::get('clinical-documents/{document}/download', [ClinicalDocumentController::class, 'download'])->middleware('throttle:60,1')->name('clinical-documents.download');
     Route::post('clinical-documents/{document}/withdraw', [ClinicalDocumentController::class, 'withdraw'])->middleware('throttle:30,1')->name('clinical-documents.withdraw');
+    Route::post('patients/{patient}/allergies', [PatientAllergyController::class, 'store'])->middleware('throttle:30,1')->name('patient-allergies.store');
+    Route::post('patient-allergies/{allergy}/inactivate', [PatientAllergyController::class, 'inactivate'])->middleware('throttle:30,1')->name('patient-allergies.inactivate');
     Route::get('emergency', [EmergencyController::class, 'index'])->name('emergency.index');
     Route::post('units/{unit}/emergency-arrivals', [EmergencyController::class, 'arrive'])->middleware('throttle:60,1')->name('emergency.arrive');
     Route::post('emergency-episodes/{episode}/triage', [EmergencyController::class, 'triage'])->middleware('throttle:60,1')->name('emergency.triage');

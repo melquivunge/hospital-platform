@@ -5,15 +5,19 @@ import { patientDescription, RecordEntry } from '@/components/clinical-record';
 import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
 import { Page, PageHeader } from '@/components/page';
+import type { PatientAllergy } from '@/components/patient-allergies';
+import { PatientAllergies } from '@/components/patient-allergies';
 
 /** Read-only record under an emergency grant (step 3.6b). */
 export default function ClinicalRecord({
     patient,
+    allergies,
     expiresAt,
     record,
     documents,
 }: {
     patient: RecordPatient;
+    allergies: PatientAllergy[];
     expiresAt: string;
     record: RecordNote[];
     documents: ClinicalDocument[];
@@ -27,6 +31,7 @@ export default function ClinicalRecord({
                     title={patient.name}
                     description={patientDescription(patient)}
                 />
+                <PatientAllergies allergies={allergies} />
                 <p
                     role="status"
                     className="mb-6 flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm"
