@@ -8,6 +8,7 @@ export const roleLabels: Record<string, string> = {
     reception: 'Recepção',
     bed_management: 'Gestão de leitos',
     housekeeping: 'Higienização',
+    pharmacy: 'Farmácia',
     auditor: 'Auditor',
 };
 
@@ -23,6 +24,8 @@ export const roleDescriptions: Record<string, string> = {
     bed_management:
         'Acompanha o mapa de leitos, bloqueia, libera e envia leitos para higienização.',
     housekeeping: 'Marca os leitos higienizados como prontos.',
+    pharmacy:
+        'Avalia as prescrições válidas da unidade, item a item, vendo só a prescrição e as alergias.',
     auditor: 'Consulta trilhas e relatórios, sem alterar registros.',
 };
 

@@ -6,6 +6,7 @@ use App\Clinical\ClinicalAccess;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\BedController;
 use App\Http\Controllers\EmergencyController;
+use App\Http\Controllers\PharmacyController;
 use App\Models\ImportBatch;
 use App\Models\Insurer;
 use App\Models\JobFunction;
@@ -82,6 +83,8 @@ class HandleInertiaRequests extends Middleware
                 && BedController::visibleUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canViewCensus' => fn () => $request->user() !== null
                 && BedController::censusUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
+            'canUsePharmacy' => fn () => $request->user() !== null
+                && PharmacyController::unitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canManageMedications' => fn () => $request->user() !== null
                 && $request->user()->can('manage', Medication::class),
             'canManageInsurers' => fn () => $request->user() !== null

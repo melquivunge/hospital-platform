@@ -21,6 +21,7 @@ use App\Http\Controllers\PatientAllergyController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\PatientMergeController;
 use App\Http\Controllers\PeopleController;
+use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\PolicyController;
 use App\Http\Controllers\PrescriptionController;
 use App\Http\Controllers\ProfessionalController;
@@ -95,6 +96,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::delete('prescription-items/{item}', [PrescriptionController::class, 'destroyItem'])->middleware('throttle:60,1')->name('prescription-items.destroy');
     Route::delete('prescriptions/{prescription}', [PrescriptionController::class, 'discard'])->middleware('throttle:30,1')->name('prescriptions.discard');
     Route::post('prescriptions/{prescription}/sign', [PrescriptionController::class, 'sign'])->middleware('throttle:30,1')->name('prescriptions.sign');
+    Route::get('pharmacy', [PharmacyController::class, 'index'])->name('pharmacy.index');
+    Route::get('pharmacy/prescriptions/{prescription}', [PharmacyController::class, 'show'])->middleware('throttle:120,1')->name('pharmacy.show');
+    Route::post('pharmacy/items/{item}/review', [PharmacyController::class, 'review'])->middleware('throttle:120,1')->name('pharmacy.review');
     Route::get('emergency', [EmergencyController::class, 'index'])->name('emergency.index');
     Route::post('units/{unit}/emergency-arrivals', [EmergencyController::class, 'arrive'])->middleware('throttle:60,1')->name('emergency.arrive');
     Route::post('emergency-episodes/{episode}/triage', [EmergencyController::class, 'triage'])->middleware('throttle:60,1')->name('emergency.triage');

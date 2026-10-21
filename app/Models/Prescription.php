@@ -54,6 +54,22 @@ class Prescription extends Model
     }
 
     /**
+     * @return BelongsTo<Admission, $this>
+     */
+    public function admission(): BelongsTo
+    {
+        return $this->belongsTo(Admission::class);
+    }
+
+    /**
+     * @return BelongsTo<Visit, $this>
+     */
+    public function visit(): BelongsTo
+    {
+        return $this->belongsTo(Visit::class);
+    }
+
+    /**
      * @return BelongsTo<Professional, $this>
      */
     public function professional(): BelongsTo

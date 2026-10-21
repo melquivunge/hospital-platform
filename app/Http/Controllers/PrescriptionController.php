@@ -11,6 +11,7 @@ use App\Models\Medication;
 use App\Models\Patient;
 use App\Models\Prescription;
 use App\Models\PrescriptionItem;
+use App\Models\PrescriptionReview;
 use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Unit;
@@ -329,7 +330,7 @@ class PrescriptionController extends Controller
     /**
      * The active prescription of the encounter: the newest signed one, while valid.
      */
-    private static function active(Prescription $of): ?Prescription
+    public static function active(Prescription $of): ?Prescription
     {
         $newest = Prescription::query()->where($of->admission_id !== null ? 'admission_id' : 'visit_id', $of->admission_id ?? $of->visit_id)
             ->where('status', 'signed')->orderByDesc('signed_at')->orderByDesc('id')->first();
@@ -347,7 +348,7 @@ class PrescriptionController extends Controller
     {
         $column = $admission !== null ? 'admission_id' : 'visit_id';
         $id = $admission->id ?? $visit?->id;
-        $signed = Prescription::query()->where($column, $id)->where('status', 'signed')->with(['items', 'professional:id,name'])
+        $signed = Prescription::query()->where($column, $id)->where('status', 'signed')->with(['items.review', 'professional:id,name'])
             ->orderByDesc('signed_at')->orderByDesc('id')->limit(10)->get();
         $newest = $signed->first();
         $active = $newest !== null && $newest->valid_until?->isFuture() ? $newest : null;
@@ -526,7 +527,7 @@ class PrescriptionController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private static function describe(PrescriptionItem $item, string $timezone): array
+    public static function describe(PrescriptionItem $item, string $timezone): array
     {
         $schedule = match (true) {
             $item->frequency_hours === 24 => '1 vez ao dia',
@@ -546,6 +547,10 @@ class PrescriptionController extends Controller
             'justification' => $item->justification,
             'suspendedAt' => $item->suspended_at?->setTimezone($timezone)->format('d/m/Y H:i'),
             'suspensionReason' => $item->suspension_reason,
+            // Step 4b.3a: the pharmacy's review, once there is one.
+            'review' => $item->relationLoaded('review') && $item->review !== null
+                ? ['decision' => $item->review->decision, 'label' => PrescriptionReview::DECISIONS[$item->review->decision], 'note' => $item->review->note]
+                : null,
         ];
     }
 }

@@ -5,6 +5,7 @@ namespace App\Clinical;
 use App\Models\Admission;
 use App\Models\EmergencyAccess;
 use App\Models\Patient;
+use App\Models\Prescription;
 use App\Models\Professional;
 use App\Models\Unit;
 use App\Models\User;
@@ -100,18 +101,21 @@ final class ClinicalAccess
             ->pluck('qualification_sector.sector_id')->all())));
     }
 
-    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission $basis): void
+    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission|Prescription $basis): void
     {
         DB::table('clinical_reads')->insert([
             'tenant_id' => $patient->tenant_id, 'user_id' => $user->id, 'patient_id' => $patient->merged_into_id ?? $patient->id,
             'reason' => match (true) {
                 $basis instanceof Visit => 'visit',
                 $basis instanceof Admission => 'admission',
+                // ADR-0005: the pharmacy reads one prescription.
+                $basis instanceof Prescription => 'pharmacy',
                 default => 'emergency',
             },
             'visit_id' => $basis instanceof Visit ? $basis->id : null,
             'emergency_access_id' => $basis instanceof EmergencyAccess ? $basis->id : null,
             'admission_id' => $basis instanceof Admission ? $basis->id : null,
+            'prescription_id' => $basis instanceof Prescription ? $basis->id : null,
             'read_at' => now(),
         ]);
     }
