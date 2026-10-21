@@ -33,6 +33,14 @@ const statusLabels: Record<Status, string> = {
     rejected: 'Rejeitado',
 };
 
+/** What confirming creates, per import type. */
+const createdLabels = {
+    professionals: 'profissionais',
+    shifts: 'plantões em rascunho',
+    medications: 'apresentações no catálogo',
+    medication_interactions: 'interações',
+};
+
 export default function ImportShow({
     batch,
     counts,
@@ -41,7 +49,7 @@ export default function ImportShow({
 }: {
     batch: {
         id: number;
-        type: 'professionals' | 'shifts';
+        type: keyof typeof createdLabels;
         source_system: string;
         filename: string;
         status: 'previewed' | 'applying' | 'applied';
@@ -115,7 +123,7 @@ export default function ImportShow({
                             <>
                                 <p className="text-sm text-muted-foreground">
                                     {batch.status === 'previewed'
-                                        ? `Confirmar cria ${counts.ready} profissionais. Linhas idênticas, conflitantes ou rejeitadas não alteram nada.`
+                                        ? `Confirmar cria ${counts.ready} ${createdLabels[batch.type]}. Linhas idênticas, conflitantes ou rejeitadas não alteram nada.`
                                         : 'Aplicando as linhas válidas. Se o processo parar, você pode retomar sem duplicar.'}
                                 </p>
                                 <InputError message={errors.batch} />

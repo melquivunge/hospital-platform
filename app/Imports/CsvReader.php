@@ -75,6 +75,13 @@ final class CsvReader
                 return ['rows' => [], 'errors' => ["A linha {$line} tem campos demais ou muito longos."]];
             }
 
+            // A text with an unquoted separator splits into extra fields: refused, never cut silently.
+            if (array_filter(array_slice($values, count($header)), fn ($value) => trim((string) $value) !== '') !== []) {
+                fclose($stream);
+
+                return ['rows' => [], 'errors' => ["A linha {$line} tem mais campos que o cabeçalho. Coloque entre aspas o texto que contém o separador."]];
+            }
+
             $row = [];
 
             foreach ($header as $position => $column) {

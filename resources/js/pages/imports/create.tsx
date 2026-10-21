@@ -24,22 +24,45 @@ const columnHelp: Record<string, string> = {
     function: 'nome da função (obrigatório)',
     start: 'início com data, hora e fuso, por exemplo 2026-11-10T07:00-03:00',
     end: 'fim no mesmo formato',
+    active_ingredient:
+        'princípio ativo (DCB), por exemplo Dipirona (obrigatório)',
+    form: 'forma farmacêutica, por exemplo Comprimido (obrigatório)',
+    strength: 'concentração, por exemplo 500 mg (obrigatório)',
+    dose_unit:
+        'mg, mcg, g, mL, UI, gota, unidade, aplicação ou jato (obrigatório)',
+    routes: 'vias separadas por |: oral, sublingual, enteral, iv, im, sc, inhalation, nasal, topical, ophthalmic, otic, rectal, vaginal',
+    controlled: 'sim ou não (vazio = não)',
+    high_alert: 'sim ou não (vazio = não)',
+    max_single_dose:
+        'dose máxima por administração, na unidade de dose (opcional)',
+    max_daily_dose: 'dose máxima por dia, na unidade de dose (opcional)',
+    ingredient_a: 'princípio ativo já no catálogo (obrigatório)',
+    ingredient_b: 'outro princípio ativo já no catálogo (obrigatório)',
+    severity: 'leve, moderada, grave ou contraindicada',
+    note: 'orientação ao prescritor (obrigatório)',
     professional_source_id:
         'source_id do profissional importado pela mesma origem; vazio = vaga aberta',
 };
 
-type ImportType = 'professionals' | 'shifts';
+type ImportType =
+    | 'professionals'
+    | 'shifts'
+    | 'medications'
+    | 'medication_interactions';
 
 const typeLabels: Record<ImportType, string> = {
     professionals: 'Profissionais',
     shifts: 'Plantões (entram como rascunho)',
+    medications: 'Catálogo de medicamentos',
+    medication_interactions:
+        'Interações entre princípios ativos (depois do catálogo)',
 };
 
 export default function ImportCreate({
     columns,
     maxLines,
 }: {
-    columns: Record<ImportType, string[]>;
+    columns: Partial<Record<ImportType, string[]>>;
     maxLines: number;
 }) {
     const [type, setType] = useState<ImportType>('professionals');
@@ -58,7 +81,7 @@ export default function ImportCreate({
                     <legend className="px-1 font-semibold tracking-tight">
                         O que importar
                     </legend>
-                    {(Object.keys(typeLabels) as ImportType[]).map((option) => (
+                    {(Object.keys(columns) as ImportType[]).map((option) => (
                         <label
                             key={option}
                             className="flex min-h-11 items-center gap-3"
@@ -87,7 +110,7 @@ export default function ImportCreate({
                         Colunas do arquivo
                     </h2>
                     <dl className="grid gap-1">
-                        {columns[type].map((column) => (
+                        {(columns[type] ?? []).map((column) => (
                             <div
                                 key={column}
                                 className="flex flex-wrap gap-x-2"
