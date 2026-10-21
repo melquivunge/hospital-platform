@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.1a (catálogo e regras de segurança); depois a 4b.1b (importação CSV do catálogo e das regras) e a 4b.1c (alergias), plano em `plans/web-v4-prescricao.md`.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.1b (importação CSV do catálogo e das interações); depois a 4b.1c (alergias), plano em `plans/web-v4-prescricao.md`.
 
 ## Onde está cada coisa
 
@@ -74,7 +74,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #48 | Etapa 4.8: revisão integrada da entrega 4 | Mesclado |
 | #49 | Etapa 4.9: pendências da revisão de segurança | Mesclado |
 | #50 | Entrega 4b: contrato, ADR-0005, ADR-0006 e plano | Mesclado |
-| — | Etapa 4b.1a: catálogo de medicamentos e regras de segurança (branch `feat/medication-catalog`) | Em revisão |
+| #51 | Etapa 4b.1a: catálogo de medicamentos e regras de segurança | Mesclado |
+| — | Etapa 4b.1b: importação CSV do catálogo e das interações (branch `feat/medication-import`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -230,7 +231,13 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
-- **4b.1a (catálogo de medicamentos e regras de segurança; a 4b.1 foi dividida em 4b.1a, 4b.1b importação CSV e 4b.1c alergias):**
+- **4b.1b (importação CSV do catálogo e das interações):**
+  - Na tela "Nova importação", o administrador de rede (só ele) ganha dois tipos: catálogo de medicamentos (colunas do catálogo; vias separadas por "|"; controlado e alto alerta como sim ou não; doses com vírgula ou ponto, até 3 casas) e interações (dois princípios ativos já no catálogo, gravidade pelo código ou pelo nome em português, orientação). A tela "Medicamentos" tem o atalho para importar.
+  - Mesmo fluxo da V1: a prévia não grava nada, a confirmação aplica em segundo plano, e a aplicação pode ser retomada sem duplicar. Apresentação ou par já cadastrado nunca é alterado: com os mesmos valores fica "idêntico"; com valores diferentes, vira "conflito". Linhas repetidas, valores inválidos e texto que começa como fórmula de planilha são rejeitados. A permissão é conferida de novo na confirmação e na aplicação.
+  - Corrigido junto: a prévia dizia "cria N profissionais" para qualquer tipo, inclusive plantões.
+  - Navegador: importação real pela tela, com o worker aplicando (2 criadas, 1 rejeitada com o motivo).
+  - Revisão independente (sem crítico/alto). Corrigido: dose como "1.000" ou "2,500" é recusada como ambígua (milhar ou decimal?), em vez de ser lida mil vezes menor; linha com mais campos que o cabeçalho recusa o arquivo (antes o texto com ";" sem aspas era cortado em silêncio; vale para todas as importações); unidade de dose aceita maiúsculas e minúsculas; orientação da interação normalizada igual na tela e no CSV.
+- **4b.1a (catálogo de medicamentos e regras de segurança, PR #51; a 4b.1 foi dividida em 4b.1a, 4b.1b importação CSV e 4b.1c alergias):**
   - Tela "Medicamentos" (administrador de rede): apresentações com princípio ativo (DCB), forma, concentração, unidade de dose, vias permitidas, marcação de controlado e de alto alerta, dose máxima por administração e por dia (opcionais). A apresentação é única por princípio ativo, forma e concentração, sem diferenciar maiúsculas nem espaços. Desativa em vez de excluir. Busca por princípio ativo, até 100 resultados.
   - Interações entre **princípios ativos** (valem para todas as apresentações), com gravidade (leve, moderada, grave, contraindicada) e orientação ao prescritor. Cada par fica gravado uma vez, em ordem fixa (restrição no banco), e só com princípios ativos do catálogo. Desativa em vez de excluir.
   - Sem dado de paciente: tabelas da rede, fora do RLS. A auditoria guarda os campos alterados e os valores das regras (`medication.*`, `medication_interaction.*`).
@@ -434,7 +441,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 354 testes passando (etapa 4b.1a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 357 testes passando (etapa 4b.1b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

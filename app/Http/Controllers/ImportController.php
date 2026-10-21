@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Imports\CsvReader;
+use App\Imports\MedicationCsvImporter;
+use App\Imports\MedicationInteractionCsvImporter;
 use App\Imports\ProfessionalCsvImporter;
 use App\Imports\ShiftCsvImporter;
 use App\Jobs\ApplyImportBatch;
 use App\Models\AuditEvent;
 use App\Models\ImportBatch;
 use App\Models\ImportItem;
+use App\Models\Medication;
 use App\Models\Unit;
 use App\Policies\ImportBatchPolicy;
 use App\Policies\UnitPolicy;
@@ -21,6 +24,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -52,12 +56,12 @@ class ImportController extends Controller
         return Inertia::render('imports/index', ['batches' => $batches]);
     }
 
-    public function create(): Response
+    public function create(Request $request): Response
     {
         Gate::authorize('create', ImportBatch::class);
 
         return Inertia::render('imports/create', [
-            'columns' => ['professionals' => ProfessionalCsvImporter::COLUMNS, 'shifts' => ShiftCsvImporter::COLUMNS],
+            'columns' => array_map(fn (string $importer) => $importer::COLUMNS, self::types($request)),
             'maxLines' => CsvReader::MAX_LINES,
         ]);
     }
@@ -67,7 +71,7 @@ class ImportController extends Controller
         Gate::authorize('create', ImportBatch::class);
 
         $request->validate([
-            'type' => ['required', 'in:professionals,shifts'],
+            'type' => ['required', Rule::in(array_keys(self::types($request)))],
             'source_system' => ['required', 'string', 'max:100', 'regex:/^[\pL\pN ._\-]+$/u'],
             'file' => ['required', 'file', 'extensions:csv,txt', 'mimetypes:text/csv,text/plain,application/csv,application/vnd.ms-excel', 'max:'.intdiv(CsvReader::MAX_BYTES, 1024)],
         ], attributes: ['source_system' => 'sistema de origem', 'file' => 'arquivo']);
@@ -157,6 +161,8 @@ class ImportController extends Controller
     public function confirm(Request $request, ImportBatch $batch): RedirectResponse
     {
         Gate::authorize('view', $batch);
+        // Step 4b.1b: the catalog is the network's; confirming needs the right to keep it.
+        abort_if(in_array($batch->type, self::CATALOG, true) && $request->user()->cannot('manage', Medication::class), 403);
 
         $updated = ImportBatch::query()->whereKey($batch->id)->whereIn('status', ['previewed', 'applying'])
             ->update(['status' => 'applying', 'confirmed_at' => DB::raw('COALESCE(confirmed_at, now())')]);
@@ -178,19 +184,41 @@ class ImportController extends Controller
     public function template(Request $request): StreamedResponse
     {
         Gate::authorize('create', ImportBatch::class);
-        $type = $request->string('type')->value() === 'shifts' ? 'shifts' : 'professionals';
+        $types = self::types($request);
+        $type = array_key_exists($request->string('type')->value(), $types) ? $request->string('type')->value() : 'professionals';
         $columns = self::importer($type)::COLUMNS;
 
         return response()->streamDownload(function () use ($columns) {
             echo implode(';', $columns)."\r\n";
-        }, $type === 'shifts' ? 'modelo-plantoes.csv' : 'modelo-profissionais.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }, 'modelo-'.str_replace('_', '-', $type).'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     /**
-     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>
+     * Types this user may import: the catalog ones only for who keeps the network catalog (step 4b.1b).
+     *
+     * @return array<string, class-string>
+     */
+    private static function types(Request $request): array
+    {
+        $types = ['professionals' => ProfessionalCsvImporter::class, 'shifts' => ShiftCsvImporter::class];
+
+        return $request->user()->can('manage', Medication::class)
+            ? [...$types, 'medications' => MedicationCsvImporter::class, 'medication_interactions' => MedicationInteractionCsvImporter::class]
+            : $types;
+    }
+
+    /**
+     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>
      */
     public static function importer(string $type): string
     {
-        return $type === 'shifts' ? ShiftCsvImporter::class : ProfessionalCsvImporter::class;
+        return match ($type) {
+            'shifts' => ShiftCsvImporter::class,
+            'medications' => MedicationCsvImporter::class,
+            'medication_interactions' => MedicationInteractionCsvImporter::class,
+            default => ProfessionalCsvImporter::class,
+        };
     }
+
+    private const CATALOG = ['medications', 'medication_interactions'];
 }

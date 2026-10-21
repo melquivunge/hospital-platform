@@ -1,5 +1,5 @@
-import { Form, Head } from '@inertiajs/react';
-import { Pill, Plus, Search } from 'lucide-react';
+import { Form, Head, Link } from '@inertiajs/react';
+import { FileUp, Pill, Plus, Search } from 'lucide-react';
 import type { ReactNode } from 'react';
 import MedicationController from '@/actions/App/Http/Controllers/MedicationController';
 import InputError from '@/components/input-error';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { create as newImport } from '@/routes/imports';
 import { index } from '@/routes/medications';
 
 type Medication = {
@@ -77,6 +78,12 @@ export default function MedicationsIndex({
                     title="Medicamentos"
                     description="Catálogo da rede e regras de segurança. A prescrição só alerta sobre dose máxima e interação do que estiver cadastrado aqui; um medicamento sem regra não gera alerta."
                 />
+                <Button asChild variant="outline" className="mb-6 min-h-11">
+                    <Link href={newImport()}>
+                        <FileUp aria-hidden="true" />
+                        Importar catálogo ou interações por CSV
+                    </Link>
+                </Button>
 
                 <Form
                     {...index.form()}

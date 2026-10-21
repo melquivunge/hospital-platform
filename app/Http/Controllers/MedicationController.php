@@ -117,7 +117,7 @@ class MedicationController extends Controller
         try {
             DB::transaction(function () use ($pair, $data, $request) {
                 $interaction = MedicationInteraction::create([
-                    'ingredient_a' => $pair[0], 'ingredient_b' => $pair[1], 'severity' => $data['severity'], 'note' => trim($data['note']),
+                    'ingredient_a' => $pair[0], 'ingredient_b' => $pair[1], 'severity' => $data['severity'], 'note' => Medication::clean($data['note']),
                     'created_by_user_id' => $request->user()->id,
                 ]);
                 AuditEvent::record('medication_interaction.created', $interaction->tenant_id, $interaction, ['pair' => $pair, 'severity' => $interaction->severity]);
@@ -140,7 +140,7 @@ class MedicationController extends Controller
         ], [], ['severity' => 'gravidade', 'note' => 'orientação']);
 
         DB::transaction(function () use ($interaction, $data) {
-            $interaction->fill([...$data, 'note' => trim($data['note'])]);
+            $interaction->fill([...$data, 'note' => Medication::clean($data['note'])]);
             $changed = array_values(array_diff(array_keys($interaction->getDirty()), ['updated_at']));
             if ($changed !== []) {
                 $interaction->save();
