@@ -14,6 +14,9 @@ import type {
     PatientAllergy,
 } from '@/components/patient-allergies';
 import { PatientAllergies } from '@/components/patient-allergies';
+import type { PrescriptionPanelData } from '@/components/prescription-panel';
+import { PrescriptionPanel } from '@/components/prescription-panel';
+import PrescriptionController from '@/actions/App/Http/Controllers/PrescriptionController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
@@ -31,6 +34,7 @@ export default function WardShow({
     patient,
     allergies,
     allergyForm,
+    prescriptions,
     history,
     handOver,
     transfer,
@@ -50,6 +54,7 @@ export default function WardShow({
     patient: RecordPatient;
     allergies: PatientAllergy[];
     allergyForm: AllergyForm;
+    prescriptions: PrescriptionPanelData;
     history: { id: number; at: string; text: string; reason: string | null }[];
     handOver: { id: number; name: string }[] | null;
     transfer: {
@@ -162,6 +167,14 @@ export default function WardShow({
                         </Form>
                     </details>
                 )}
+                <div className="mb-8">
+                    <PrescriptionPanel
+                        data={prescriptions}
+                        start={PrescriptionController.startForAdmission.form(
+                            admission.id,
+                        )}
+                    />
+                </div>
                 <NotesWorkspace
                     title="Evolução da internação"
                     action={WardController.storeNote.form(admission.id)}

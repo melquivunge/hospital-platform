@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.1c (alergias); depois a 4b.2 (prescrição), plano em `plans/web-v4-prescricao.md`.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.2a (prescrição com alertas e assinatura); depois a 4b.2b (cópia da anterior, suspensão de item e aprazamento), plano em `plans/web-v4-prescricao.md`.
 
 ## Onde está cada coisa
 
@@ -77,7 +77,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #51 | Etapa 4b.1a: catálogo de medicamentos e regras de segurança | Mesclado |
 | #52 | Etapa 4b.1b: importação CSV do catálogo e das interações | Mesclado |
 | #53 | Atualização do `vite-plus` para 1.3.0 (alertas altos do `npm audit`) | Mesclado |
-| — | Etapa 4b.1c: alergias do paciente (branch `feat/patient-allergies`) | Em revisão |
+| #54 | Etapa 4b.1c: alergias do paciente | Mesclado |
+| — | Etapa 4b.2a: prescrição com alertas, justificativa e assinatura (branch `feat/prescription`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -233,7 +234,16 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
-- **4b.1c (alergias do paciente):**
+- **4b.2a (prescrição; a 4b.2 foi dividida em 4b.2a e 4b.2b cópia, suspensão e aprazamento):**
+  - Quem prescreve: o médico (conselho CRM, habilitação aprovada e vigente na unidade, em função que atende pacientes) com acesso de escrita ao paciente: a internação (ADR-0004) ou o próprio atendimento de urgência aberto. A enfermagem do setor lê a prescrição, não prescreve. O atendimento ambulatorial não tem prescrição (receita para casa está fora da 4b).
+  - Seção "Prescrição" no prontuário da internação e do atendimento de urgência: a prescrição válida (assinada há menos de 24 horas; a mais nova substitui a anterior), as anteriores e o acesso ao rascunho.
+  - Rascunho do autor (um por atendimento ou internação): itens do catálogo ativo com dose na unidade do medicamento, via cadastrada, intervalo (1 a 24 h) ou horários fixos, "se necessário" com condição e intervalo mínimo, início no fuso da unidade e observação.
+  - Alertas ao incluir o item: alergia registrada (chave sem acento), dose acima do máximo por administração, dose do dia acima do máximo por dia e interação com item anterior (indicada uma vez, no item mais novo). Item com alerta exige justificativa. Na assinatura com senha, os alertas são recalculados: alerta novo (por exemplo, alergia registrada depois) bloqueia até ser justificado.
+  - Assinada, a prescrição e os itens não mudam (o banco recusa alteração, inclusão e exclusão); o rascunho pode ser descartado. Tabelas clínicas com RLS forçado. Auditoria só com ids e contagens.
+  - Revisão independente (sem crítico/alto). Corrigido: a dose máxima por dia soma todos os itens do mesmo princípio ativo, com alerta de princípio ativo repetido; o editor avisa quantos itens a prescrição válida tem, porque assinar substitui o esquema inteiro; retirar item e descartar rascunho usam o mesmo lock da assinatura; o início do item fica entre 1 hora atrás e as próximas 24 horas; justificativa só em item com alerta. Limites conhecidos: rascunho de atendimento encerrado fica parado (sem efeito); doses de um princípio ativo em unidades diferentes não são convertidas.
+  - Corrida real (dois processos, duas conexões): duas assinaturas do mesmo rascunho resultam numa só; assinatura × alta nas duas ordens: ou a alta vem antes e a assinatura é recusada, ou a assinatura fica antes da alta.
+  - Navegador: nova prescrição, item "se necessário", senha errada recusada, assinatura e prescrição válida no prontuário; sem erro de JavaScript, sem 5xx, sem rolagem horizontal em 360 px, controles com nome.
+- **4b.1c (alergias do paciente, PR #54):**
   - Bloco "Alergias" no topo do prontuário (atendimento, internação e acesso de emergência), em destaque quando há alergia ativa: substância, gravidade (leve, moderada, grave, não informada), reação opcional, data e autor.
   - Registra e inativa quem escreve no prontuário (atendimento aberto ou internação, ADR-0004); o acesso de emergência só lê. A substância é texto livre com sugestões dos princípios ativos do catálogo; a chave normalizada (a mesma do catálogo) é o que a prescrição vai conferir na 4b.2.
   - Uma alergia ativa por substância e paciente (índice único parcial). Só de inserção: o banco aceita apenas a inativação, uma vez, com motivo, e nunca apaga. Tabela clínica com RLS forçado. Auditoria só com ids.
@@ -451,7 +461,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 361 testes passando (etapa 4b.1c), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 366 testes passando (etapa 4b.2a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

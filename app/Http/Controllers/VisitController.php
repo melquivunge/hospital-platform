@@ -121,6 +121,8 @@ class VisitController extends Controller
             'patient' => self::patientHeader($patient),
             'allergies' => PatientAllergyController::listing($ids, $timezone),
             'allergyForm' => PatientAllergyController::form($patient),
+            // Step 4b.2a: prescribing is for the emergency visit only.
+            'prescriptions' => $visit->emergency_episode_id === null ? null : PrescriptionController::panel($request->user(), null, $visit, $timezone),
             'record' => self::signedRecord($ids, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
             // Drafts are seen only by their author.

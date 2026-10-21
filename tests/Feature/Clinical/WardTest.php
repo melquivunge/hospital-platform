@@ -11,6 +11,7 @@ use App\Models\ClinicalNote;
 use App\Models\EmergencyEpisode;
 use App\Models\JobFunction;
 use App\Models\Membership;
+use App\Models\Prescription;
 use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Sector;
@@ -146,6 +147,16 @@ class WardTest extends ClinicalTestCase
         $this->post(route('patient-allergies.store', $this->patient), ['substance' => 'Látex', 'severity' => 'moderate'])->assertSessionHasNoErrors();
         $this->actingAs($this->icuNurse->user)->post(route('patient-allergies.store', $this->patient), ['substance' => 'Iodo', 'severity' => 'mild'])->assertForbidden();
         $this->actingAs($this->doctorAccount->user)->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('allergies.0.substance', 'Látex')->has('allergyForm'));
+
+        // Step 4b.2a: the responsible doctor (CRM) prescribes for the admission; the ward nurse reads, never prescribes.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->doctor->forceFill(['council' => 'CRM', 'council_number' => '99', 'council_uf' => 'SP'])->save();
+        app(CurrentTenant::class)->set(null);
+        $this->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('prescriptions.canPrescribe', true)->where('prescriptions.active', null));
+        $this->post(route('ward.prescriptions.start', $admission))->assertRedirect();
+        $this->assertSame($admission->id, Prescription::withoutTenantScope()->sole()->admission_id);
+        $this->actingAs($this->wardNurse->user)->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('prescriptions.canPrescribe', false)->where('prescriptions.draftId', null));
+        $this->post(route('ward.prescriptions.start', $admission))->assertForbidden();
 
         app(CurrentTenant::class)->set($this->unit->tenant);
         $row = (array) DB::table('clinical_documents')->where('id', $document->id)->first();
