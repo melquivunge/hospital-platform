@@ -1,8 +1,7 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
 import PharmacyController from '@/actions/App/Http/Controllers/PharmacyController';
-import type { RecordPatient } from '@/components/clinical-record';
-import { patientDescription } from '@/components/clinical-record';
+import { sexLabels } from '@/components/patient-display';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import type { PatientAllergy } from '@/components/patient-allergies';
@@ -33,7 +32,7 @@ export default function PharmacyShow({
         author: string | null;
         unitId: number;
     };
-    patient: RecordPatient;
+    patient: { name: string; age: number | null; sex: string | null };
     allergies: PatientAllergy[];
     items: PrescriptionItemView[];
     decisions: Record<string, string>;
@@ -45,7 +44,7 @@ export default function PharmacyShow({
                 <PageHeader
                     eyebrow={`Prescrição · ${prescription.place}`}
                     title={patient.name}
-                    description={`${patientDescription(patient)} · assinada em ${prescription.signedAt} por ${prescription.author} · válida até ${prescription.validUntil}`}
+                    description={`${[patient.age !== null && `${patient.age} anos`, patient.sex && sexLabels[patient.sex]].filter(Boolean).join(' · ')} · assinada em ${prescription.signedAt} por ${prescription.author} · válida até ${prescription.validUntil}`}
                     actions={
                         <Button asChild variant="outline" className="min-h-11">
                             <Link

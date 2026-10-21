@@ -35,6 +35,7 @@ Os mesmos das entregas 3 e 4:
 - Papel **Farmácia** por unidade (ADR-0005). Fila de prescrições a avaliar. O farmacêutico aprova, aprova com observação ou recusa cada item com motivo. A recusa avisa o médico prescritor.
 - Dispensação por item para 24 horas, e devolução registrada.
 - **Saída:** só item aprovado é dispensado; duas dispensações simultâneas do mesmo item resultam numa só (corrida real).
+- Divisão (21/10/2026): 4b.3a papel Farmácia, fila, abertura registrada na trilha e avaliação por item com aviso ao prescritor; 4b.3b dispensação para 24 horas e devolução.
 
 ### 4b.4 Administração pela enfermagem
 - Tela do setor com os horários previstos de cada paciente, destacando os atrasados. Cada horário pode ser administrado (horário real), recusado pelo paciente ou não realizado com motivo, sempre como registro novo.

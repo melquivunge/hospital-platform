@@ -63,10 +63,15 @@ class PharmacyTest extends ClinicalTestCase
         $this->assertSame($reads, DB::table('clinical_reads')->count());
 
         $this->get(route('pharmacy.show', $this->prescription))->assertInertia(fn (Assert $page) => $page->component('pharmacy/show')
-            ->has('items', 2)->where('allergies.0.substance', 'Penicilina')->where('patient.name', 'Joana Prado')
+            ->has('items', 2)->where('allergies.0.substance', 'Penicilina')->where('patient', ['name' => 'Joana Prado', 'age' => 36, 'sex' => 'female'])
             ->missing('record')->missing('documents')->missing('drafts'));
         $read = DB::table('clinical_reads')->latest('id')->first();
         $this->assertSame(['pharmacy', $this->prescription->id, $this->pharmacist->user_id], [$read->reason, $read->prescription_id, $read->user_id]);
+        // The auditor's access trail labels it as a pharmacy read, not an emergency.
+        $auditor = Membership::factory()->for($this->unit->tenant)->create();
+        $auditor->grant(Role::Auditor);
+        $this->actingAs($auditor->user)->get(route('clinical-access.index'))->assertInertia(fn (Assert $page) => $page->where('reads.0.reason', 'pharmacy'));
+        $this->actingAs($this->pharmacist->user);
         // The pharmacy reaches neither the record nor the visit.
         $this->get(route('visits.show', $this->visit))->assertForbidden();
         $this->get(route('clinical-record.show', $this->patient))->assertForbidden();
@@ -120,6 +125,7 @@ class PharmacyTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user)->post(route('visits.prescriptions.start', $this->visit))->assertRedirect();
         $this->post(route('prescriptions.sign', Prescription::withoutTenantScope()->where('status', 'draft')->sole()), ['password' => 'password'])->assertSessionHasNoErrors();
         $this->actingAs($this->pharmacist->user)->get(route('pharmacy.show', $this->prescription))->assertForbidden();
+        $this->post(route('pharmacy.review', PrescriptionItem::withoutTenantScope()->where('prescription_id', $this->prescription->id)->latest('id')->firstOrFail()), ['decision' => 'approved'])->assertForbidden();
         $newest = Prescription::withoutTenantScope()->latest('id')->firstOrFail();
         $this->get(route('pharmacy.show', $newest))->assertOk();
         $this->travel(25)->hours();

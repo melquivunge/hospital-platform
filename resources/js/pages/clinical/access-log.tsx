@@ -15,9 +15,16 @@ type Emergency = {
 type Read = {
     id: number;
     readAt: string;
-    reason: 'visit' | 'emergency';
+    reason: 'visit' | 'emergency' | 'admission' | 'pharmacy';
     user: string;
     patient: string;
+};
+
+const reasonLabels: Record<Read['reason'], string> = {
+    visit: 'Atendimento',
+    emergency: 'Emergência',
+    admission: 'Internação',
+    pharmacy: 'Farmácia (só a prescrição)',
 };
 
 /** Who opened which record and why (step 3.6b), never clinical content. */
@@ -103,10 +110,7 @@ export default function AccessLog({
                                                 {new Date(
                                                     read.readAt,
                                                 ).toLocaleString('pt-BR')}{' '}
-                                                ·{' '}
-                                                {read.reason === 'visit'
-                                                    ? 'Atendimento'
-                                                    : 'Emergência'}
+                                                · {reasonLabels[read.reason]}
                                             </span>
                                         </li>
                                     ))}

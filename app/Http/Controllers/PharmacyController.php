@@ -77,7 +77,8 @@ class PharmacyController extends Controller
                 'author' => $prescription->professional?->name,
                 'unitId' => $encounter->unit_id,
             ],
-            'patient' => VisitController::patientHeader($patient),
+            // ADR-0005: identification, age and sex; not the birth date.
+            'patient' => ['name' => $patient->social_name ?? $patient->name, 'age' => $patient->birth_date?->age, 'sex' => $patient->sex],
             'allergies' => PatientAllergyController::listing(ClinicalAccess::recordIds($patient), $timezone),
             'items' => array_map(fn (PrescriptionItem $item) => PrescriptionController::describe($item, $timezone), $prescription->items->all()),
             'decisions' => PrescriptionReview::DECISIONS,
@@ -96,7 +97,10 @@ class PharmacyController extends Controller
 
         try {
             DB::transaction(function () use ($item, $request, $data, $prescription, $encounter, $bag) {
-                // The same item lock as the suspension: a suspended item is not reviewed.
+                // Lock order of the suspension: the encounter, then the item. A prescription replaced or an
+                // encounter closed in between is seen here, and a suspended item is not reviewed.
+                ($encounter instanceof Admission ? Admission::query() : Visit::query())->whereKey($encounter->id)->lockForUpdate()->first();
+                abort_unless(self::valid()->whereKey($prescription->id)->exists(), 403);
                 $locked = PrescriptionItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
                 if ($locked->suspended_at !== null) {
                     throw ValidationException::withMessages(['decision' => 'Este item foi suspenso pelo médico.'])->errorBag($bag);
