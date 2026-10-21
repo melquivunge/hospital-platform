@@ -90,6 +90,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('visits/{visit}/prescriptions', [PrescriptionController::class, 'startForVisit'])->middleware('throttle:30,1')->name('visits.prescriptions.start');
     Route::get('prescriptions/{prescription}/edit', [PrescriptionController::class, 'edit'])->middleware('throttle:120,1')->name('prescriptions.edit');
     Route::post('prescriptions/{prescription}/items', [PrescriptionController::class, 'storeItem'])->middleware('throttle:60,1')->name('prescriptions.items.store');
+    Route::post('prescription-items/{item}/suspend', [PrescriptionController::class, 'suspendItem'])->middleware('throttle:30,1')->name('prescription-items.suspend');
     Route::post('prescription-items/{item}/justify', [PrescriptionController::class, 'justifyItem'])->middleware('throttle:60,1')->name('prescription-items.justify');
     Route::delete('prescription-items/{item}', [PrescriptionController::class, 'destroyItem'])->middleware('throttle:60,1')->name('prescription-items.destroy');
     Route::delete('prescriptions/{prescription}', [PrescriptionController::class, 'discard'])->middleware('throttle:30,1')->name('prescriptions.discard');

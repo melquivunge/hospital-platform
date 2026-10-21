@@ -40,6 +40,7 @@ Os mesmos das entregas 3 e 4:
 - Tela do setor com os horários previstos de cada paciente, destacando os atrasados. Cada horário pode ser administrado (horário real), recusado pelo paciente ou não realizado com motivo, sempre como registro novo.
 - Controlados e alto alerta: segunda pessoa confirma com a própria senha (dupla checagem).
 - Administrar item não dispensado só como exceção, com motivo registrado.
+- Regra dos horários (revisão da 4b.2b): só se administra horário de item da prescrição válida (a assinada mais nova, dentro das 24 horas, com o atendimento ou a internação ativos), não suspenso, e previsto antes da suspensão. Os horários da prescrição substituída e os de item suspenso ficam gravados, mas não são administráveis. Testar com renovação no meio do dia.
 - **Saída:** histórico de administração por item; dois registros simultâneos do mesmo horário resultam num só (corrida real).
 
 ### 4b.5 Assinatura ICP-Brasil em nuvem (ADR-0006)
