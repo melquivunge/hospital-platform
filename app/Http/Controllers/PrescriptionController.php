@@ -248,10 +248,20 @@ class PrescriptionController extends Controller
             foreach ($items as $index => $item) {
                 $item->forceFill(['alerts' => $alerts[$index], 'justification' => $alerts[$index] === [] ? null : $item->justification])->save();
             }
-            $now = now();
-            $locked->forceFill(['status' => 'signed', 'signed_at' => $now, 'valid_until' => $now->copy()->addHours(Prescription::VALID_HOURS), 'signature_method' => 'password'])->save();
+            $now = now()->toImmutable();
+            $until = $now->addHours(Prescription::VALID_HOURS);
+            $locked->forceFill(['status' => 'signed', 'signed_at' => $now, 'valid_until' => $until, 'signature_method' => 'password'])->save();
+            // Step 4b.2b: the doses of the day, in the unit's timezone. An expired prescription schedules nothing more.
+            $timezone = Unit::query()->whereKey($locked->unit_id)->value('timezone') ?? 'UTC';
+            $doses = [];
+            foreach ($items as $item) {
+                foreach ($item->schedule($until, $timezone) as $at) {
+                    $doses[] = ['tenant_id' => $locked->tenant_id, 'prescription_item_id' => $item->id, 'scheduled_at' => $at];
+                }
+            }
+            DB::table('prescription_doses')->insert($doses);
             AuditEvent::record('prescription.signed', $locked->tenant_id, $locked, [
-                'items' => count($items), 'alerts' => count(array_filter($alerts)),
+                'items' => count($items), 'alerts' => count(array_filter($alerts)), 'doses' => count($doses),
             ]);
 
             return count($items);
@@ -259,6 +269,43 @@ class PrescriptionController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => "Prescrição assinada com {$count} ".($count === 1 ? 'item' : 'itens').'. Vale por 24 horas.']);
 
         return $admission !== null ? to_route('ward.show', $admission) : to_route('visits.show', $visit);
+    }
+
+    /**
+     * Step 4b.2b: an item of the active prescription is suspended with a reason; the prescription itself stays as
+     * signed. To change a dose, suspend the item and prescribe it again.
+     */
+    public function suspendItem(Request $request, PrescriptionItem $item): RedirectResponse
+    {
+        $prescription = Prescription::query()->findOrFail($item->prescription_id);
+        $admission = $prescription->admission_id === null ? null : Admission::query()->findOrFail($prescription->admission_id);
+        $visit = $prescription->visit_id === null ? null : Visit::query()->findOrFail($prescription->visit_id);
+        self::writer($request, $admission, $visit);
+        abort_unless(self::active($prescription)?->id === $prescription->id, 403);
+        $data = $request->validateWithBag("suspend{$item->id}", ['reason' => ['required', 'string', 'max:255']], [], ['reason' => 'motivo']);
+
+        DB::transaction(function () use ($item, $request, $data) {
+            $locked = PrescriptionItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
+            if ($locked->suspended_at !== null) {
+                throw ValidationException::withMessages(['reason' => 'Este item já foi suspenso.'])->errorBag("suspend{$item->id}");
+            }
+            $locked->forceFill(['suspended_at' => now(), 'suspended_by_user_id' => $request->user()->id, 'suspension_reason' => Medication::clean($data['reason'])])->save();
+            AuditEvent::record('prescription_item.suspended', $locked->tenant_id, $locked, ['prescription_id' => $locked->prescription_id]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Item suspenso.']);
+
+        return back();
+    }
+
+    /**
+     * The active prescription of the encounter: the newest signed one, while valid.
+     */
+    private static function active(Prescription $of): ?Prescription
+    {
+        $newest = Prescription::query()->where($of->admission_id !== null ? 'admission_id' : 'visit_id', $of->admission_id ?? $of->visit_id)
+            ->where('status', 'signed')->orderByDesc('signed_at')->orderByDesc('id')->first();
+
+        return $newest !== null && $newest->valid_until?->isFuture() ? $newest : null;
     }
 
     /**
@@ -276,19 +323,25 @@ class PrescriptionController extends Controller
         $newest = $signed->first();
         $active = $newest !== null && $newest->valid_until?->isFuture() ? $newest : null;
         $when = fn (?CarbonImmutable $at) => $at?->setTimezone($timezone)->format('d/m/Y H:i');
+        $doses = $active === null ? collect() : DB::table('prescription_doses')->whereIn('prescription_item_id', $active->items->modelKeys())
+            ->orderBy('scheduled_at')->get(['prescription_item_id', 'scheduled_at'])->groupBy('prescription_item_id');
         $summary = fn (Prescription $prescription) => [
             'id' => $prescription->id,
             'signedAt' => $when($prescription->signed_at?->toImmutable()),
             'validUntil' => $when($prescription->valid_until?->toImmutable()),
             'author' => $prescription->professional?->name,
-            'items' => array_map(fn (PrescriptionItem $item) => self::describe($item, $timezone), $prescription->items->all()),
+            'items' => array_map(fn (PrescriptionItem $item) => [
+                ...self::describe($item, $timezone),
+                'doses' => array_values(($doses->get($item->id) ?? collect())->map(fn (object $dose) => CarbonImmutable::parse((string) data_get($dose, 'scheduled_at'))->setTimezone($timezone)->format('d/m H:i'))->all()),
+            ], $prescription->items->all()),
         ];
 
         return [
             'active' => $active === null ? null : $summary($active),
             'previous' => array_values($signed->reject(fn (Prescription $prescription) => $prescription->is($active))->map($summary)->all()),
             'draftId' => Prescription::query()->where($column, $id)->where('status', 'draft')->where('author_user_id', $user->id)->value('id'),
-            'canPrescribe' => self::prescriber($user, (int) ($admission->unit_id ?? $visit?->unit_id)) !== null,
+            'canPrescribe' => $canPrescribe = self::prescriber($user, (int) ($admission->unit_id ?? $visit?->unit_id)) !== null,
+            'canSuspend' => $canPrescribe && $active !== null,
         ];
     }
 
@@ -323,7 +376,11 @@ class PrescriptionController extends Controller
                     'patient_id' => $patient->merged_into_id ?? $patient->id, 'unit_id' => $admission->unit_id ?? $visit?->unit_id,
                     $column => $id, 'author_user_id' => $request->user()->id, 'professional_id' => $professional->id, 'created_at' => now(),
                 ]));
-                AuditEvent::record('prescription.created', $prescription->tenant_id, $prescription);
+                $copied = self::copyPrevious($prescription, $patient);
+                AuditEvent::record('prescription.created', $prescription->tenant_id, $prescription, ['copied_items' => $copied]);
+                if ($copied > 0) {
+                    Inertia::flash('toast', ['type' => 'info', 'message' => "Rascunho criado com {$copied} ".($copied === 1 ? 'item copiado' : 'itens copiados').' da última prescrição. Revise antes de assinar.']);
+                }
             } catch (UniqueConstraintViolationException) {
                 // Two clicks at once: one draft.
                 $prescription = $existing() ?? abort(409);
@@ -331,6 +388,42 @@ class PrescriptionController extends Controller
         }
 
         return to_route('prescriptions.edit', $prescription);
+    }
+
+    /**
+     * Step 4b.2b (decision 4): the new draft starts from the newest signed prescription of the encounter, without its
+     * suspended items or medications since deactivated. Alerts are found again; a justification is kept only when
+     * it already covered every current alert.
+     */
+    private static function copyPrevious(Prescription $draft, Patient $patient): int
+    {
+        $previous = Prescription::query()->where($draft->admission_id !== null ? 'admission_id' : 'visit_id', $draft->admission_id ?? $draft->visit_id)
+            ->where('status', 'signed')->orderByDesc('signed_at')->orderByDesc('id')->first();
+        if ($previous === null) {
+            return 0;
+        }
+        $active = Medication::query()->where('active', true)->pluck('id')->all();
+        $copies = [];
+        foreach ($previous->items()->whereNull('suspended_at')->get() as $item) {
+            if (! in_array($item->medication_id, $active, true)) {
+                continue;
+            }
+            $copy = $item->replicate(['prescription_id', 'suspended_at', 'suspended_by_user_id', 'suspension_reason', 'created_at']);
+            // An interval keeps its phase (08, 16, 00 stay 08, 16, 00): the next dose of the series not yet past.
+            $start = $item->starts_at->toImmutable();
+            while ($item->frequency_hours !== null && $start->lt(now()->subHour())) {
+                $start = $start->addHours($item->frequency_hours);
+            }
+            $copy->forceFill(['prescription_id' => $draft->id, 'created_at' => now(), 'starts_at' => $item->frequency_hours !== null ? $start : $start->max(now())]);
+            $copies[] = $copy;
+        }
+        $alerts = PrescriptionSafety::alerts($copies, ClinicalAccess::recordIds($patient));
+        foreach ($copies as $index => $copy) {
+            $covered = $copy->justification !== null && array_diff($alerts[$index], $copy->alerts) === [];
+            $copy->forceFill(['alerts' => $alerts[$index], 'justification' => $covered && $alerts[$index] !== [] ? $copy->justification : null])->save();
+        }
+
+        return count($copies);
     }
 
     /**
@@ -417,6 +510,8 @@ class PrescriptionController extends Controller
             'notes' => $item->notes,
             'storedAlerts' => $item->alerts,
             'justification' => $item->justification,
+            'suspendedAt' => $item->suspended_at?->setTimezone($timezone)->format('d/m/Y H:i'),
+            'suspensionReason' => $item->suspension_reason,
         ];
     }
 }

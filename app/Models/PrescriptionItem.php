@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Tenancy\BelongsToTenant;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -29,6 +30,8 @@ use Illuminate\Support\Carbon;
  * @property list<string> $alerts
  * @property string|null $justification
  * @property Carbon $created_at
+ * @property Carbon|null $suspended_at step 4b.2b: suspended once, with a reason
+ * @property string|null $suspension_reason
  */
 #[Fillable(['prescription_id', 'medication_id', 'medication_label', 'dose', 'dose_unit', 'route', 'frequency_hours', 'times', 'prn', 'prn_condition', 'starts_at', 'notes', 'alerts', 'justification', 'created_at'])]
 class PrescriptionItem extends Model
@@ -46,7 +49,7 @@ class PrescriptionItem extends Model
     {
         return [
             'dose' => 'decimal:3', 'frequency_hours' => 'integer', 'times' => 'array', 'prn' => 'boolean',
-            'starts_at' => 'datetime', 'alerts' => 'array', 'created_at' => 'datetime',
+            'starts_at' => 'datetime', 'alerts' => 'array', 'created_at' => 'datetime', 'suspended_at' => 'datetime',
         ];
     }
 
@@ -56,6 +59,39 @@ class PrescriptionItem extends Model
     public function dosesPerDay(): int
     {
         return $this->frequency_hours !== null ? intdiv(24, $this->frequency_hours) : count($this->times ?? []);
+    }
+
+    /**
+     * The doses to schedule from the item's start until the prescription expires (step 4b.2b): every N hours, or
+     * the fixed times of each day in the unit's timezone. "If needed" items have none.
+     *
+     * @return list<CarbonImmutable>
+     */
+    public function schedule(CarbonImmutable $until, string $timezone): array
+    {
+        if ($this->prn) {
+            return [];
+        }
+        $start = $this->starts_at->toImmutable();
+        $doses = [];
+        if ($this->frequency_hours !== null) {
+            for ($at = $start; $at->lt($until); $at = $at->addHours($this->frequency_hours)) {
+                $doses[] = $at;
+            }
+
+            return $doses;
+        }
+        for ($day = $start->setTimezone($timezone)->startOfDay(); $day->lte($until->setTimezone($timezone)); $day = $day->addDay()) {
+            foreach ($this->times ?? [] as $time) {
+                [$hour, $minute] = array_map('intval', explode(':', $time));
+                $at = $day->setTime($hour, $minute)->utc();
+                if ($at->gte($start) && $at->lt($until)) {
+                    $doses[] = $at;
+                }
+            }
+        }
+
+        return $doses;
     }
 
     /**
