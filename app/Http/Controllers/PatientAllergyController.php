@@ -36,10 +36,16 @@ class PatientAllergyController extends Controller
             throw ValidationException::withMessages(['substance' => 'Informe a substância.']);
         }
 
+        $key = Medication::matchKey($substance);
+        // Across a merged record too: the index only sees one registration.
+        // ponytail: checked outside a lock; two simultaneous records on two merged registrations can both pass, both stay visible.
+        if (PatientAllergy::query()->whereIn('patient_id', ClinicalAccess::recordIds($patient))->where('substance_key', $key)->whereNull('inactivated_at')->exists()) {
+            throw ValidationException::withMessages(['substance' => 'Esta alergia já está registrada.']);
+        }
         try {
             // In its own transaction: a duplicate rolls back only this insert.
             $allergy = DB::transaction(fn () => PatientAllergy::query()->create([
-                'patient_id' => $patient->merged_into_id ?? $patient->id, 'substance' => $substance, 'substance_key' => Medication::key($substance),
+                'patient_id' => $patient->merged_into_id ?? $patient->id, 'substance' => $substance, 'substance_key' => $key,
                 'severity' => $data['severity'], 'reaction' => isset($data['reaction']) ? (Medication::clean($data['reaction']) ?: null) : null,
                 'recorded_by_user_id' => $request->user()->id, 'professional_id' => $professional->id, 'created_at' => now(),
             ]));

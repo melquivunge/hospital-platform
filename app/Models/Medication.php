@@ -53,6 +53,15 @@ class Medication extends Model
     }
 
     /**
+     * The key allergies match on (step 4b.1c): key() without accents, so "acido acetilsalicilico" typed on a
+     * patient still matches the catalog's "ácido acetilsalicílico". Compare catalog keys through it too.
+     */
+    public static function matchKey(string $ingredient): string
+    {
+        return (string) preg_replace('/\p{Mn}+/u', '', (string) (\Normalizer::normalize(self::key($ingredient), \Normalizer::FORM_D) ?: self::key($ingredient)));
+    }
+
+    /**
      * Single spaces, trimmed, Unicode NFC (an accent typed as one or two code points is the same text).
      */
     public static function clean(string $text): string

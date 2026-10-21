@@ -10,8 +10,8 @@ return new class extends Migration
 {
     /**
      * Step 4b.1c: allergies recorded on the patient by whoever has clinical write access. The substance is
-     * free text or a catalog active ingredient; substance_key (the catalog's ingredient key) is what the
-     * prescription matches in step 4b.2. Insert-only: inactivating needs a reason and keeps the row. Clinical (RLS).
+     * free text or a catalog active ingredient; substance_key (Medication::matchKey, no case or accents) is
+     * what the prescription matches in step 4b.2. Insert-only: inactivating needs a reason and keeps the row. Clinical (RLS).
      */
     public function up(): void
     {

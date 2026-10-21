@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.1b (importação CSV do catálogo e das interações); depois a 4b.1c (alergias), plano em `plans/web-v4-prescricao.md`.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.1c (alergias); depois a 4b.2 (prescrição), plano em `plans/web-v4-prescricao.md`.
 
 ## Onde está cada coisa
 
@@ -75,7 +75,9 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #49 | Etapa 4.9: pendências da revisão de segurança | Mesclado |
 | #50 | Entrega 4b: contrato, ADR-0005, ADR-0006 e plano | Mesclado |
 | #51 | Etapa 4b.1a: catálogo de medicamentos e regras de segurança | Mesclado |
-| — | Etapa 4b.1b: importação CSV do catálogo e das interações (branch `feat/medication-import`) | Em revisão |
+| #52 | Etapa 4b.1b: importação CSV do catálogo e das interações | Mesclado |
+| #53 | Atualização do `vite-plus` para 1.3.0 (alertas altos do `npm audit`) | Mesclado |
+| — | Etapa 4b.1c: alergias do paciente (branch `feat/patient-allergies`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -231,7 +233,15 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
-- **4b.1b (importação CSV do catálogo e das interações):**
+- **4b.1c (alergias do paciente):**
+  - Bloco "Alergias" no topo do prontuário (atendimento, internação e acesso de emergência), em destaque quando há alergia ativa: substância, gravidade (leve, moderada, grave, não informada), reação opcional, data e autor.
+  - Registra e inativa quem escreve no prontuário (atendimento aberto ou internação, ADR-0004); o acesso de emergência só lê. A substância é texto livre com sugestões dos princípios ativos do catálogo; a chave normalizada (a mesma do catálogo) é o que a prescrição vai conferir na 4b.2.
+  - Uma alergia ativa por substância e paciente (índice único parcial). Só de inserção: o banco aceita apenas a inativação, uma vez, com motivo, e nunca apaga. Tabela clínica com RLS forçado. Auditoria só com ids.
+  - Revisão independente (sem crítico/alto). Corrigido: a chave ignora acentos ("acido acetilsalicilico" casa com "ácido acetilsalicílico"); a duplicata é conferida em todo o prontuário fundido; dica na tela para usar o princípio ativo, não o nome comercial.
+  - Corrida real (dois processos, duas conexões, 3 rodadas): dois registros simultâneos da mesma alergia resultam num só; duas inativações simultâneas, numa só.
+  - Navegador: registro, duplicata recusada com mensagem, inativação com motivo e histórico; sem erro de JavaScript, sem 5xx, sem rolagem horizontal em 360 px.
+- **#53:** o `npm audit` (alto) passou a falhar o CI por um `launch-editor` embutido no `vite-plus@0.3.3`; atualizado para 1.3.0.
+- **4b.1b (importação CSV do catálogo e das interações, PR #52):**
   - Na tela "Nova importação", o administrador de rede (só ele) ganha dois tipos: catálogo de medicamentos (colunas do catálogo; vias separadas por "|"; controlado e alto alerta como sim ou não; doses com vírgula ou ponto, até 3 casas) e interações (dois princípios ativos já no catálogo, gravidade pelo código ou pelo nome em português, orientação). A tela "Medicamentos" tem o atalho para importar.
   - Mesmo fluxo da V1: a prévia não grava nada, a confirmação aplica em segundo plano, e a aplicação pode ser retomada sem duplicar. Apresentação ou par já cadastrado nunca é alterado: com os mesmos valores fica "idêntico"; com valores diferentes, vira "conflito". Linhas repetidas, valores inválidos e texto que começa como fórmula de planilha são rejeitados. A permissão é conferida de novo na confirmação e na aplicação.
   - Corrigido junto: a prévia dizia "cria N profissionais" para qualquer tipo, inclusive plantões.
@@ -441,7 +451,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 357 testes passando (etapa 4b.1b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 361 testes passando (etapa 4b.1c), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

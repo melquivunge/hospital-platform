@@ -3,6 +3,7 @@
 namespace Tests\Feature\Clinical;
 
 use App\Models\AuditEvent;
+use App\Models\Patient;
 use App\Models\PatientAllergy;
 use App\Models\Visit;
 use App\Tenancy\CurrentTenant;
@@ -97,5 +98,23 @@ class PatientAllergyTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit));
         $this->post(route('patient-allergies.store', $this->patient), ['substance' => 'Penicilina', 'severity' => 'mild'])->assertForbidden();
         $this->assertSame(1, PatientAllergy::withoutTenantScope()->count());
+    }
+
+    public function test_accents_and_a_merged_record_never_hide_a_duplicate(): void
+    {
+        $this->post(route('patient-allergies.store', $this->patient), ['substance' => 'Ácido acetilsalicílico', 'severity' => 'severe'])->assertSessionHasNoErrors();
+        $this->post(route('patient-allergies.store', $this->patient), ['substance' => 'acido acetilsalicilico', 'severity' => 'mild'])->assertSessionHasErrors('substance');
+        $this->assertSame('acido acetilsalicilico', PatientAllergy::withoutTenantScope()->sole()->substance_key);
+
+        // A duplicate registration with its own allergy, merged into this patient.
+        $this->actingAs($this->reception->user)->post(route('patients.store'), ['registered_unit_id' => $this->unit->id, 'name' => 'Joana Prado Silva', 'birth_date' => '1990-01-02', 'sex' => 'female', 'confirm_new' => true])->assertSessionHasNoErrors();
+        $duplicate = Patient::withoutTenantScope()->latest('id')->firstOrFail();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        PatientAllergy::query()->create(['patient_id' => $duplicate->id, 'substance' => 'Dipirona', 'substance_key' => 'dipirona', 'severity' => 'severe', 'recorded_by_user_id' => $this->doctorAccount->user_id, 'professional_id' => $this->doctor->id, 'created_at' => now()]);
+        app(CurrentTenant::class)->set(null);
+        $this->actingAs($this->manager->user)->post(route('patient-merges.store'), ['a_id' => $this->patient->id, 'b_id' => $duplicate->id, 'primary_id' => $this->patient->id, 'reason' => 'Mesma pessoa'])->assertSessionHasNoErrors();
+
+        $this->actingAs($this->doctorAccount->user)->post(route('patient-allergies.store', $this->patient), ['substance' => 'DIPIRONA', 'severity' => 'mild'])->assertSessionHasErrors('substance');
+        $this->get(route('visits.show', $this->visit))->assertInertia(fn (Assert $page) => $page->has('allergies', 2));
     }
 }

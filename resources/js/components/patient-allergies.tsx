@@ -133,8 +133,17 @@ function RecordForm({ form }: { form: AllergyForm }) {
                                 required
                                 maxLength={255}
                                 autoComplete="off"
+                                aria-describedby="allergy-substance-hint"
                                 className="h-11"
                             />
+                            <p
+                                id="allergy-substance-hint"
+                                className="text-xs text-muted-foreground"
+                            >
+                                Use o princípio ativo (por exemplo, dipirona),
+                                não o nome comercial: é ele que a prescrição
+                                confere.
+                            </p>
                             <datalist id="allergy-substances">
                                 {form.substances.map((substance) => (
                                     <option key={substance} value={substance} />
