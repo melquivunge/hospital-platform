@@ -66,6 +66,9 @@ class PrescriptionController extends Controller
                 'id' => $prescription->id,
                 'encounter' => $admission !== null ? (WardController::bedLabel($admission) ?? 'Internação aguardando leito') : 'Atendimento de urgência',
                 'backUrl' => $admission !== null ? route('ward.show', $admission) : route('visits.show', $visit),
+                // Signing replaces the valid prescription as a whole (decision 4): say how many items it has.
+                'replaces' => Prescription::query()->where($admission !== null ? 'admission_id' : 'visit_id', $basis->id)->where('status', 'signed')
+                    ->where('valid_until', '>', now())->latest('signed_at')->withCount('items')->first()?->items_count,
             ],
             'patient' => VisitController::patientHeader($patient),
             'allergies' => PatientAllergyController::listing($ids, $timezone),
@@ -116,6 +119,11 @@ class PrescriptionController extends Controller
             throw ValidationException::withMessages(['schedule' => 'O item "se necessário" usa um intervalo mínimo entre as doses.']);
         }
         $timezone = Unit::query()->whereKey($prescription->unit_id)->value('timezone') ?? 'UTC';
+        $startsAt = isset($data['starts_at']) ? CarbonImmutable::createFromFormat('Y-m-d\TH:i', $data['starts_at'], $timezone)?->utc() : now()->toImmutable();
+        // Within the validity the prescription will have: from an hour ago up to 24 hours ahead.
+        if ($startsAt === null || $startsAt->lt(now()->subHour()) || $startsAt->gt(now()->addHours(Prescription::VALID_HOURS))) {
+            throw ValidationException::withMessages(['starts_at' => 'O início fica entre 1 hora atrás e as próximas 24 horas.']);
+        }
         $justification = isset($data['justification']) ? (Medication::clean($data['justification']) ?: null) : null;
         $item = new PrescriptionItem([
             'prescription_id' => $prescription->id, 'medication_id' => $medication->id, 'medication_label' => self::label($medication),
@@ -123,7 +131,7 @@ class PrescriptionController extends Controller
             'frequency_hours' => $data['schedule'] === 'interval' ? (int) $data['frequency_hours'] : null,
             'times' => $data['schedule'] === 'times' ? self::times($data['times']) : null,
             'prn' => $prn, 'prn_condition' => $prn ? Medication::clean($data['prn_condition']) : null,
-            'starts_at' => isset($data['starts_at']) ? CarbonImmutable::createFromFormat('Y-m-d\TH:i', $data['starts_at'], $timezone)?->utc() : now(),
+            'starts_at' => $startsAt,
             'notes' => isset($data['notes']) ? (Medication::clean($data['notes']) ?: null) : null,
             'justification' => $justification, 'created_at' => now(),
         ]);
@@ -165,6 +173,9 @@ class PrescriptionController extends Controller
             $alerts = PrescriptionSafety::alerts($items, ClinicalAccess::recordIds($patient));
             $index = array_search($item->id, array_map(fn (PrescriptionItem $each) => $each->id, $items), true);
             abort_if($index === false, 404);
+            if ($alerts[$index] === []) {
+                throw ValidationException::withMessages(['justification' => 'Este item não tem alerta para justificar.'])->errorBag("justify{$item->id}");
+            }
             $items[$index]->forceFill(['alerts' => $alerts[$index], 'justification' => Medication::clean($data['justification'])])->save();
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Justificativa registrada.']);
@@ -174,8 +185,13 @@ class PrescriptionController extends Controller
 
     public function destroyItem(Request $request, PrescriptionItem $item): RedirectResponse
     {
-        self::draft($request, Prescription::query()->findOrFail($item->prescription_id));
-        $item->delete();
+        $prescription = Prescription::query()->findOrFail($item->prescription_id);
+        self::draft($request, $prescription);
+        DB::transaction(function () use ($prescription, $item) {
+            // Same lock as signing: an item is never removed from a prescription being signed.
+            abort_if(Prescription::query()->whereKey($prescription->id)->lockForUpdate()->value('status') !== 'draft', 409);
+            PrescriptionItem::query()->whereKey($item->id)->delete();
+        });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Item retirado do rascunho.']);
 
         return back();
@@ -184,8 +200,11 @@ class PrescriptionController extends Controller
     public function discard(Request $request, Prescription $prescription): RedirectResponse
     {
         [$admission, $visit] = self::draft($request, $prescription);
-        $prescription->delete();
-        AuditEvent::record('prescription.discarded', $prescription->tenant_id, $prescription);
+        DB::transaction(function () use ($prescription) {
+            abort_if(Prescription::query()->whereKey($prescription->id)->lockForUpdate()->value('status') !== 'draft', 409);
+            $prescription->delete();
+            AuditEvent::record('prescription.discarded', $prescription->tenant_id, $prescription);
+        });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Rascunho descartado.']);
 
         return $admission !== null ? to_route('ward.show', $admission) : to_route('visits.show', $visit);

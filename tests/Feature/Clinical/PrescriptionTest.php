@@ -175,4 +175,50 @@ class PrescriptionTest extends ClinicalTestCase
         $this->post(route('prescriptions.sign', $prescription), ['password' => 'password'])->assertForbidden();
         $this->assertSame('draft', $prescription->fresh()->status);
     }
+
+    public function test_the_daily_maximum_counts_every_item_and_a_new_prescription_replaces_the_valid_one(): void
+    {
+        $prescription = $this->draft();
+        $this->add($prescription, 'dipirona', ['dose' => '1000', 'frequency_hours' => 6])->assertSessionHasNoErrors();
+        // Same ingredient split in a second item: 8 g a day against 4 g, and a repeated ingredient.
+        $this->add($prescription, 'dipirona', ['dose' => '1000', 'frequency_hours' => 6])->assertSessionHasErrors('justification');
+        $this->add($prescription, 'dipirona', ['dose' => '1000', 'frequency_hours' => 6, 'justification' => 'Esquema de resgate.'])->assertSessionHasNoErrors();
+        $this->assertSame(['Dose do dia (8000 mg) acima do máximo por dia (4000 mg).', 'Dipirona já está em outro item desta prescrição.'], PrescriptionItem::withoutTenantScope()->latest('id')->firstOrFail()->alerts);
+
+        // Validation of the schedule and of the start; a justification needs an alert.
+        $this->add($prescription, 'varfarina', ['schedule' => 'times', 'times' => '25:00'])->assertSessionHasErrors('times');
+        $this->add($prescription, 'varfarina', ['starts_at' => '2030-01-01T08:00'])->assertSessionHasErrors('starts_at');
+        $this->add($prescription, 'varfarina', ['prn' => '1', 'prn_condition' => 'Dor', 'schedule' => 'times', 'times' => '08:00'])->assertSessionHasErrors('schedule');
+        $first = PrescriptionItem::withoutTenantScope()->orderBy('id')->firstOrFail();
+        $this->post(route('prescription-items.justify', $first), ['justification' => 'Nada a justificar.'])->assertSessionHasErrors('justification', null, "justify{$first->id}");
+        $this->post(route('prescriptions.sign', $prescription), ['password' => 'password'])->assertSessionHasNoErrors();
+
+        // The next draft is told what it replaces; signing it leaves only its own items active.
+        $next = $this->draft();
+        $this->get(route('prescriptions.edit', $next))->assertInertia(fn (Assert $page) => $page->where('prescription.replaces', 2));
+        $this->add($next, 'varfarina', ['dose' => '5'])->assertSessionHasNoErrors();
+        $this->post(route('prescriptions.sign', $next), ['password' => 'password'])->assertSessionHasNoErrors();
+        $this->get(route('visits.show', $this->visit))->assertInertia(fn (Assert $page) => $page
+            ->has('prescriptions.active.items', 1)->where('prescriptions.active.items.0.medication', 'Varfarina 5 mg (Comprimido)')->has('prescriptions.previous', 1));
+    }
+
+    public function test_a_draft_is_only_its_authors_and_can_be_discarded(): void
+    {
+        $prescription = $this->draft();
+        $this->add($prescription, 'varfarina')->assertSessionHasNoErrors();
+        // Someone else's draft on the same visit (written directly): neither it nor its items are reachable.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $foreign = Prescription::query()->create(['patient_id' => $this->patient->id, 'unit_id' => $this->unit->id, 'visit_id' => $this->visit->id, 'author_user_id' => $this->manager->user_id, 'professional_id' => $this->doctor->id, 'created_at' => now()]);
+        $foreignItem = PrescriptionItem::query()->create(['prescription_id' => $foreign->id, 'medication_id' => $this->catalog['varfarina']->id, 'medication_label' => 'Varfarina', 'dose' => '5', 'dose_unit' => 'mg', 'route' => 'oral', 'frequency_hours' => 24, 'prn' => false, 'starts_at' => now(), 'alerts' => [], 'created_at' => now()]);
+        app(CurrentTenant::class)->set(null);
+        $this->get(route('prescriptions.edit', $foreign))->assertForbidden();
+        $this->post(route('prescription-items.justify', $foreignItem), ['justification' => 'x'])->assertForbidden();
+        $this->delete(route('prescription-items.destroy', $foreignItem))->assertForbidden();
+        $this->delete(route('prescriptions.discard', $foreign))->assertForbidden();
+
+        $this->delete(route('prescriptions.discard', $prescription))->assertRedirect(route('visits.show', $this->visit));
+        $this->assertSame([$foreign->id], Prescription::withoutTenantScope()->pluck('id')->all());
+        $this->assertSame(1, PrescriptionItem::withoutTenantScope()->count());
+        $this->assertSame(1, AuditEvent::where('action', 'prescription.discarded')->count());
+    }
 }

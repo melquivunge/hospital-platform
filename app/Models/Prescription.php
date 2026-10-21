@@ -11,7 +11,8 @@ use Illuminate\Support\Carbon;
 
 /**
  * Prescription of an admission or an emergency visit (step 4b.2a). Signed, it never changes and is valid for
- * 24 hours; the newest signed one of the encounter is the active one while the encounter lasts.
+ * 24 hours (decision 4: renewed daily). Only the newest signed one of the encounter is active, and only while
+ * valid: signing a new one replaces the whole earlier regimen.
  *
  * @property int $id
  * @property int $tenant_id

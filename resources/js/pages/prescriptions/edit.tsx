@@ -39,7 +39,12 @@ export default function PrescriptionEdit({
     frequencies,
     now,
 }: {
-    prescription: { id: number; encounter: string; backUrl: string };
+    prescription: {
+        id: number;
+        encounter: string;
+        backUrl: string;
+        replaces: number | null;
+    };
     patient: RecordPatient;
     allergies: PatientAllergy[];
     items: DraftItem[];
@@ -111,7 +116,10 @@ export default function PrescriptionEdit({
                             now={now}
                         />
                     </section>
-                    <Sign prescriptionId={prescription.id} />
+                    <Sign
+                        prescriptionId={prescription.id}
+                        replaces={prescription.replaces}
+                    />
                 </div>
             </Page>
         </>
@@ -397,7 +405,13 @@ function AddItem({
     );
 }
 
-function Sign({ prescriptionId }: { prescriptionId: number }) {
+function Sign({
+    prescriptionId,
+    replaces,
+}: {
+    prescriptionId: number;
+    replaces: number | null;
+}) {
     return (
         <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
             <h2 className="font-semibold">Assinar</h2>
@@ -405,6 +419,16 @@ function Sign({ prescriptionId }: { prescriptionId: number }) {
                 Assinada, a prescrição não muda e vale por 24 horas. Os alertas
                 são conferidos de novo agora.
             </p>
+            {replaces !== null && (
+                <p
+                    role="note"
+                    className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+                >
+                    Ao assinar, esta prescrição substitui a válida agora (
+                    {replaces} {replaces === 1 ? 'item' : 'itens'}). Inclua aqui
+                    tudo o que deve continuar.
+                </p>
+            )}
             <Form
                 {...PrescriptionController.sign.form(prescriptionId)}
                 resetOnError={['password']}
