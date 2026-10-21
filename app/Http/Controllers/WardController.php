@@ -80,6 +80,7 @@ class WardController extends Controller
             'patient' => VisitController::patientHeader($patient),
             'allergies' => PatientAllergyController::listing($ids, $timezone),
             'allergyForm' => PatientAllergyController::form($patient),
+            'prescriptions' => PrescriptionController::panel($request->user(), $admission, null, $timezone),
             'history' => self::history($admission, $timezone),
             // Step 4.5: only the responsible doctor hands the admission over.
             // Not while a transfer between units is open (refused on the server too).
@@ -290,7 +291,7 @@ class WardController extends Controller
         ])->all());
     }
 
-    private static function bedLabel(Admission $admission): ?string
+    public static function bedLabel(Admission $admission): ?string
     {
         return $admission->bed === null ? null : "{$admission->bed->sector?->name} · quarto {$admission->bed->room} · leito {$admission->bed->code}";
     }

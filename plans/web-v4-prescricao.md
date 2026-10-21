@@ -29,6 +29,7 @@ Os mesmos das entregas 3 e 4:
 - Alergia correspondente, dose acima do máximo ou interação com outro item ativo: alerta com justificativa obrigatória no item, conferido de novo na assinatura.
 - Aprazamento: os horários previstos são gerados na assinatura, no fuso da unidade.
 - **Saída:** prescrição assinada imutável; prescrição vencida não gera horários; a alta encerra a prescrição ativa.
+- Divisão (21/10/2026): 4b.2a rascunho, itens, alertas com justificativa conferida na assinatura, assinatura com senha e validade de 24 horas; 4b.2b cópia da anterior, suspensão de item com motivo e aprazamento.
 
 ### 4b.3 Avaliação farmacêutica e dispensação
 - Papel **Farmácia** por unidade (ADR-0005). Fila de prescrições a avaliar. O farmacêutico aprova, aprova com observação ou recusa cada item com motivo. A recusa avisa o médico prescritor.

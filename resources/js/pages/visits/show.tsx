@@ -13,6 +13,9 @@ import type {
     PatientAllergy,
 } from '@/components/patient-allergies';
 import { PatientAllergies } from '@/components/patient-allergies';
+import type { PrescriptionPanelData } from '@/components/prescription-panel';
+import { PrescriptionPanel } from '@/components/prescription-panel';
+import PrescriptionController from '@/actions/App/Http/Controllers/PrescriptionController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
@@ -26,6 +29,7 @@ export default function VisitShow({
     patient,
     allergies,
     allergyForm,
+    prescriptions,
     record,
     drafts,
     documents,
@@ -35,6 +39,7 @@ export default function VisitShow({
     patient: RecordPatient;
     allergies: PatientAllergy[];
     allergyForm: AllergyForm;
+    prescriptions: PrescriptionPanelData | null;
     record: RecordNote[];
     drafts: Draft[];
     documents: ClinicalDocument[];
@@ -76,6 +81,16 @@ export default function VisitShow({
                     />
                 )}
 
+                {prescriptions && (
+                    <div className="mb-8">
+                        <PrescriptionPanel
+                            data={prescriptions}
+                            start={PrescriptionController.startForVisit.form(
+                                visit.id,
+                            )}
+                        />
+                    </div>
+                )}
                 <NotesWorkspace
                     title="Evolução deste atendimento"
                     action={VisitController.storeNote.form(visit.id)}
