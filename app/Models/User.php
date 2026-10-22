@@ -97,6 +97,8 @@ class User extends Authenticatable implements MustVerifyEmail
             foreach ($this->memberships()->get() as $membership) {
                 Shift::vacateFor($membership);
             }
+            // ADR-0006: the signer credentials go with the access.
+            SigningAccount::withoutTenantScope()->where('user_id', $this->id)->delete();
         });
     }
 }

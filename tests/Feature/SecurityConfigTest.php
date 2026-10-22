@@ -29,11 +29,20 @@ class SecurityConfigTest extends TestCase
     public function test_safe_production_config_boots_and_forces_https(): void
     {
         $this->app['env'] = 'production';
-        config(['app.debug' => false, 'session.secure' => true]);
+        config(['app.debug' => false, 'session.secure' => true, 'services.icp.signer' => null]);
 
         (new AppServiceProvider($this->app))->boot();
 
         $this->assertStringStartsWith('https://', url('/login'));
+    }
+
+    public function test_only_development_and_tests_accept_the_test_certificate_signer(): void
+    {
+        $this->app['env'] = 'staging';
+        config(['services.icp.signer' => ' Test ']);
+
+        $this->expectExceptionMessage('ICP_SIGNER=test só é aceito em desenvolvimento e testes.');
+        (new AppServiceProvider($this->app))->boot();
     }
 
     public function test_csp_allows_the_inline_theme_script_by_hash(): void

@@ -25,6 +25,7 @@ use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\PolicyController;
 use App\Http\Controllers\PrescriptionController;
+use App\Http\Controllers\PrescriptionSignatureController;
 use App\Http\Controllers\ProfessionalController;
 use App\Http\Controllers\QualificationController;
 use App\Http\Controllers\ReportController;
@@ -99,6 +100,12 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('prescription-items/{item}/administer', [MedicationAdministrationController::class, 'prn'])->middleware('throttle:60,1')->name('medication.prn');
     Route::delete('prescriptions/{prescription}', [PrescriptionController::class, 'discard'])->middleware('throttle:30,1')->name('prescriptions.discard');
     Route::post('prescriptions/{prescription}/sign', [PrescriptionController::class, 'sign'])->middleware('throttle:30,1')->name('prescriptions.sign');
+    // Step 4b.5 (ADR-0006): digital signature with the linked certificate.
+    Route::post('prescriptions/{prescription}/certify', [PrescriptionSignatureController::class, 'store'])->middleware('throttle:10,1,certificate')->name('prescriptions.certify');
+    Route::get('prescriptions/{prescription}/signature/{part}', [PrescriptionSignatureController::class, 'download'])->whereIn('part', ['pdf', 'p7s'])->middleware('throttle:60,1')->name('prescriptions.signature');
+    Route::get('settings/certificate', [PrescriptionSignatureController::class, 'edit'])->name('certificate.edit');
+    Route::post('settings/certificate', [PrescriptionSignatureController::class, 'link'])->middleware('throttle:10,1,certificate')->name('certificate.link');
+    Route::delete('settings/certificate', [PrescriptionSignatureController::class, 'unlink'])->middleware('throttle:10,1,certificate')->name('certificate.unlink');
     Route::get('pharmacy', [PharmacyController::class, 'index'])->middleware('throttle:120,1')->name('pharmacy.index');
     Route::get('pharmacy/prescriptions/{prescription}', [PharmacyController::class, 'show'])->middleware('throttle:120,1')->name('pharmacy.show');
     Route::post('pharmacy/items/{item}/review', [PharmacyController::class, 'review'])->middleware('throttle:120,1')->name('pharmacy.review');

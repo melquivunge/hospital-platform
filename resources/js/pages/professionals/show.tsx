@@ -22,6 +22,7 @@ type Professional = {
     external_id: string | null;
     email?: string | null;
     phone?: string | null;
+    cpf?: string | null;
 };
 
 type HistoryEntry = {
@@ -202,6 +203,9 @@ export default function ProfessionalShow({
                                     label="Telefone"
                                     value={professional.phone}
                                 />
+                            )}
+                            {professional.cpf !== undefined && (
+                                <Detail label="CPF" value={professional.cpf} />
                             )}
                         </dl>
                     </aside>

@@ -29,7 +29,7 @@ use Inertia\Response;
  */
 class ProfessionalController extends Controller
 {
-    private const FIELDS = ['id', 'name', 'base_unit_id', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone'];
+    private const FIELDS = ['id', 'name', 'base_unit_id', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone', 'cpf'];
 
     public function index(Request $request): Response
     {
@@ -122,7 +122,7 @@ class ProfessionalController extends Controller
 
         return Inertia::render('professionals/show', [
             'professional' => [
-                ...$professional->only($full ? self::FIELDS : array_diff(self::FIELDS, ['email', 'phone'])),
+                ...$professional->only($full ? self::FIELDS : array_diff(self::FIELDS, ['email', 'phone', 'cpf'])),
                 'baseUnit' => $professional->baseUnit?->name,
             ],
             'history' => $history,

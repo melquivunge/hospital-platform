@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Clinical\ClinicalAccess;
+use App\Clinical\PrescriptionCertification;
 use App\Clinical\PrescriptionSafety;
 use App\Models\Admission;
 use App\Models\AuditEvent;
@@ -29,6 +30,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 /**
  * Prescription (step 4b.2a, ADR-0005/0006). Only a doctor (council CRM, a function that attends patients,
@@ -270,7 +272,25 @@ class PrescriptionController extends Controller
 
             return count($items);
         });
-        Inertia::flash('toast', ['type' => 'success', 'message' => "Prescrição assinada com {$count} ".($count === 1 ? 'item' : 'itens').'. Vale por 24 horas.']);
+        $message = "Prescrição assinada com {$count} ".($count === 1 ? 'item' : 'itens').'. Vale por 24 horas.';
+        // Step 4b.5: with a linked certificate, also signed digitally, after the commit (the signer is outside the
+        // transaction). A failure keeps the password signature; the author signs again from the panel.
+        try {
+            if (PrescriptionCertification::account($request->user()) !== null) {
+                $digital = PrescriptionCertification::certify(Prescription::query()->findOrFail($prescription->id), $request->user());
+                $message .= ' Assinada também com '.PrescriptionCertification::label($digital->provider).'.';
+            }
+        } catch (Throwable $exception) {
+            if (! $exception instanceof ValidationException) {
+                report($exception);
+            }
+            Inertia::flash('toast', ['type' => 'warning', 'message' => $message.' '.($exception instanceof ValidationException
+                ? collect($exception->errors())->flatten()->first()
+                : 'A assinatura com certificado falhou; a prescrição continua assinada com senha. Tente de novo pelo botão da prescrição.')]);
+
+            return $admission !== null ? to_route('ward.show', $admission) : to_route('visits.show', $visit);
+        }
+        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
 
         return $admission !== null ? to_route('ward.show', $admission) : to_route('visits.show', $visit);
     }
@@ -350,11 +370,12 @@ class PrescriptionController extends Controller
     {
         $column = $admission !== null ? 'admission_id' : 'visit_id';
         $id = $admission->id ?? $visit?->id;
-        $signed = Prescription::query()->where($column, $id)->where('status', 'signed')->with(['items.review', 'items.dispensing', 'items.medication:id,controlled,high_alert', 'professional:id,name'])
+        $signed = Prescription::query()->where($column, $id)->where('status', 'signed')->with(['items.review', 'items.dispensing', 'items.medication:id,controlled,high_alert', 'professional:id,name', 'signature'])
             ->orderByDesc('signed_at')->orderByDesc('id')->limit(10)->get();
         $newest = $signed->first();
         $active = $newest !== null && $newest->valid_until?->isFuture() ? $newest : null;
         $when = fn (?CarbonImmutable $at) => $at?->setTimezone($timezone)->format('d/m/Y H:i');
+        $certifiable = PrescriptionCertification::account($user) !== null;
         // Step 4b.4: the doses and records of every prescription shown; only the active one's can be late.
         $doses = self::doses($signed->flatMap(fn (Prescription $prescription) => $prescription->items->modelKeys())->all(), $timezone, $active === null ? [] : $active->items->whereNull('suspended_at')->modelKeys());
         $summary = fn (Prescription $prescription) => [
@@ -362,6 +383,14 @@ class PrescriptionController extends Controller
             'signedAt' => $when($prescription->signed_at?->toImmutable()),
             'validUntil' => $when($prescription->valid_until?->toImmutable()),
             'author' => $prescription->professional?->name,
+            // Step 4b.5: digital signature, or the simple electronic one (the password).
+            'certificate' => $prescription->signature === null ? null : [
+                'label' => PrescriptionCertification::label($prescription->signature->provider),
+                'qualified' => $prescription->signature->qualified,
+                'holder' => $prescription->signature->signer_name,
+                'at' => $when($prescription->signature->signed_at->toImmutable()),
+            ],
+            'canCertify' => $prescription->signature === null && $prescription->author_user_id === $user->id && $certifiable,
             'items' => array_map(fn (PrescriptionItem $item) => [
                 ...self::describe($item, $timezone),
                 ...($doses[$item->id] ?? ['doses' => [], 'given' => []]),

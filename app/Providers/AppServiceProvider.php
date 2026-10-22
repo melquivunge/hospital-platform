@@ -60,6 +60,11 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function ensureSafeProductionConfig(): void
     {
+        // ADR-0006: the test signer has no legal value and keeps keys it issued itself: development and CI only.
+        if (strtolower(trim((string) config('services.icp.signer'))) === 'test' && ! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException('ICP_SIGNER=test só é aceito em desenvolvimento e testes.');
+        }
+
         if (! app()->isProduction()) {
             return;
         }
