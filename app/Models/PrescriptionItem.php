@@ -104,6 +104,14 @@ class PrescriptionItem extends Model
     }
 
     /**
+     * @return HasOne<PrescriptionDispensing, $this>
+     */
+    public function dispensing(): HasOne
+    {
+        return $this->hasOne(PrescriptionDispensing::class);
+    }
+
+    /**
      * @return BelongsTo<Medication, $this>
      */
     public function medication(): BelongsTo

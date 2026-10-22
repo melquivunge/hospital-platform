@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.3a (papel Farmácia e avaliação por item); depois a 4b.3b (dispensação e devolução), plano em `plans/web-v4-prescricao.md`.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.3b (dispensação e devolução); depois a 4b.4 (administração pela enfermagem), plano em `plans/web-v4-prescricao.md`.
 
 ## Onde está cada coisa
 
@@ -80,7 +80,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #54 | Etapa 4b.1c: alergias do paciente | Mesclado |
 | #55 | Etapa 4b.2a: prescrição com alertas, justificativa e assinatura | Mesclado |
 | #56 | Etapa 4b.2b: cópia, suspensão de item e aprazamento | Mesclado |
-| — | Etapa 4b.3a: papel Farmácia e avaliação por item (branch `feat/pharmacy`) | Em revisão |
+| #57 | Etapa 4b.3a: papel Farmácia e avaliação por item | Mesclado |
+| — | Etapa 4b.3b: dispensação e devolução (branch `feat/pharmacy-dispensing`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -236,7 +237,14 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
-- **4b.3a (farmácia: papel e avaliação; a 4b.3 foi dividida em 4b.3a e 4b.3b dispensação e devolução):**
+- **4b.3b (dispensação e devolução):**
+  - Item aprovado (com ou sem observação), não suspenso, da prescrição válida é dispensado uma vez para as 24 horas, com a quantidade em unidades (a tela sugere o número de horários previstos). Item sem avaliação, recusado ou suspenso não é dispensado. O médico e a enfermagem veem "Dispensado: N" no item.
+  - Devolução registrada uma vez por dispensação, com quantidade (até a dispensada) e motivo, até 48 horas depois da dispensação, também depois da renovação, do vencimento ou da alta. Essas prescrições aparecem em "Devoluções" na tela da farmácia e abrem só para devolver (leitura gravada na trilha). O banco só aceita a devolução, uma vez; o resto da dispensação nunca muda.
+  - Auditoria só com quantidades e vínculos (o motivo da devolução pode ser clínico e não vai para a auditoria).
+  - Revisão de segurança independente (sem crítico/alto; acesso por unidade, ordem de locks e auditoria conferidos). Corrigido: consulta N+1 na lista de devoluções; rótulo "Aguardando leito" da fila preservado; dispensação repetida recusada sob o lock antes do banco; testes de validação, outra unidade, prescrição vencida e substituída, item aprovado com observação, trilha de leitura e gatilho (segunda devolução e exclusão).
+  - Corrida real (2 execuções): duas dispensações simultâneas do mesmo item resultam numa só; dispensação × suspensão e dispensação × alta consistentes; duas devoluções simultâneas resultam numa só.
+  - Navegador: aprovar, dispensar, devolução acima do dispensado bloqueada, devolução registrada, em 1440 e 360 px, sem erros.
+- **4b.3a (farmácia: papel e avaliação, PR #57; a 4b.3 foi dividida em 4b.3a e 4b.3b dispensação e devolução):**
   - Papel novo **Farmácia**, por unidade (ADR-0005), concedido como os demais papéis de unidade. Menu "Farmácia" com a fila das prescrições válidas da unidade (internação ativa ou atendimento de urgência aberto): paciente, local, hora da assinatura e itens a avaliar. A fila não grava leitura.
   - Abrir uma prescrição grava leitura na trilha com o motivo "farmácia" e o vínculo com a prescrição. A tela mostra só a prescrição, as alergias e a identificação do paciente; a farmácia não chega ao prontuário nem ao atendimento. Prescrição substituída, vencida ou de atendimento encerrado fica fora de alcance.
   - Cada item é aprovado, aprovado com observação ou recusado com motivo, uma vez (o banco não deixa mudar). Item suspenso não é avaliado. A recusa avisa o médico prescritor (notificação sem paciente nem medicamento). O médico e a enfermagem veem a avaliação no item.
@@ -478,7 +486,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 372 testes passando (etapa 4b.3a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 374 testes passando (etapa 4b.3b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

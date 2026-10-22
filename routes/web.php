@@ -99,6 +99,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('pharmacy', [PharmacyController::class, 'index'])->middleware('throttle:120,1')->name('pharmacy.index');
     Route::get('pharmacy/prescriptions/{prescription}', [PharmacyController::class, 'show'])->middleware('throttle:120,1')->name('pharmacy.show');
     Route::post('pharmacy/items/{item}/review', [PharmacyController::class, 'review'])->middleware('throttle:120,1')->name('pharmacy.review');
+    Route::post('pharmacy/items/{item}/dispense', [PharmacyController::class, 'dispense'])->middleware('throttle:120,1')->name('pharmacy.dispense');
+    Route::post('pharmacy/dispensings/{dispensing}/return', [PharmacyController::class, 'returnItem'])->middleware('throttle:120,1')->name('pharmacy.return');
     Route::get('emergency', [EmergencyController::class, 'index'])->name('emergency.index');
     Route::post('units/{unit}/emergency-arrivals', [EmergencyController::class, 'arrive'])->middleware('throttle:60,1')->name('emergency.arrive');
     Route::post('emergency-episodes/{episode}/triage', [EmergencyController::class, 'triage'])->middleware('throttle:60,1')->name('emergency.triage');
