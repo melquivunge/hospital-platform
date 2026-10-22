@@ -549,7 +549,7 @@ Todas as propostas abaixo foram aceitas: ciclo completo (1), dispensação por 2
 
 ## Contrato da entrega 4c — estoque da farmácia
 
-Método: ECC Product Capability. Data: 22/10/2026. Estado: **proposta para revisão do usuário; nenhuma implementação autorizada.** Origem: decisão do usuário de 19/10/2026 (questão 3 da entrega 4b: estoque fora da 4b, numa entrega 4c).
+Método: ECC Product Capability. Data: 22/10/2026. Estado: **decisões do usuário de 22/10/2026 registradas; ADR-0007 e plano propostos, aguardando aprovação. Nenhuma implementação autorizada.** Origem: decisão do usuário de 19/10/2026 (questão 3 da entrega 4b: estoque fora da 4b, numa entrega 4c).
 
 ### Capacidade
 
@@ -601,7 +601,11 @@ A farmácia de cada unidade sabe quanto tem de cada medicamento do catálogo, em
 - Materiais e insumos que não estão no catálogo de medicamentos (entrega 5).
 - Código de barras e leitura de DataMatrix ou GTIN.
 
-### Questões abertas
+### Decisões do usuário (22/10/2026)
+
+Propostas aceitas nas questões 1, 2, 3, 5, 6, 7, 8 e 9. Na questão 4, o usuário escolheu o meio-termo: **dispensar sem saldo continua recusado, mas a farmácia pode registrar a entrada esquecida (lote, validade e quantidade) na própria tela da dispensação e dispensar em seguida.** A invariante "nunca negativo" fica mantida.
+
+### Questões (respondidas)
 
 1. **Onde fica o estoque.** Proposta: um estoque por unidade (a farmácia da unidade). Alternativa: também farmácias satélites e estoque por setor, com transferência interna.
 2. **Unidade de controle.** Proposta: o estoque conta na mesma unidade que a dispensação da 4b já usa ("unidades", como comprimido, ampola ou frasco). Cada medicamento ganha um rótulo de unidade de estoque e um estoque mínimo por unidade de hospital. Alternativa: embalagem com fator de conversão (caixa com 20 comprimidos).
@@ -615,6 +619,7 @@ A farmácia de cada unidade sabe quanto tem de cada medicamento do catálogo, em
 
 ### Encaminhamento ECC
 
-- **Esclarecimento de produto:** pendente (questões 1 a 9).
-- **Arquitetura:** depois das respostas, uma **ADR-0007** (saldo derivado de movimentos, lock do lote na ordem existente, estoque fora do RLS sem dado de paciente) e o plano em etapas em `plans/web-v5-estoque.md`.
+- **Esclarecimento de produto:** concluído (decisões acima).
+- **Arquitetura:** [ADR-0007](docs/adr/0007-pharmacy-stock-ledger.md), proposta.
+- **Plano em etapas:** `plans/web-v5-estoque.md`, proposto.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
