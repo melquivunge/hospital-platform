@@ -32,9 +32,9 @@ class VisitController extends Controller
 {
     private const BODY = ['required', 'string', 'max:20000'];
 
-    private const SIGN_ATTEMPTS = 5;
+    public const SIGN_ATTEMPTS = 5;
 
-    private const SIGN_LOCKOUT_SECONDS = 900;
+    public const SIGN_LOCKOUT_SECONDS = 900;
 
     /**
      * Patients who arrived for me and visits I have open.

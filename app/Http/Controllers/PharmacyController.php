@@ -16,7 +16,6 @@ use App\Models\Unit;
 use App\Models\Visit;
 use App\Policies\UnitPolicy;
 use App\Tenancy\Role;
-use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -77,8 +76,7 @@ class PharmacyController extends Controller
         Inertia::encryptHistory();
         $timezone = Unit::query()->whereKey($encounter->unit_id)->value('timezone') ?? 'UTC';
         $prescription->load(['items.review', 'items.dispensing', 'professional:id,name']);
-        $doses = DB::table('prescription_doses')->whereIn('prescription_item_id', $prescription->items->modelKeys())
-            ->orderBy('scheduled_at')->get(['prescription_item_id', 'scheduled_at'])->groupBy('prescription_item_id');
+        $doses = PrescriptionController::doses($prescription->items->modelKeys(), $timezone, withRecords: false);
 
         return Inertia::render('pharmacy/show', [
             'prescription' => [
@@ -96,7 +94,9 @@ class PharmacyController extends Controller
             'allergies' => PatientAllergyController::listing(ClinicalAccess::recordIds($patient), $timezone),
             'items' => array_map(fn (PrescriptionItem $item) => [
                 ...PrescriptionController::describe($item, $timezone),
-                'doses' => array_values(($doses->get($item->id) ?? collect())->map(fn (object $dose) => CarbonImmutable::parse((string) data_get($dose, 'scheduled_at'))->setTimezone($timezone)->format('d/m H:i'))->all()),
+                // The times only: the administration records are not the pharmacy's (ADR-0005).
+                'doses' => $doses[$item->id]['doses'] ?? [],
+                'given' => [],
                 'returnable' => $item->dispensing !== null && $item->dispensing->returned_at === null
                     && $item->dispensing->created_at->gt(now()->subHours(PrescriptionDispensing::RETURN_HOURS)),
             ], $prescription->items->all()),

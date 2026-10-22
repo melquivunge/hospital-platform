@@ -1,4 +1,7 @@
 import { Form, Link } from '@inertiajs/react';
+import { useState } from 'react';
+import MedicationAdministrationController from '@/actions/App/Http/Controllers/MedicationAdministrationController';
+import { selectClassName } from '@/components/role-fields';
 import InputError from '@/components/input-error';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,7 +21,10 @@ export type PrescriptionItemView = {
     justification: string | null;
     suspendedAt: string | null;
     suspensionReason: string | null;
-    doses?: string[];
+    prn: boolean;
+    doubleCheck: boolean;
+    doses?: DoseView[];
+    given?: DoseRecord[];
     review: { decision: string; label: string; note: string | null } | null;
     dispensing: {
         id: number;
@@ -28,6 +34,25 @@ export type PrescriptionItemView = {
         returnedAt: string | null;
         returnReason: string | null;
     } | null;
+};
+
+/** Step 4b.4: what the ward team recorded for a dose. */
+export type DoseRecord = {
+    outcome: 'administered' | 'refused' | 'not_done';
+    label: string;
+    at: string;
+    by: string | null;
+    witness: string | null;
+    reason: string | null;
+    exception: boolean;
+};
+
+export type DoseView = {
+    id: number;
+    at: string;
+    late: boolean;
+    due: boolean;
+    record: DoseRecord | null;
 };
 
 export type PrescriptionSummary = {
@@ -44,6 +69,10 @@ export type PrescriptionPanelData = {
     draftId: number | null;
     canPrescribe: boolean;
     canSuspend: boolean;
+    administration: {
+        witnesses: { id: number; name: string }[];
+        now: string;
+    } | null;
 };
 
 /** One item as signed: what, how much, how and when, with the alerts and the prescriber's justification. */
@@ -91,11 +120,7 @@ export function PrescriptionItemLine({ item }: { item: PrescriptionItemView }) {
                     Suspenso em {item.suspendedAt}: {item.suspensionReason}
                 </p>
             )}
-            {!item.suspendedAt && item.doses && item.doses.length > 0 && (
-                <p className="text-xs text-muted-foreground tabular-nums">
-                    Horários: {item.doses.join(' · ')}
-                </p>
-            )}
+            <DoseList item={item} />
             {item.storedAlerts.length > 0 && (
                 <p className="text-xs">
                     <span className="font-medium text-destructive">
@@ -169,6 +194,14 @@ export function PrescriptionPanel({
                                 className="rounded-lg border px-4 py-3"
                             >
                                 <PrescriptionItemLine item={item} />
+                                {data.administration &&
+                                    !item.suspendedAt &&
+                                    item.review?.decision !== 'refused' && (
+                                        <AdministrationForms
+                                            item={item}
+                                            administration={data.administration}
+                                        />
+                                    )}
                                 {data.canSuspend && !item.suspendedAt && (
                                     <SuspendForm item={item} />
                                 )}
@@ -250,3 +283,247 @@ function SuspendForm({ item }: { item: PrescriptionItemView }) {
         </details>
     );
 }
+
+function recordText(record: DoseRecord): string {
+    return [
+        `${record.label} ${record.at}`,
+        record.by && `por ${record.by}`,
+        record.witness && `com ${record.witness}`,
+        record.exception && 'sem dispensação',
+        record.reason && `(${record.reason})`,
+    ]
+        .filter(Boolean)
+        .join(' ');
+}
+
+/** Step 4b.4: the times of an item with what was recorded, the late ones marked; a suspended item keeps only its records. */
+function DoseList({ item }: { item: PrescriptionItemView }) {
+    const doses = (item.doses ?? []).filter(
+        (dose) => !item.suspendedAt || dose.record,
+    );
+    const given = item.given ?? [];
+    if (doses.length === 0 && given.length === 0) {
+        return null;
+    }
+
+    return (
+        <ul className="grid gap-0.5 text-xs tabular-nums">
+            {doses.map((dose) => (
+                <li
+                    key={dose.id}
+                    className={
+                        dose.late
+                            ? 'font-medium text-destructive'
+                            : 'text-muted-foreground'
+                    }
+                >
+                    {dose.at}:{' '}
+                    {dose.record
+                        ? recordText(dose.record)
+                        : dose.late
+                          ? 'atrasado'
+                          : 'previsto'}
+                </li>
+            ))}
+            {given.map((record, index) => (
+                <li key={index} className="text-muted-foreground">
+                    Se necessário: {recordText(record)}
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+function AdministrationForms({
+    item,
+    administration,
+}: {
+    item: PrescriptionItemView;
+    administration: NonNullable<PrescriptionPanelData['administration']>;
+}) {
+    const due = (item.doses ?? []).filter((dose) => dose.due);
+
+    return (
+        <div className="mt-2 grid gap-1">
+            {due.map((dose) => (
+                <AdministerForm
+                    key={dose.id}
+                    item={item}
+                    administration={administration}
+                    dose={dose}
+                />
+            ))}
+            {item.prn && (
+                <AdministerForm item={item} administration={administration} />
+            )}
+        </div>
+    );
+}
+
+function AdministerForm({
+    item,
+    administration,
+    dose,
+}: {
+    item: PrescriptionItemView;
+    administration: NonNullable<PrescriptionPanelData['administration']>;
+    dose?: DoseView;
+}) {
+    const [outcome, setOutcome] = useState('administered');
+    const key = dose ? `dose-${dose.id}` : `prn-${item.id}`;
+    const administered = outcome === 'administered';
+    const needsReason = !administered || !item.dispensing;
+
+    return (
+        <details className="rounded-md border px-3">
+            <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">
+                {dose
+                    ? `Registrar o horário ${dose.at}`
+                    : 'Administrar uma dose (se necessário)'}
+            </summary>
+            <Form
+                {...(dose
+                    ? MedicationAdministrationController.dose.form(dose.id)
+                    : MedicationAdministrationController.prn.form(item.id))}
+                options={{ preserveScroll: true }}
+                errorBag={dose ? `dose${dose.id}` : `prn${item.id}`}
+                className="grid gap-3 pb-3"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        {dose && (
+                            <fieldset className="grid gap-1">
+                                <legend className="mb-1 text-sm">
+                                    Registro
+                                </legend>
+                                <div className="flex flex-wrap gap-x-4">
+                                    {Object.entries(OUTCOMES).map(
+                                        ([value, label]) => (
+                                            <label
+                                                key={value}
+                                                className="flex min-h-11 items-center gap-2 text-sm"
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="outcome"
+                                                    value={value}
+                                                    checked={outcome === value}
+                                                    onChange={() =>
+                                                        setOutcome(value)
+                                                    }
+                                                />
+                                                {label}
+                                            </label>
+                                        ),
+                                    )}
+                                </div>
+                                <InputError message={errors.outcome} />
+                            </fieldset>
+                        )}
+                        {administered && (
+                            <div className="grid max-w-xs gap-2">
+                                <Label htmlFor={`${key}-at`}>
+                                    Horário da administração
+                                </Label>
+                                <Input
+                                    id={`${key}-at`}
+                                    name="occurred_at"
+                                    type="datetime-local"
+                                    defaultValue={administration.now}
+                                    max={administration.now}
+                                    required
+                                    className="h-11"
+                                />
+                                <InputError message={errors.occurred_at} />
+                            </div>
+                        )}
+                        {needsReason && (
+                            <div className="grid gap-2">
+                                <Label htmlFor={`${key}-reason`}>
+                                    {administered
+                                        ? 'Motivo da exceção (item não dispensado pela farmácia)'
+                                        : 'Motivo'}
+                                </Label>
+                                <Input
+                                    id={`${key}-reason`}
+                                    name="reason"
+                                    required
+                                    maxLength={255}
+                                    className="h-11"
+                                />
+                                <InputError message={errors.reason} />
+                            </div>
+                        )}
+                        {administered && item.doubleCheck && (
+                            <div className="grid gap-3 rounded-md bg-muted p-3">
+                                <p className="text-sm font-medium">
+                                    Dupla checagem: controlado ou alto alerta
+                                </p>
+                                <div className="grid gap-2">
+                                    <Label htmlFor={`${key}-witness`}>
+                                        Segunda pessoa
+                                    </Label>
+                                    <select
+                                        id={`${key}-witness`}
+                                        name="witness_user_id"
+                                        required
+                                        defaultValue=""
+                                        className={selectClassName}
+                                    >
+                                        <option value="" disabled>
+                                            Escolha
+                                        </option>
+                                        {administration.witnesses.map(
+                                            (witness) => (
+                                                <option
+                                                    key={witness.id}
+                                                    value={witness.id}
+                                                >
+                                                    {witness.name}
+                                                </option>
+                                            ),
+                                        )}
+                                    </select>
+                                    <InputError
+                                        message={errors.witness_user_id}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor={`${key}-password`}>
+                                        Senha da segunda pessoa
+                                    </Label>
+                                    <Input
+                                        id={`${key}-password`}
+                                        name="witness_password"
+                                        type="password"
+                                        autoComplete="new-password"
+                                        required
+                                        className="h-11"
+                                    />
+                                    <InputError
+                                        message={errors.witness_password}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                        <div>
+                            <Button
+                                type="submit"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Registrar
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </Form>
+        </details>
+    );
+}
+
+const OUTCOMES = {
+    administered: 'Administrado',
+    refused: 'Recusado pelo paciente',
+    not_done: 'Não realizado',
+};

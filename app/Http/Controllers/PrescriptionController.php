@@ -8,6 +8,7 @@ use App\Models\Admission;
 use App\Models\AuditEvent;
 use App\Models\JobFunction;
 use App\Models\Medication;
+use App\Models\MedicationAdministration;
 use App\Models\Patient;
 use App\Models\Prescription;
 use App\Models\PrescriptionItem;
@@ -19,6 +20,7 @@ use App\Models\User;
 use App\Models\Visit;
 use App\Professionals\QualificationStatus;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -317,7 +319,7 @@ class PrescriptionController extends Controller
         $timezone = Unit::query()->whereKey($draft->unit_id)->value('timezone') ?? 'UTC';
         $suspended = PrescriptionItem::query()->whereIn('prescription_id', Prescription::query()
             ->where($draft->admission_id !== null ? 'admission_id' : 'visit_id', $draft->admission_id ?? $draft->visit_id)->where('status', 'signed')->select('id'))
-            ->where('suspended_at', '>=', $draft->created_at)->get()->keyBy('medication_id');
+            ->where('suspended_at', '>=', $draft->created_at->format('Y-m-d H:i:s.uP'))->get()->keyBy('medication_id');
         foreach (array_values($items) as $index => $item) {
             if (($stop = $suspended->get($item->medication_id)) !== null) {
                 $alerts[$index][] = 'Suspenso na prescrição válida em '.$stop->suspended_at?->setTimezone($timezone)->format('d/m H:i').": {$stop->suspension_reason}";
@@ -348,13 +350,13 @@ class PrescriptionController extends Controller
     {
         $column = $admission !== null ? 'admission_id' : 'visit_id';
         $id = $admission->id ?? $visit?->id;
-        $signed = Prescription::query()->where($column, $id)->where('status', 'signed')->with(['items.review', 'items.dispensing', 'professional:id,name'])
+        $signed = Prescription::query()->where($column, $id)->where('status', 'signed')->with(['items.review', 'items.dispensing', 'items.medication:id,controlled,high_alert', 'professional:id,name'])
             ->orderByDesc('signed_at')->orderByDesc('id')->limit(10)->get();
         $newest = $signed->first();
         $active = $newest !== null && $newest->valid_until?->isFuture() ? $newest : null;
         $when = fn (?CarbonImmutable $at) => $at?->setTimezone($timezone)->format('d/m/Y H:i');
-        $doses = $active === null ? collect() : DB::table('prescription_doses')->whereIn('prescription_item_id', $active->items->modelKeys())
-            ->orderBy('scheduled_at')->get(['prescription_item_id', 'scheduled_at'])->groupBy('prescription_item_id');
+        // Step 4b.4: the doses and records of every prescription shown; only the active one's can be late.
+        $doses = self::doses($signed->flatMap(fn (Prescription $prescription) => $prescription->items->modelKeys())->all(), $timezone, $active === null ? [] : $active->items->whereNull('suspended_at')->modelKeys());
         $summary = fn (Prescription $prescription) => [
             'id' => $prescription->id,
             'signedAt' => $when($prescription->signed_at?->toImmutable()),
@@ -362,7 +364,7 @@ class PrescriptionController extends Controller
             'author' => $prescription->professional?->name,
             'items' => array_map(fn (PrescriptionItem $item) => [
                 ...self::describe($item, $timezone),
-                'doses' => array_values(($doses->get($item->id) ?? collect())->map(fn (object $dose) => CarbonImmutable::parse((string) data_get($dose, 'scheduled_at'))->setTimezone($timezone)->format('d/m H:i'))->all()),
+                ...($doses[$item->id] ?? ['doses' => [], 'given' => []]),
             ], $prescription->items->all()),
         ];
 
@@ -372,7 +374,54 @@ class PrescriptionController extends Controller
             'draftId' => Prescription::query()->where($column, $id)->where('status', 'draft')->where('author_user_id', $user->id)->value('id'),
             'canPrescribe' => $canPrescribe = self::prescriber($user, (int) ($admission->unit_id ?? $visit?->unit_id)) !== null,
             'canSuspend' => $canPrescribe && $active !== null,
+            // Step 4b.4: the ward team of the bed's sector records the doses of the active prescription.
+            'administration' => $active !== null && $admission !== null && MedicationAdministrationController::onWardTeam($user, $admission)
+                ? ['witnesses' => MedicationAdministrationController::witnesses($admission, $user), 'now' => now($timezone)->format('Y-m-d\TH:i')]
+                : null,
         ];
+    }
+
+    /**
+     * Step 4b.4: per item, its scheduled doses, each with its record and whether it is late (only for the items
+     * in $current), and the records of its "if needed" doses. Without $withRecords, the times only.
+     *
+     * @param  array<int, int>  $itemIds
+     * @param  array<int, int>  $current
+     * @return array<int, array{doses: list<array<string, mixed>>, given: list<array<string, mixed>>}>
+     */
+    public static function doses(array $itemIds, string $timezone, array $current = [], bool $withRecords = true): array
+    {
+        $records = $withRecords ? MedicationAdministration::query()->whereIn('prescription_item_id', $itemIds)->orderBy('occurred_at')->get() : new EloquentCollection;
+        $names = User::query()->whereKey($records->pluck('recorded_by_user_id')->merge($records->pluck('witness_user_id'))->filter()->unique()->all())->pluck('name', 'id');
+        $describe = fn (MedicationAdministration $record) => [
+            'outcome' => $record->outcome,
+            'label' => MedicationAdministration::OUTCOMES[$record->outcome],
+            'at' => $record->occurred_at->setTimezone($timezone)->format('d/m H:i'),
+            'by' => $names[$record->recorded_by_user_id] ?? null,
+            'witness' => $record->witness_user_id === null ? null : ($names[$record->witness_user_id] ?? null),
+            'reason' => $record->reason,
+            'exception' => $record->exception,
+        ];
+        $byDose = $records->whereNotNull('prescription_dose_id')->keyBy('prescription_dose_id');
+        $late = now()->subMinutes(MedicationAdministration::LATE_MINUTES);
+        $result = [];
+        foreach (DB::table('prescription_doses')->whereIn('prescription_item_id', $itemIds)->orderBy('scheduled_at')->get(['id', 'prescription_item_id', 'scheduled_at']) as $dose) {
+            $at = CarbonImmutable::parse((string) data_get($dose, 'scheduled_at'));
+            $record = $byDose->get((int) data_get($dose, 'id'));
+            $itemId = (int) data_get($dose, 'prescription_item_id');
+            $result[$itemId]['doses'][] = [
+                'id' => (int) data_get($dose, 'id'),
+                'at' => $at->setTimezone($timezone)->format('d/m H:i'),
+                'late' => $record === null && $at->lt($late) && in_array($itemId, $current, true),
+                'due' => $record === null && $at->lte(now()->addMinutes(MedicationAdministration::EARLY_MINUTES)) && in_array($itemId, $current, true),
+                'record' => $record === null ? null : $describe($record),
+            ];
+        }
+        foreach ($records->whereNull('prescription_dose_id') as $record) {
+            $result[$record->prescription_item_id]['given'][] = $describe($record);
+        }
+
+        return array_map(fn (array $item) => ['doses' => $item['doses'] ?? [], 'given' => $item['given'] ?? []], $result);
     }
 
     /**
@@ -544,6 +593,9 @@ class PrescriptionController extends Controller
             'startsAt' => $item->starts_at->setTimezone($timezone)->format('d/m/Y H:i'),
             'notes' => $item->notes,
             'storedAlerts' => $item->alerts,
+            'prn' => $item->prn,
+            // Step 4b.4: controlled and high-alert medications are administered with a second person.
+            'doubleCheck' => $item->relationLoaded('medication') && $item->medication !== null && ($item->medication->controlled || $item->medication->high_alert),
             'justification' => $item->justification,
             'suspendedAt' => $item->suspended_at?->setTimezone($timezone)->format('d/m/Y H:i'),
             'suspensionReason' => $item->suspension_reason,

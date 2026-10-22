@@ -12,6 +12,8 @@ type Item = {
     status: 'requested' | 'admitted';
     responsible: string | null;
     mine: boolean;
+    /** Step 4b.4: late doses and the next time of the active prescription. */
+    doses: { late: number; next: string | null } | null;
 };
 
 /** Inpatients the professional cares for (step 4.4b): as responsible doctor or on the bed's sector team. */
@@ -53,6 +55,23 @@ export default function Ward({ admissions }: { admissions: Item[] }) {
                                             ? ' · você é o responsável'
                                             : ` · responsável: ${item.responsible}`}
                                     </span>
+                                    {item.doses && (
+                                        <span className="flex flex-wrap gap-2 pt-1">
+                                            {item.doses.late > 0 && (
+                                                <span className="rounded-full bg-destructive px-2.5 py-0.5 text-xs font-medium text-white">
+                                                    {item.doses.late === 1
+                                                        ? '1 horário atrasado'
+                                                        : `${item.doses.late} horários atrasados`}
+                                                </span>
+                                            )}
+                                            {item.doses.next && (
+                                                <span className="text-xs text-muted-foreground tabular-nums">
+                                                    Próximo medicamento às{' '}
+                                                    {item.doses.next}
+                                                </span>
+                                            )}
+                                        </span>
+                                    )}
                                 </span>
                                 <Button asChild className="min-h-11">
                                     <Link

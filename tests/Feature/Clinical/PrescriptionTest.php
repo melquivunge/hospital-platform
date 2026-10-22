@@ -237,8 +237,9 @@ class PrescriptionTest extends ClinicalTestCase
         $this->post(route('prescriptions.sign', $prescription), ['password' => 'password'])->assertSessionHasNoErrors();
 
         $this->get(route('visits.show', $this->visit))->assertInertia(fn (Assert $page) => $page
-            ->where('prescriptions.active.items.0.doses', ['13/11 09:00', '13/11 17:00', '14/11 01:00'])
-            ->where('prescriptions.active.items.1.doses', ['13/11 20:00', '14/11 08:00'])
+            // Step 4b.4: each time comes with its record; here, the times only.
+            ->where('prescriptions.active.items.0.doses', fn ($doses) => collect($doses)->pluck('at')->all() === ['13/11 09:00', '13/11 17:00', '14/11 01:00'])
+            ->where('prescriptions.active.items.1.doses', fn ($doses) => collect($doses)->pluck('at')->all() === ['13/11 20:00', '14/11 08:00'])
             ->where('prescriptions.active.items.2.doses', []));
         $this->assertSame(5, AuditEvent::where('action', 'prescription.signed')->sole()->context['doses']);
 
@@ -319,5 +320,20 @@ class PrescriptionTest extends ClinicalTestCase
             ->where('items.0.medication', 'Varfarina 5 mg (Comprimido)')->where('items.0.pending', ['Alergia registrada a Varfarina (grave).'])
             ->where('items.1.pending', []));
         $this->post(route('prescriptions.sign', $next), ['password' => 'password'])->assertSessionHasErrors('password');
+    }
+
+    public function test_a_suspension_just_before_the_new_draft_is_no_alert(): void
+    {
+        // Regression (4b.4 browser check): suspension and draft within the same second, the suspension first.
+        // Late in the second: a column rounded to the second would put both in the next one.
+        $this->travelTo(now()->startOfSecond()->addMilliseconds(600));
+        $prescription = $this->draft();
+        $this->add($prescription, 'dipirona')->assertSessionHasNoErrors();
+        $this->post(route('prescriptions.sign', $prescription), ['password' => 'password'])->assertSessionHasNoErrors();
+        $this->post(route('prescription-items.suspend', PrescriptionItem::withoutTenantScope()->sole()), ['reason' => 'Sem dor.'])->assertSessionHasNoErrors();
+        $this->travelTo(now()->addMilliseconds(300));
+        $next = $this->draft();
+        $this->add($next, 'dipirona', ['frequency_hours' => 8])->assertSessionHasNoErrors();
+        $this->post(route('prescriptions.sign', $next), ['password' => 'password'])->assertSessionHasNoErrors();
     }
 }

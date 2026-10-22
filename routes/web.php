@@ -15,6 +15,7 @@ use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\InsurerController;
 use App\Http\Controllers\JobFunctionController;
+use App\Http\Controllers\MedicationAdministrationController;
 use App\Http\Controllers\MedicationController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PatientAllergyController;
@@ -94,6 +95,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('prescription-items/{item}/suspend', [PrescriptionController::class, 'suspendItem'])->middleware('throttle:30,1')->name('prescription-items.suspend');
     Route::post('prescription-items/{item}/justify', [PrescriptionController::class, 'justifyItem'])->middleware('throttle:60,1')->name('prescription-items.justify');
     Route::delete('prescription-items/{item}', [PrescriptionController::class, 'destroyItem'])->middleware('throttle:60,1')->name('prescription-items.destroy');
+    Route::post('prescription-doses/{dose}/record', [MedicationAdministrationController::class, 'dose'])->where('dose', '[0-9]{1,15}')->middleware('throttle:60,1')->name('medication.dose');
+    Route::post('prescription-items/{item}/administer', [MedicationAdministrationController::class, 'prn'])->middleware('throttle:60,1')->name('medication.prn');
     Route::delete('prescriptions/{prescription}', [PrescriptionController::class, 'discard'])->middleware('throttle:30,1')->name('prescriptions.discard');
     Route::post('prescriptions/{prescription}/sign', [PrescriptionController::class, 'sign'])->middleware('throttle:30,1')->name('prescriptions.sign');
     Route::get('pharmacy', [PharmacyController::class, 'index'])->middleware('throttle:120,1')->name('pharmacy.index');
