@@ -40,6 +40,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Step 4b.4: the second person's password never goes back to the session as old input.
+        $exceptions->dontFlash(['witness_password']);
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

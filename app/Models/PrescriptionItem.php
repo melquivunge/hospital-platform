@@ -43,6 +43,9 @@ class PrescriptionItem extends Model
 
     public $timestamps = false;
 
+    /** Microseconds kept: a suspension and the next draft may fall in the same second (4b.2b alert rule). */
+    protected $dateFormat = 'Y-m-d H:i:s.u';
+
     /**
      * @return array<string, string>
      */

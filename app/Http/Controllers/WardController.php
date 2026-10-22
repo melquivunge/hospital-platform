@@ -45,6 +45,8 @@ class WardController extends Controller
             ->with(['patient:id,name,social_name', 'unit:id,name,timezone', 'responsible:id,name', 'bed:id,code,room,sector_id', 'bed.sector:id,name'])
             ->orderBy('admitted_at')->get();
 
+        $doses = MedicationAdministrationController::counts($admissions);
+
         return Inertia::render('ward/index', [
             'admissions' => $admissions->map(fn (Admission $admission) => [
                 'id' => $admission->id,
@@ -54,6 +56,7 @@ class WardController extends Controller
                 'status' => $admission->status,
                 'responsible' => $admission->responsible?->name,
                 'mine' => $admission->responsible_professional_id === $professional->id,
+                'doses' => $doses[$admission->id] ?? null,
             ])->values(),
         ]);
     }
