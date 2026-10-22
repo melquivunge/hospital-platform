@@ -348,7 +348,7 @@ class PrescriptionController extends Controller
     {
         $column = $admission !== null ? 'admission_id' : 'visit_id';
         $id = $admission->id ?? $visit?->id;
-        $signed = Prescription::query()->where($column, $id)->where('status', 'signed')->with(['items.review', 'professional:id,name'])
+        $signed = Prescription::query()->where($column, $id)->where('status', 'signed')->with(['items.review', 'items.dispensing', 'professional:id,name'])
             ->orderByDesc('signed_at')->orderByDesc('id')->limit(10)->get();
         $newest = $signed->first();
         $active = $newest !== null && $newest->valid_until?->isFuture() ? $newest : null;
@@ -551,6 +551,15 @@ class PrescriptionController extends Controller
             'review' => $item->relationLoaded('review') && $item->review !== null
                 ? ['decision' => $item->review->decision, 'label' => PrescriptionReview::DECISIONS[$item->review->decision], 'note' => $item->review->note]
                 : null,
+            // Step 4b.3b: what the pharmacy dispensed for the 24 hours, and what came back.
+            'dispensing' => $item->relationLoaded('dispensing') && $item->dispensing !== null ? [
+                'id' => $item->dispensing->id,
+                'quantity' => $item->dispensing->quantity,
+                'at' => $item->dispensing->created_at->setTimezone($timezone)->format('d/m/Y H:i'),
+                'returnedQuantity' => $item->dispensing->returned_quantity,
+                'returnedAt' => $item->dispensing->returned_at?->setTimezone($timezone)->format('d/m/Y H:i'),
+                'returnReason' => $item->dispensing->return_reason,
+            ] : null,
         ];
     }
 }

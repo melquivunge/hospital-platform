@@ -20,6 +20,14 @@ export type PrescriptionItemView = {
     suspensionReason: string | null;
     doses?: string[];
     review: { decision: string; label: string; note: string | null } | null;
+    dispensing: {
+        id: number;
+        quantity: number;
+        at: string;
+        returnedQuantity: number | null;
+        returnedAt: string | null;
+        returnReason: string | null;
+    } | null;
 };
 
 export type PrescriptionSummary = {
@@ -68,6 +76,14 @@ export function PrescriptionItemLine({ item }: { item: PrescriptionItemView }) {
                 >
                     Farmácia: {item.review.label}
                     {item.review.note && ` · ${item.review.note}`}
+                </p>
+            )}
+            {item.dispensing && (
+                <p className="text-xs text-muted-foreground tabular-nums">
+                    Dispensado: {item.dispensing.quantity} em{' '}
+                    {item.dispensing.at}
+                    {item.dispensing.returnedQuantity !== null &&
+                        ` · Devolvido: ${item.dispensing.returnedQuantity} em ${item.dispensing.returnedAt} (${item.dispensing.returnReason})`}
                 </p>
             )}
             {item.suspendedAt && (

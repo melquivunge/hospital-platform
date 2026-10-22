@@ -8,6 +8,7 @@ use App\Models\EmergencyEpisode;
 use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\Prescription;
+use App\Models\PrescriptionDispensing;
 use App\Models\PrescriptionItem;
 use App\Models\Visit;
 use App\Tenancy\CurrentTenant;
@@ -18,7 +19,8 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 /**
  * Step 4b.3a (ADR-0005): the unit's pharmacy reviews each item of the valid prescription, sees only the
- * prescription, the allergies and the patient's identification, and every opening is in the read trail.
+ * prescription, the allergies and the patient's identification, and every opening is in the read trail. An
+ * approved item is dispensed once for the 24 hours and its return recorded once (step 4b.3b).
  */
 class PharmacyTest extends ClinicalTestCase
 {
@@ -135,5 +137,100 @@ class PharmacyTest extends ClinicalTestCase
         // The role revoked: nothing.
         $this->pharmacist->roleAssignments()->where('role', Role::Pharmacy)->delete();
         $this->get(route('pharmacy.index'))->assertForbidden();
+    }
+
+    public function test_only_an_approved_item_is_dispensed_once_and_returned_once(): void
+    {
+        [$dipyrone, $ceftriaxone] = PrescriptionItem::withoutTenantScope()->orderBy('id')->get()->all();
+        $this->actingAs($this->pharmacist->user);
+        $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2])->assertSessionHasErrors('quantity', null, "dispense{$dipyrone->id}");
+        $this->post(route('pharmacy.review', $dipyrone), ['decision' => 'approved'])->assertSessionHasNoErrors();
+        $this->post(route('pharmacy.review', $ceftriaxone), ['decision' => 'refused', 'note' => 'Risco cruzado.'])->assertSessionHasNoErrors();
+        foreach ([0, 501, 'dois'] as $quantity) {
+            $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => $quantity])->assertSessionHasErrors('quantity', null, "dispense{$dipyrone->id}");
+        }
+        $elsewhere = Membership::factory()->for($this->unit->tenant)->create();
+        $elsewhere->grant(Role::Pharmacy, $this->other);
+        $this->actingAs($elsewhere->user)->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2])->assertForbidden();
+        $this->actingAs($this->pharmacist->user)->post(route('pharmacy.dispense', $ceftriaxone), ['quantity' => 2])->assertSessionHasErrors('quantity', null, "dispense{$ceftriaxone->id}");
+        $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2])->assertSessionHasNoErrors();
+        $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2])->assertSessionHasErrors('quantity', null, "dispense{$dipyrone->id}");
+        $this->assertSame(1, DB::table('prescription_dispensings')->count());
+        $audit = AuditEvent::where('action', 'prescription_item.dispensed')->sole();
+        $this->assertEquals(['quantity' => 2, 'prescription_id' => $this->prescription->id, 'visit_id' => $this->visit->id], $audit->context);
+
+        // The doctor and the nursing see what was dispensed.
+        $this->actingAs($this->doctorAccount->user)->get(route('visits.show', $this->visit))->assertInertia(fn (Assert $page) => $page
+            ->where('prescriptions.active.items.0.dispensing.quantity', 2)->where('prescriptions.active.items.1.dispensing', null));
+
+        // Renewed: the old prescription leaves the queue but its dispensing can still be returned, only that.
+        $this->post(route('visits.prescriptions.start', $this->visit))->assertRedirect();
+        $this->post(route('prescriptions.sign', Prescription::withoutTenantScope()->where('status', 'draft')->sole()), ['password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($this->pharmacist->user)->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page
+            ->has('prescriptions', 1)->has('returns', 1)->where('returns.0.id', $this->prescription->id));
+        $this->get(route('pharmacy.show', $this->prescription))->assertInertia(fn (Assert $page) => $page
+            ->where('prescription.current', false)->where('items.0.returnable', true)->where('items.1.returnable', false));
+        $this->assertSame(['pharmacy', $this->prescription->id], [DB::table('clinical_reads')->latest('id')->value('reason'), DB::table('clinical_reads')->latest('id')->value('prescription_id')]);
+        $this->post(route('pharmacy.review', $ceftriaxone), ['decision' => 'approved'])->assertForbidden();
+        $this->post(route('pharmacy.dispense', $ceftriaxone), ['quantity' => 2])->assertForbidden();
+        $this->actingAs($elsewhere->user)->get(route('pharmacy.show', $this->prescription))->assertForbidden();
+        $this->actingAs($elsewhere->user)->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page->has('returns', 0));
+        $this->actingAs($this->pharmacist->user);
+        $dispensing = PrescriptionDispensing::withoutTenantScope()->sole();
+        $this->post(route('pharmacy.return', $dispensing), ['quantity' => 3, 'reason' => 'Sobra.'])->assertSessionHasErrors('quantity', null, "return{$dispensing->id}");
+        $this->post(route('pharmacy.return', $dispensing), ['quantity' => 1, 'reason' => 'Prescrição renovada.'])->assertSessionHasNoErrors();
+        // Out of the queue and nothing left to return, the prescription is out of reach.
+        $this->post(route('pharmacy.return', $dispensing), ['quantity' => 1, 'reason' => 'De novo.'])->assertForbidden();
+        $this->assertSame([1, 'Prescrição renovada.'], [$dispensing->fresh()->returned_quantity, $dispensing->fresh()->return_reason]);
+        $this->assertEquals(['quantity' => 1, 'prescription_id' => $this->prescription->id, 'visit_id' => $this->visit->id], AuditEvent::where('action', 'prescription_item.returned')->sole()->context);
+
+        // Returned, the old prescription is out of reach again; nothing of the dispensing changes.
+        $this->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page->has('returns', 0));
+        $this->get(route('pharmacy.show', $this->prescription))->assertForbidden();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        try {
+            DB::transaction(fn () => DB::table('prescription_dispensings')->where('id', $dispensing->id)->update(['quantity' => 5]));
+            $this->fail('A dispensing changed.');
+        } catch (QueryException $exception) {
+            $this->assertSame('P0001', $exception->getCode());
+        }
+        foreach ([
+            fn () => DB::table('prescription_dispensings')->where('id', $dispensing->id)->update(['returned_quantity' => 2, 'return_reason' => 'x', 'returned_at' => now()]),
+            fn () => DB::table('prescription_dispensings')->where('id', $dispensing->id)->delete(),
+        ] as $change) {
+            try {
+                DB::transaction($change);
+                $this->fail('A dispensing changed.');
+            } catch (QueryException $exception) {
+                $this->assertSame('P0001', $exception->getCode());
+            }
+        }
+    }
+
+    public function test_a_suspended_item_is_not_dispensed_and_a_return_ends_after_48_hours(): void
+    {
+        [$dipyrone, $ceftriaxone] = PrescriptionItem::withoutTenantScope()->orderBy('id')->get()->all();
+        $this->actingAs($this->pharmacist->user);
+        foreach ([$dipyrone, $ceftriaxone] as $item) {
+            $this->post(route('pharmacy.review', $item), ['decision' => 'approved_with_note', 'note' => 'Conferir função renal.'])->assertSessionHasNoErrors();
+        }
+        $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('prescription-items.suspend', $ceftriaxone), ['reason' => 'Sem febre.'])->assertSessionHasNoErrors();
+        $this->actingAs($this->pharmacist->user)->post(route('pharmacy.dispense', $ceftriaxone), ['quantity' => 2])->assertSessionHasErrors('quantity', null, "dispense{$ceftriaxone->id}");
+
+        // Another unit's pharmacy reaches neither the dispensing nor its return.
+        $elsewhere = Membership::factory()->for($this->unit->tenant)->create();
+        $elsewhere->grant(Role::Pharmacy, $this->other);
+        $dispensing = PrescriptionDispensing::withoutTenantScope()->sole();
+        $this->actingAs($elsewhere->user)->post(route('pharmacy.return', $dispensing), ['quantity' => 1, 'reason' => 'x'])->assertForbidden();
+
+        // Expired, the prescription opens only to record the return.
+        $this->travel(25)->hours();
+        $this->actingAs($this->pharmacist->user)->get(route('pharmacy.show', $this->prescription))->assertInertia(fn (Assert $page) => $page->where('prescription.current', false));
+        $this->post(route('pharmacy.dispense', $ceftriaxone), ['quantity' => 2])->assertForbidden();
+        $this->travel(24)->hours();
+        $this->actingAs($this->pharmacist->user)->get(route('pharmacy.show', $this->prescription))->assertForbidden();
+        $this->post(route('pharmacy.return', $dispensing), ['quantity' => 1, 'reason' => 'Tarde.'])->assertForbidden();
+        $this->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page->has('prescriptions', 0)->has('returns', 0));
     }
 }
