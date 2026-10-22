@@ -8,6 +8,7 @@ use App\Models\Medication;
 use App\Models\Patient;
 use App\Models\PatientAllergy;
 use App\Models\Professional;
+use App\Models\User;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -60,7 +61,10 @@ class PatientAllergyController extends Controller
 
     public function inactivate(Request $request, PatientAllergy $allergy): RedirectResponse
     {
-        self::writer($request, Patient::query()->findOrFail($allergy->patient_id));
+        $patient = Patient::query()->findOrFail($allergy->patient_id);
+        self::writer($request, $patient);
+        // Step 4b.6: an allergy turns prescription alerts off when inactivated: only who recorded it or a prescriber.
+        abort_unless(self::mayInactivate($request->user(), $patient, $allergy->recorded_by_user_id), 403);
         $data = $request->validate(['reason' => ['required', 'string', 'max:255']], [], ['reason' => 'motivo']);
 
         DB::transaction(function () use ($allergy, $request, $data) {
@@ -95,6 +99,7 @@ class PatientAllergyController extends Controller
                 'reaction' => $allergy->reaction,
                 'recordedAt' => $when($allergy->created_at),
                 'author' => $allergy->professional?->name,
+                'recordedBy' => $allergy->recorded_by_user_id,
                 'inactivatedAt' => $when($allergy->inactivated_at),
                 'inactivationReason' => $allergy->inactivation_reason,
             ])->all());
@@ -103,16 +108,28 @@ class PatientAllergyController extends Controller
     /**
      * What the record form needs: the patient and the catalog's active ingredients to pick from.
      *
-     * @return array{patientId: int, substances: list<string>, severities: array<string, string>}
+     * @return array{patientId: int, userId: int, inactivateAny: bool, substances: list<string>, severities: array<string, string>}
      */
-    public static function form(Patient $patient): array
+    public static function form(Patient $patient, User $user): array
     {
         return [
             'patientId' => $patient->merged_into_id ?? $patient->id,
+            'userId' => $user->id,
+            'inactivateAny' => self::mayInactivate($user, $patient, null),
             // ponytail: the whole catalog in a <datalist>; search on the server if it grows past a few thousand.
             'substances' => array_values(Medication::query()->where('active', true)->distinct()->orderBy('active_ingredient')->pluck('active_ingredient')->all()),
             'severities' => PatientAllergy::SEVERITIES,
         ];
+    }
+
+    /**
+     * Who recorded the allergy, or a prescriber in the unit of the user's open visit or admission of the patient.
+     */
+    private static function mayInactivate(User $user, Patient $patient, ?int $recordedBy): bool
+    {
+        $basis = ClinicalAccess::activeVisit($user, $patient) ?? ClinicalAccess::activeAdmission($user, $patient);
+
+        return $recordedBy === $user->id || ($basis !== null && PrescriptionController::prescriber($user, $basis->unit_id) !== null);
     }
 
     private static function writer(Request $request, Patient $patient): Professional

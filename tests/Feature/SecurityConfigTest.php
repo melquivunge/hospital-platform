@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use App\Providers\AppServiceProvider;
+use Illuminate\Support\Facades\Route;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -54,5 +56,18 @@ class SecurityConfigTest extends TestCase
         $nginx = file_get_contents(base_path('docker/nginx/default.conf'));
 
         $this->assertStringContainsString("'{$hash}'", $nginx);
+    }
+
+    public function test_each_throttled_route_has_its_own_counter(): void
+    {
+        foreach (['a', 'b'] as $name) {
+            Route::middleware(['web', 'throttle:2,1'])->get("/_throttle/{$name}", fn () => 'ok')->name("throttle-test.{$name}");
+        }
+        $this->actingAs(User::factory()->create());
+        $this->get('/_throttle/a')->assertOk();
+        $this->get('/_throttle/a')->assertOk();
+        $this->get('/_throttle/a')->assertTooManyRequests();
+        // Before step 4b.6 the person's counter was shared: the other route was refused too.
+        $this->get('/_throttle/b')->assertOk();
     }
 }

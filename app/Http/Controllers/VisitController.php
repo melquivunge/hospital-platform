@@ -120,7 +120,7 @@ class VisitController extends Controller
             'admissionOptions' => $visit->emergency_episode_id === null ? null : [...AdmissionController::requestOptions($visit->unit_id), 'me' => $professional->id],
             'patient' => self::patientHeader($patient),
             'allergies' => PatientAllergyController::listing($ids, $timezone),
-            'allergyForm' => PatientAllergyController::form($patient),
+            'allergyForm' => PatientAllergyController::form($patient, $request->user()),
             // Step 4b.2a: prescribing is for the emergency visit only.
             'prescriptions' => $visit->emergency_episode_id === null ? null : PrescriptionController::panel($request->user(), null, $visit, $timezone),
             'record' => self::signedRecord($ids, $timezone),

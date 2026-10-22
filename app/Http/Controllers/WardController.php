@@ -82,7 +82,7 @@ class WardController extends Controller
             ],
             'patient' => VisitController::patientHeader($patient),
             'allergies' => PatientAllergyController::listing($ids, $timezone),
-            'allergyForm' => PatientAllergyController::form($patient),
+            'allergyForm' => PatientAllergyController::form($patient, $request->user()),
             'prescriptions' => PrescriptionController::panel($request->user(), $admission, null, $timezone),
             'history' => self::history($admission, $timezone),
             // Step 4.5: only the responsible doctor hands the admission over.

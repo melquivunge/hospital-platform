@@ -88,12 +88,13 @@ class MedicationAdministrationTest extends ClinicalTestCase
 
     private function teamMember(string $name, Sector $sector): Membership
     {
+        $unit = $sector->unit_id === $this->other->id ? $this->other : $this->unit;
         $account = Membership::factory()->for($this->unit->tenant)->create();
-        $account->grant(Role::Professional, $this->unit);
+        $account->grant(Role::Professional, $unit);
         app(CurrentTenant::class)->set($this->unit->tenant);
-        $professional = Professional::factory()->create(['base_unit_id' => $this->unit->id, 'name' => $name]);
+        $professional = Professional::factory()->create(['base_unit_id' => $unit->id, 'name' => $name]);
         $professional->forceFill(['membership_id' => $account->id])->save();
-        Qualification::request($professional, $this->unit, ['job_function_id' => JobFunction::query()->firstOrFail()->id, 'valid_from' => '2026-01-01', 'valid_until' => null], [$sector->id])
+        Qualification::request($professional, $unit, ['job_function_id' => JobFunction::query()->firstOrFail()->id, 'valid_from' => '2026-01-01', 'valid_until' => null], [$sector->id])
             ->transitionTo(QualificationStatus::Approved, null);
         app(CurrentTenant::class)->set(null);
 
@@ -245,5 +246,75 @@ class MedicationAdministrationTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $this->admission), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
         $this->actingAs($this->wardNurse->user)->post(route('medication.dose', $renewed), ['outcome' => 'not_done', 'reason' => 'x'])->assertForbidden();
         $this->assertSame(0, MedicationAdministration::withoutTenantScope()->count());
+    }
+
+    /**
+     * Step 4b.6 (integrated review): a transfer between units ends the origin's prescription. The origin's pharmacy
+     * only takes back what it dispensed; the destination neither administers nor dispenses it: its doctor prescribes.
+     */
+    public function test_a_transfer_between_units_ends_the_prescription_of_the_origin(): void
+    {
+        $tenant = $this->unit->tenant;
+        [$origin, $destination, $originBeds, $destinationBeds] = [Membership::factory()->for($tenant)->create(), Membership::factory()->for($tenant)->create(), Membership::factory()->for($tenant)->create(), Membership::factory()->for($tenant)->create()];
+        $origin->grant(Role::Pharmacy, $this->unit);
+        $destination->grant(Role::Pharmacy, $this->other);
+        $originBeds->grant(Role::BedManagement, $this->unit);
+        $destinationBeds->grant(Role::BedManagement, $this->other);
+        $this->actingAs($origin->user)->post(route('pharmacy.review', $this->items['dipirona']), ['decision' => 'approved'])->assertSessionHasNoErrors();
+        $this->post(route('pharmacy.dispense', $this->items['dipirona']), ['quantity' => 4])->assertSessionHasNoErrors();
+        // The doctor leaves a renewal draft at the origin, and also works at the destination.
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.prescriptions.start', $this->admission))->assertRedirect();
+        app(CurrentTenant::class)->set($tenant);
+        $sector = Sector::factory()->for($this->other)->create(['name' => 'Clínica médica']);
+        $bed = Bed::query()->create(['unit_id' => $this->other->id, 'sector_id' => $sector->id, 'room' => '2', 'code' => 'D-1', 'type' => 'ward', 'status_changed_at' => now()]);
+        $this->doctorAccount->grant(Role::Professional, $this->other);
+        Qualification::request($this->doctor, $this->other, ['job_function_id' => JobFunction::query()->firstOrFail()->id, 'valid_from' => '2026-01-01', 'valid_until' => null], [$sector->id])
+            ->transitionTo(QualificationStatus::Approved, null);
+        app(CurrentTenant::class)->set(null);
+        $destinationNurse = $this->teamMember('Enf. Lia', $sector);
+
+        $this->actingAs($this->doctorAccount->user)->post(route('transfers.store', $this->admission), ['to_unit_id' => $this->other->id, 'requested_sector_id' => $sector->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $transfer = DB::table('admission_transfers')->value('id');
+        $this->actingAs($destinationBeds->user)->post(route('transfers.accept', $transfer), ['bed_id' => $bed->id])->assertSessionHasNoErrors();
+        $this->actingAs($originBeds->user)->post(route('transfers.depart', $transfer))->assertSessionHasNoErrors();
+        $this->actingAs($destinationBeds->user)->post(route('transfers.receive', $transfer))->assertSessionHasNoErrors();
+
+        // The origin's pharmacy: out of the queue, open only to take back the dispensing.
+        $this->actingAs($origin->user)->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page->has('prescriptions', 0)->has('returns', 1));
+        $this->post(route('pharmacy.review', $this->items['morfina']), ['decision' => 'approved'])->assertForbidden();
+        $this->post(route('pharmacy.return', PrescriptionDispensing::withoutTenantScope()->sole()), ['quantity' => 3, 'reason' => 'Paciente transferido.'])->assertSessionHasNoErrors();
+        // The destination's pharmacy and team: not theirs.
+        $this->actingAs($destination->user)->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page->has('prescriptions', 0));
+        $this->get(route('pharmacy.show', $this->prescription))->assertForbidden();
+        $this->actingAs($destinationNurse->user)->post(route('medication.dose', $this->doses('morfina')[1]), ['outcome' => 'administered'])->assertForbidden();
+        $this->get(route('ward.index'))->assertInertia(fn (Assert $page) => $page->where('admissions.0.doses', null));
+        // The doctor at the destination: no valid prescription; the origin's draft is dropped, the new one copies the items.
+        $this->actingAs($this->doctorAccount->user)->get(route('ward.show', $this->admission))->assertInertia(fn (Assert $page) => $page
+            ->where('prescriptions.active', null)->has('prescriptions.previous', 1)->where('prescriptions.draftId', null)->where('prescriptions.previous.0.canCertify', false));
+        $this->post(route('prescriptions.certify', $this->prescription))->assertForbidden();
+        $this->post(route('ward.prescriptions.start', $this->admission))->assertRedirect();
+        $draft = Prescription::withoutTenantScope()->where('status', 'draft')->sole();
+        $this->assertSame([$this->other->id, 3], [$draft->unit_id, PrescriptionItem::withoutTenantScope()->where('prescription_id', $draft->id)->count()]);
+        $this->assertSame(1, AuditEvent::where('action', 'prescription.discarded')->count());
+    }
+
+    public function test_the_double_check_is_fixed_when_prescribed_and_an_allergy_is_inactivated_by_its_author_or_a_prescriber(): void
+    {
+        // Unticking "controlled" in the catalog does not drop the second person of a signed prescription.
+        $morphine = $this->doses('morfina')[0];
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        Medication::query()->whereKey($this->items['morfina']->medication_id)->update(['controlled' => false]);
+        app(CurrentTenant::class)->set(null);
+        $this->actingAs($this->wardNurse->user)->post(route('medication.dose', $morphine), ['outcome' => 'administered', 'reason' => 'Farmácia fechada.'])->assertSessionHasErrors('witness_user_id', null, "dose{$morphine}");
+        $this->assertTrue($this->items['morfina']->fresh()->double_check);
+
+        // A nurse of the team inactivates the allergy she recorded, not the doctor's.
+        $this->actingAs($this->doctorAccount->user)->post(route('patient-allergies.store', $this->patient), ['substance' => 'Dipirona', 'severity' => 'severe'])->assertSessionHasNoErrors();
+        $this->actingAs($this->wardNurse->user)->post(route('patient-allergies.store', $this->patient), ['substance' => 'Látex', 'severity' => 'mild'])->assertSessionHasNoErrors();
+        [$doctors, $nurses] = DB::table('patient_allergies')->orderBy('id')->pluck('id')->all();
+        $this->get(route('ward.show', $this->admission))->assertInertia(fn (Assert $page) => $page->where('allergyForm.inactivateAny', false));
+        $this->post(route('patient-allergies.inactivate', $doctors), ['reason' => 'Engano.'])->assertForbidden();
+        $this->post(route('patient-allergies.inactivate', $nurses), ['reason' => 'Registrada no paciente errado.'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('patient-allergies.inactivate', $doctors), ['reason' => 'Teste de provocação negativo.'])->assertSessionHasNoErrors();
     }
 }

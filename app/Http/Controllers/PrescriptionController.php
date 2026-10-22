@@ -72,8 +72,7 @@ class PrescriptionController extends Controller
                 'encounter' => $admission !== null ? (WardController::bedLabel($admission) ?? 'Internação aguardando leito') : 'Atendimento de urgência',
                 'backUrl' => $admission !== null ? route('ward.show', $admission) : route('visits.show', $visit),
                 // Signing replaces the valid prescription as a whole (decision 4): say how many items it has.
-                'replaces' => Prescription::query()->where($admission !== null ? 'admission_id' : 'visit_id', $basis->id)->where('status', 'signed')
-                    ->where('valid_until', '>', now())->latest('signed_at')->withCount('items')->first()?->items_count,
+                'replaces' => self::active($prescription)?->items()->count(),
             ],
             'patient' => VisitController::patientHeader($patient),
             'allergies' => PatientAllergyController::listing($ids, $timezone),
@@ -132,6 +131,7 @@ class PrescriptionController extends Controller
         $justification = isset($data['justification']) ? (Medication::clean($data['justification']) ?: null) : null;
         $item = new PrescriptionItem([
             'prescription_id' => $prescription->id, 'medication_id' => $medication->id, 'medication_label' => self::label($medication),
+            'double_check' => $medication->controlled || $medication->high_alert,
             'dose' => $data['dose'], 'dose_unit' => $medication->dose_unit, 'route' => $data['route'],
             'frequency_hours' => $data['schedule'] === 'interval' ? (int) $data['frequency_hours'] : null,
             'times' => $data['schedule'] === 'times' ? self::times($data['times']) : null,
@@ -357,7 +357,10 @@ class PrescriptionController extends Controller
         $newest = Prescription::query()->where($of->admission_id !== null ? 'admission_id' : 'visit_id', $of->admission_id ?? $of->visit_id)
             ->where('status', 'signed')->orderByDesc('signed_at')->orderByDesc('id')->first();
 
-        return $newest !== null && $newest->valid_until?->isFuture() ? $newest : null;
+        // Step 4b.6: after a transfer between units the origin's prescription ends; the destination prescribes.
+        $unitId = $of->admission_id !== null ? Admission::query()->whereKey($of->admission_id)->value('unit_id') : $newest?->unit_id;
+
+        return $newest !== null && $newest->valid_until?->isFuture() && $newest->unit_id === (int) $unitId ? $newest : null;
     }
 
     /**
@@ -373,7 +376,7 @@ class PrescriptionController extends Controller
         $signed = Prescription::query()->where($column, $id)->where('status', 'signed')->with(['items.review', 'items.dispensing', 'items.medication:id,controlled,high_alert', 'professional:id,name', 'signature'])
             ->orderByDesc('signed_at')->orderByDesc('id')->limit(10)->get();
         $newest = $signed->first();
-        $active = $newest !== null && $newest->valid_until?->isFuture() ? $newest : null;
+        $active = $newest !== null && $newest->valid_until?->isFuture() && ($admission === null || $newest->unit_id === $admission->unit_id) ? $newest : null;
         $when = fn (?CarbonImmutable $at) => $at?->setTimezone($timezone)->format('d/m/Y H:i');
         $certifiable = PrescriptionCertification::account($user) !== null;
         // Step 4b.4: the doses and records of every prescription shown; only the active one's can be late.
@@ -390,7 +393,7 @@ class PrescriptionController extends Controller
                 'holder' => $prescription->signature->signer_name,
                 'at' => $when($prescription->signature->signed_at->toImmutable()),
             ],
-            'canCertify' => $prescription->signature === null && $prescription->author_user_id === $user->id && $certifiable,
+            'canCertify' => $prescription->signature === null && $prescription->is($active) && $prescription->author_user_id === $user->id && $certifiable,
             'items' => array_map(fn (PrescriptionItem $item) => [
                 ...self::describe($item, $timezone),
                 ...($doses[$item->id] ?? ['doses' => [], 'given' => []]),
@@ -400,7 +403,7 @@ class PrescriptionController extends Controller
         return [
             'active' => $active === null ? null : $summary($active),
             'previous' => array_values($signed->reject(fn (Prescription $prescription) => $prescription->is($active))->map($summary)->all()),
-            'draftId' => Prescription::query()->where($column, $id)->where('status', 'draft')->where('author_user_id', $user->id)->value('id'),
+            'draftId' => Prescription::query()->where($column, $id)->where('status', 'draft')->where('author_user_id', $user->id)->where('unit_id', $admission->unit_id ?? $visit?->unit_id)->value('id'),
             'canPrescribe' => $canPrescribe = self::prescriber($user, (int) ($admission->unit_id ?? $visit?->unit_id)) !== null,
             'canSuspend' => $canPrescribe && $active !== null,
             // Step 4b.4: the ward team of the bed's sector records the doses of the active prescription.
@@ -478,6 +481,12 @@ class PrescriptionController extends Controller
         $id = $admission->id ?? $visit?->id;
         $existing = fn () => Prescription::query()->where($column, $id)->where('status', 'draft')->where('author_user_id', $request->user()->id)->first();
         $prescription = $existing();
+        // Step 4b.6: a draft started in another unit (before a transfer) is dropped; the new one is of this unit.
+        if ($prescription !== null && $prescription->unit_id !== ($admission->unit_id ?? $visit?->unit_id)) {
+            DB::transaction(fn () => $prescription->delete());
+            AuditEvent::record('prescription.discarded', $prescription->tenant_id, $prescription, ['reason' => 'transfer']);
+            $prescription = null;
+        }
         if ($prescription === null) {
             try {
                 // The draft and its copied items in one transaction: never a half-copied draft.
@@ -515,10 +524,11 @@ class PrescriptionController extends Controller
         if ($previous === null) {
             return 0;
         }
-        $active = Medication::query()->where('active', true)->pluck('id')->all();
+        $active = Medication::query()->where('active', true)->get(['id', 'controlled', 'high_alert'])->keyBy('id');
         $copies = [];
         foreach ($previous->items()->whereNull('suspended_at')->get() as $item) {
-            if (! in_array($item->medication_id, $active, true)) {
+            $medication = $active->get($item->medication_id);
+            if ($medication === null) {
                 continue;
             }
             $copy = $item->replicate(['prescription_id', 'suspended_at', 'suspended_by_user_id', 'suspension_reason', 'created_at']);
@@ -527,7 +537,7 @@ class PrescriptionController extends Controller
             while ($item->frequency_hours !== null && $start->lt(now()->subHour())) {
                 $start = $start->addHours($item->frequency_hours);
             }
-            $copy->forceFill(['prescription_id' => $draft->id, 'created_at' => now(), 'starts_at' => $item->frequency_hours !== null ? $start : $start->max(now())]);
+            $copy->forceFill(['prescription_id' => $draft->id, 'created_at' => now(), 'double_check' => $medication->controlled || $medication->high_alert, 'starts_at' => $item->frequency_hours !== null ? $start : $start->max(now())]);
             $copies[] = $copy;
         }
         $alerts = PrescriptionSafety::alerts($copies, ClinicalAccess::recordIds($patient));
@@ -569,6 +579,8 @@ class PrescriptionController extends Controller
         abort_unless($prescription->status === 'draft' && $prescription->author_user_id === $request->user()->id, 403);
         $admission = $prescription->admission_id === null ? null : Admission::query()->findOrFail($prescription->admission_id);
         $visit = $prescription->visit_id === null ? null : Visit::query()->findOrFail($prescription->visit_id);
+        // A draft of another unit (the patient was transferred) is never signed here.
+        abort_if($admission !== null && $admission->unit_id !== $prescription->unit_id, 403);
         [$patient] = self::writer($request, $admission, $visit);
 
         return [$admission, $visit, $patient];
@@ -624,7 +636,7 @@ class PrescriptionController extends Controller
             'storedAlerts' => $item->alerts,
             'prn' => $item->prn,
             // Step 4b.4: controlled and high-alert medications are administered with a second person.
-            'doubleCheck' => $item->relationLoaded('medication') && $item->medication !== null && ($item->medication->controlled || $item->medication->high_alert),
+            'doubleCheck' => $item->double_check ?? ($item->relationLoaded('medication') ? $item->medication === null || $item->medication->controlled || $item->medication->high_alert : $item->needsDoubleCheck()),
             'justification' => $item->justification,
             'suspendedAt' => $item->suspended_at?->setTimezone($timezone)->format('d/m/Y H:i'),
             'suspensionReason' => $item->suspension_reason,

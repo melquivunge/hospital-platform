@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.5 (assinatura digital da prescrição com assinador de teste); depois a 4b.6 (revisão integrada), plano em `plans/web-v4-prescricao.md`.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.6 (revisão integrada da entrega 4b); depois a entrega 4c (estoque da farmácia), que precisa de contrato, plano e autorização.
 
 ## Onde está cada coisa
 
@@ -83,7 +83,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #57 | Etapa 4b.3a: papel Farmácia e avaliação por item | Mesclado |
 | #58 | Etapa 4b.3b: dispensação e devolução | Mesclado |
 | #59 | Etapa 4b.4: administração pela enfermagem | Mesclado |
-| — | Etapa 4b.5: assinatura digital da prescrição (branch `feat/icp-signature`) | Em revisão |
+| #60 | Etapa 4b.5: assinatura digital da prescrição | Mesclado |
+| — | Etapa 4b.6: revisão integrada da entrega 4b (branch `feat/integrated-review-4b`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -239,7 +240,17 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
-- **4b.5 (assinatura digital da prescrição, ADR-0006):**
+- **4b.6 (revisão integrada da entrega 4b):**
+  - `tests/Feature/Clinical/PrescriptionJourneyTest.php`: a jornada inteira num cliente novo, só pelas rotas: catálogo, papéis (recepção, leitos, farmácia, auditoria), profissionais com habilitação, internação, alergia, prescrição com alerta justificado assinada com senha e certificado de teste, avaliação e dispensação, administração com dupla checagem, renovação no dia seguinte (a anterior só para devolução), alta encerrando a prescrição. Depois confere a trilha de leitura da farmácia e a auditoria sem nome, CPF, medicamento ou texto clínico.
+  - Limite de requisições por rota: o `throttle:X,Y` do Laravel somava todas as rotas limitadas da pessoa num contador só; agora cada rota tem o seu (`ThrottleRequestsPerRoute`). Os limitadores nomeados (login, 2FA, recuperação de senha) e as tentativas de senha (assinatura, segunda pessoa) não mudam.
+  - Revisão de segurança independente da entrega inteira (sem crítico). Corrigido, cada um com teste que falha sem a correção:
+    - **Alto — transferência entre unidades:** a prescrição ficava presa à unidade de origem (a farmácia da origem seguia avaliando e dispensando; a do destino via na fila e não abria). **Decisão aplicada (opção mais segura, reversível):** a transferência encerra a prescrição na origem, como a alta; a farmácia da origem só recebe devoluções; o médico do destino prescreve de novo (o rascunho copia os itens para revisão); rascunho começado na origem é descartado.
+    - O certificado só assina a prescrição válida, por quem ainda prescreve ali (não depois de vencer, da alta ou da transferência).
+    - A dupla checagem fica gravada no item ao prescrever: desmarcar "controlado" ou "alto alerta" no catálogo não a retira das prescrições assinadas; item antigo sem a marca lê o catálogo e, sem medicamento, exige a segunda pessoa.
+    - Alergia só é inativada por quem a registrou ou por quem prescreve (a inativação desliga alertas).
+    - Segunda pessoa: limite de senha também por pessoa, e conferida de novo sob o lock; o registro de administração confere o acesso antes de validar o formulário.
+  - Navegador: alergias, prescrição, farmácia, dispensação, administração, certificado e a varredura de telas por perfil (360, 768 e 1440 px), sem erros.
+- **4b.5 (assinatura digital da prescrição, ADR-0006, PR #60):**
   - O CPF do profissional passa a ser cadastrado pela administração (validado, único na rede). O médico vincula o assinador uma vez em Configurações › Certificado digital; a credencial fica cifrada e é apagada ao revogar o vínculo ou desativar a conta.
   - Ao assinar com a senha, se houver certificado vinculado, o sistema gera o documento canônico (PDF), assina com o certificado depois do commit e valida antes de guardar: assinatura sobre o PDF, cadeia até as âncoras configuradas e CPF do titular igual ao do profissional. Assinatura recusada vai para a auditoria (motivo `invalid` ou `cpf_mismatch`) e a prescrição continua com a senha; o autor tenta de novo pelo botão "Assinar com certificado digital".
   - A prescrição mostra "Assinatura eletrônica simples (senha)" ou a assinatura digital (assinador, titular, data) com o PDF e o `.p7s` para baixar, com o mesmo acesso dos documentos clínicos (leitura gravada). A assinatura guardada nunca muda (gatilho, RLS).
@@ -509,7 +520,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 386 testes passando (etapa 4b.5), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 390 testes passando (etapa 4b.6), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

@@ -102,8 +102,10 @@ class MedicationAdministrationController extends Controller
         $admitted = $admissions->where('status', 'admitted')->keyBy('id');
         // A newer signed prescription is always valid longer: the newest still valid is the active one.
         $active = Prescription::query()->whereIn('admission_id', $admitted->keys())->where('status', 'signed')->where('valid_until', '>', now())
-            ->orderByDesc('signed_at')->orderByDesc('id')->get(['id', 'admission_id', 'valid_until'])
-            ->unique('admission_id')->filter(fn (Prescription $prescription) => $prescription->valid_until?->isFuture() ?? false)->keyBy('id');
+            ->orderByDesc('signed_at')->orderByDesc('id')->get(['id', 'admission_id', 'unit_id', 'valid_until'])
+            ->unique('admission_id')->filter(fn (Prescription $prescription) => ($prescription->valid_until?->isFuture() ?? false)
+                // Step 4b.6: a prescription of another unit (before a transfer) is not this unit's to administer.
+                && $prescription->unit_id === $admitted[$prescription->admission_id]->unit_id)->keyBy('id');
         $items = PrescriptionItem::query()->whereIn('prescription_id', $active->keys())->whereNull('suspended_at')
             ->whereDoesntHave('review', fn ($review) => $review->where('decision', 'refused'))->pluck('prescription_id', 'id');
         $late = now()->subMinutes(MedicationAdministration::LATE_MINUTES);
@@ -131,7 +133,8 @@ class MedicationAdministrationController extends Controller
         // Emergency visits have no ward team: their administration is not recorded here.
         abort_if($prescription->admission_id === null, 403);
         $admission = Admission::query()->findOrFail($prescription->admission_id);
-        abort_unless(self::onWardTeam($request->user(), $admission), 403);
+        // Access first (checked again under the lock): no validation answers for a prescription that is not this team's.
+        abort_unless(self::onWardTeam($request->user(), $admission) && PrescriptionController::active($prescription)?->id === $prescription->id, 403);
         $bag = $dose === null ? "prn{$item->id}" : 'dose'.data_get($dose, 'id');
         $data = $request->validateWithBag($bag, [
             'outcome' => $dose === null ? ['prohibited'] : ['required', Rule::in(array_keys(MedicationAdministration::OUTCOMES))],
@@ -156,8 +159,7 @@ class MedicationAdministrationController extends Controller
 
         // Before the locks: the second person's password (bcrypt is slow).
         $witness = null;
-        $medication = Medication::query()->find($item->medication_id);
-        if ($outcome === 'administered' && $medication !== null && ($medication->controlled || $medication->high_alert)) {
+        if ($outcome === 'administered' && $item->needsDoubleCheck()) {
             $witness = $this->witness($request, $admission, $data, $item, $fail);
         }
 
@@ -166,6 +168,10 @@ class MedicationAdministrationController extends Controller
                 // Lock order of the suspension and the discharge: the admission, then the item.
                 $locked = Admission::query()->whereKey($admission->id)->lockForUpdate()->firstOrFail();
                 abort_unless(self::onWardTeam($request->user(), $locked) && PrescriptionController::active($prescription)?->id === $prescription->id, 403);
+                // The second person, again under the lock: still on this team (a revoked or moved colleague is not).
+                if ($witness !== null && ! in_array($witness->id, array_column(self::witnesses($locked, $request->user()), 'id'), true)) {
+                    $fail('witness_user_id', 'A segunda pessoa não está mais na equipe do setor. Escolha outra.');
+                }
                 $lockedItem = PrescriptionItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
                 $refusal = match (true) {
                     $lockedItem->suspended_at !== null => 'Este item foi suspenso pelo médico.',
@@ -236,11 +242,14 @@ class MedicationAdministrationController extends Controller
         $witness = User::query()->findOrFail($id);
         // Per recorder and witness: a colleague cannot lock the witness out for everyone.
         $attempts = 'clinical-witness:'.$witness->id.':'.$request->user()->id;
-        if (RateLimiter::tooManyAttempts($attempts, VisitController::SIGN_ATTEMPTS)) {
-            $fail('witness_password', 'Muitas tentativas com a senha errada. Tente de novo em '.ceil(RateLimiter::availableIn($attempts) / 60).' minutos.');
+        // And per witness, wider: one account cannot guess every colleague's password in parallel for long.
+        $perWitness = 'clinical-witness:'.$witness->id;
+        if (RateLimiter::tooManyAttempts($attempts, VisitController::SIGN_ATTEMPTS) || RateLimiter::tooManyAttempts($perWitness, VisitController::SIGN_ATTEMPTS * 3)) {
+            $fail('witness_password', 'Muitas tentativas com a senha errada. Tente de novo em '.ceil(max(RateLimiter::availableIn($attempts), RateLimiter::availableIn($perWitness)) / 60).' minutos.');
         }
         if (! Hash::check((string) ($data['witness_password'] ?? ''), $witness->getAuthPassword())) {
             RateLimiter::hit($attempts, VisitController::SIGN_LOCKOUT_SECONDS);
+            RateLimiter::hit($perWitness, VisitController::SIGN_LOCKOUT_SECONDS);
             AuditEvent::record('medication.witness_failed', $item->tenant_id, $item, ['witness_user_id' => $witness->id]);
             $fail('witness_password', 'Senha da segunda pessoa incorreta.');
         }

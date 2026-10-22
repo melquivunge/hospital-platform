@@ -96,6 +96,18 @@ Pendentes antes de uso com pacientes reais, além dos limites da V1 e da entrega
 - **Texto livre:** o motivo de bloqueio de leito é visto por gestão de leitos e higienização; não deve conter informação clínica.
 - **Dados de teste:** o cliente sintético "Rede Corrida Alta" existe só no banco local (corridas e verificações de tela).
 
+### Limites conhecidos da entrega 4b (revisão integrada, etapa 4b.6)
+
+Pendentes antes de uso com pacientes reais, além dos limites anteriores:
+
+- **Segurança do paciente:** alergias, interações e doses máximas cobrem só o que a rede cadastrou; medicamento sem regra não gera alerta. Doses do mesmo princípio ativo em unidades diferentes não são convertidas. A avaliação farmacêutica continua sendo a barreira.
+- **Validade legal:** só existe o assinador de **teste** (sem validade jurídica, faixa no PDF, recusado fora de `local`/`testing`). O PSC ICP-Brasil real depende de contrato e credenciais ([ADR-0006](docs/adr/0006-icp-brasil-cloud-signature.md)); o adaptador deve ler o CPF do campo ICP-Brasil (OID 2.16.76.1.3.1), conferir uso de chave e política e entregar PAdES. Até lá a prescrição vale com a assinatura eletrônica simples (senha). A receita de controle especial fica fora do sistema.
+- **Acesso da farmácia ([ADR-0005](docs/adr/0005-pharmacy-prescription-access.md)):** o papel Farmácia lê as prescrições válidas da unidade; concessão por engano é mitigada pela auditoria e pela trilha de leitura.
+- **Transferência entre unidades:** encerra a prescrição na origem (decisão da 4b.6); o médico do destino prescreve de novo, e a farmácia da origem só recebe devoluções.
+- **Administração:** registro feito por engano não tem correção (decisão de produto pendente). A urgência não registra administração (não tem equipe de setor). Horário de verão não é tratado (hoje não existe no Brasil).
+- **Estoque:** a dispensação não baixa saldo, lote ou validade; isso é a entrega 4c.
+- **Limite de requisições:** desde a 4b.6 cada rota limitada tem seu próprio contador por pessoa (antes, todas as rotas da pessoa somavam num só). O volume total por pessoa passa a ser a soma dos limites; um teto geral para rotas de leitura clínica fica para avaliar com uso real.
+
 ## Verificações
 
 O CI executa testes PHP com PostgreSQL descartável, Pint, PHPStan, TypeScript, lint/formatação, build, auditorias de dependências e smoke test dos containers. As credenciais do serviço de teste em CI são descartáveis, sem relação com ambientes reais.
