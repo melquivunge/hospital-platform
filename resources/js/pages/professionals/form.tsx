@@ -19,6 +19,7 @@ type Professional = {
     external_id: string | null;
     email: string | null;
     phone: string | null;
+    cpf: string | null;
 };
 
 const selectClassName =
@@ -295,6 +296,30 @@ export default function ProfessionalForm({
                                             aria-describedby={
                                                 errors.phone
                                                     ? 'phone-error'
+                                                    : undefined
+                                            }
+                                            className="h-11"
+                                        />
+                                    </Field>
+                                    <Field
+                                        id="cpf"
+                                        label="CPF (opcional)"
+                                        hint="Para assinar prescrições com certificado digital: o titular precisa ter este CPF."
+                                        error={errors.cpf}
+                                    >
+                                        <Input
+                                            id="cpf"
+                                            name="cpf"
+                                            inputMode="numeric"
+                                            autoComplete="off"
+                                            maxLength={14}
+                                            defaultValue={
+                                                professional?.cpf ?? ''
+                                            }
+                                            aria-invalid={!!errors.cpf}
+                                            aria-describedby={
+                                                errors.cpf
+                                                    ? 'cpf-error'
                                                     : undefined
                                             }
                                             className="h-11"

@@ -28,6 +28,13 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Step 4b.5 (ADR-0006): the certificate signer of prescriptions. "test" only outside production; empty keeps
+    // the simple electronic signature (password). The trust anchors are a PEM bundle (ICP-Brasil roots in production).
+    'icp' => [
+        'signer' => env('ICP_SIGNER'),
+        'trust_anchors' => env('ICP_TRUST_ANCHORS', env('ICP_SIGNER') === 'test' ? storage_path('app/private/icp-test/ca.pem') : null),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

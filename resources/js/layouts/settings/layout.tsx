@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
+import { edit as editCertificate } from '@/routes/certificate';
 import { edit } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
 import type { NavItem } from '@/types';
@@ -19,6 +20,11 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'Senha e segurança',
         href: editSecurity(),
+        icon: null,
+    },
+    {
+        title: 'Certificado digital',
+        href: editCertificate(),
         icon: null,
     },
     {

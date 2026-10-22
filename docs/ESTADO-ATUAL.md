@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.4 (administração pela enfermagem); depois a 4b.5 (assinatura ICP-Brasil com assinador de teste) e a 4b.6 (revisão integrada), plano em `plans/web-v4-prescricao.md`.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.5 (assinatura digital da prescrição com assinador de teste); depois a 4b.6 (revisão integrada), plano em `plans/web-v4-prescricao.md`.
 
 ## Onde está cada coisa
 
@@ -82,7 +82,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #56 | Etapa 4b.2b: cópia, suspensão de item e aprazamento | Mesclado |
 | #57 | Etapa 4b.3a: papel Farmácia e avaliação por item | Mesclado |
 | #58 | Etapa 4b.3b: dispensação e devolução | Mesclado |
-| — | Etapa 4b.4: administração pela enfermagem (branch `feat/medication-administration`) | Em revisão |
+| #59 | Etapa 4b.4: administração pela enfermagem | Mesclado |
+| — | Etapa 4b.5: assinatura digital da prescrição (branch `feat/icp-signature`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -238,7 +239,17 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
-- **4b.4 (administração pela enfermagem):**
+- **4b.5 (assinatura digital da prescrição, ADR-0006):**
+  - O CPF do profissional passa a ser cadastrado pela administração (validado, único na rede). O médico vincula o assinador uma vez em Configurações › Certificado digital; a credencial fica cifrada e é apagada ao revogar o vínculo ou desativar a conta.
+  - Ao assinar com a senha, se houver certificado vinculado, o sistema gera o documento canônico (PDF), assina com o certificado depois do commit e valida antes de guardar: assinatura sobre o PDF, cadeia até as âncoras configuradas e CPF do titular igual ao do profissional. Assinatura recusada vai para a auditoria (motivo `invalid` ou `cpf_mismatch`) e a prescrição continua com a senha; o autor tenta de novo pelo botão "Assinar com certificado digital".
+  - A prescrição mostra "Assinatura eletrônica simples (senha)" ou a assinatura digital (assinador, titular, data) com o PDF e o `.p7s` para baixar, com o mesmo acesso dos documentos clínicos (leitura gravada). A assinatura guardada nunca muda (gatilho, RLS).
+  - **Só existe o assinador de teste** (AC local, titular "NOME:CPF" como no e-CPF, assinatura CMS destacada), identificado como "certificado de teste (sem validade jurídica)" e recusado em produção. O PSC real continua **BLOCKED_EXTERNAL** (contrato e credenciais); o adaptador real será escrito pela documentação do fornecedor e entregará PAdES.
+  - Corrida real: duas assinaturas digitais simultâneas da mesma prescrição gravam uma só, sem arquivo órfão (3 execuções, consistente).
+  - Revisão de segurança independente (sem crítico). Corrigido: a validação confiava também no diretório de CAs do sistema, não só nas âncoras configuradas (alto; agora só as âncoras, com teste que falha sem a correção); falha inesperada depois da senha vira aviso, não erro 500; `ICP_SIGNER` inválido desliga a assinatura digital em vez de derrubar as telas clínicas; o PDF de teste traz a faixa "Assinatura de teste: sem validade jurídica" e os avisos dizem "certificado de teste"; o assinador de teste só é aceito em `local` e `testing` (e o `.env.example` vem sem ele); o vínculo é emitido antes de trocar a conta, numa transação; o PDF baixado é conferido pelo hash; documento e credencial marcados como parâmetros sensíveis.
+  - Fica para o adaptador real: ler o CPF do campo ICP-Brasil (OID 2.16.76.1.3.1) e conferir uso de chave e política, em vez do nome comum. A tabela de contas não tem RLS de propósito: a desativação da conta roda sem cliente selecionado e precisa apagar as credenciais de todas as redes.
+  - Achado na verificação: o limite `throttle:X,Y` do Laravel sem prefixo conta todas as rotas limitadas do mesmo usuário juntas; as rotas do certificado usam um prefixo próprio. As demais rotas do sistema seguem o padrão antigo (registrado para a 4b.6).
+  - Navegador: aviso de CPF ausente, vínculo, prescrição assinada com senha e certificado, assinatura exibida, PDF e `.p7s` baixados, em 1440 e 360 px, sem erros.
+- **4b.4 (administração pela enfermagem, PR #59):**
   - Só a equipe do setor do leito (habilitação aprovada e vigente para o setor) registra, só na prescrição válida da internação ativa, e só item não suspenso e não recusado pela farmácia. Atendimento de urgência fica fora (não tem equipe de setor).
   - Cada horário é registrado uma vez: administrado (horário real, digitado no relógio da unidade, até 12 horas atrás), recusado pelo paciente ou não realizado, com motivo. O horário abre para registro a partir de 1 hora antes. Item "se necessário" é administrado respeitando o intervalo mínimo. Registros só de inserção.
   - Item não dispensado só como exceção, com motivo registrado. Controlado ou alto alerta: dupla checagem com um colega da equipe do setor, que confirma com a própria senha (tentativas limitadas; senha errada auditada).
@@ -498,7 +509,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 379 testes passando (etapa 4b.4), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 386 testes passando (etapa 4b.5), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

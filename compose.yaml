@@ -8,6 +8,8 @@ x-app: &app
         DB_PORT: 5432
         MAIL_HOST: mailpit
         MAIL_PORT: 1025
+        # Step 4b.5: the test certificate signer in local development (refused in production).
+        ICP_SIGNER: ${ICP_SIGNER:-test}
     volumes:
         - app-storage:/var/www/html/storage
     security_opt:

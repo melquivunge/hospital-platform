@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -78,5 +79,13 @@ class Prescription extends Model
     public function professional(): BelongsTo
     {
         return $this->belongsTo(Professional::class);
+    }
+
+    /**
+     * @return HasOne<PrescriptionSignature, $this>
+     */
+    public function signature(): HasOne
+    {
+        return $this->hasOne(PrescriptionSignature::class);
     }
 }

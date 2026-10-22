@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Pill } from 'lucide-react';
 import PrescriptionController from '@/actions/App/Http/Controllers/PrescriptionController';
+import PrescriptionSignatureController from '@/actions/App/Http/Controllers/PrescriptionSignatureController';
 import { Button } from '@/components/ui/button';
 
 export type PrescriptionItemView = {
@@ -60,6 +61,13 @@ export type PrescriptionSummary = {
     signedAt: string | null;
     validUntil: string | null;
     author: string | null;
+    certificate: {
+        label: string;
+        qualified: boolean;
+        holder: string;
+        at: string;
+    } | null;
+    canCertify: boolean;
     items: PrescriptionItemView[];
 };
 
@@ -182,11 +190,7 @@ export function PrescriptionPanel({
                 </p>
             ) : (
                 <div className="grid gap-3">
-                    <p className="text-xs text-muted-foreground">
-                        Assinada em {data.active.signedAt} por{' '}
-                        {data.active.author} · válida até{' '}
-                        {data.active.validUntil}
-                    </p>
+                    <SignatureLine prescription={data.active} />
                     <ol className="grid gap-3">
                         {data.active.items.map((item) => (
                             <li
@@ -218,11 +222,7 @@ export function PrescriptionPanel({
                     <ul className="grid gap-4 pt-2">
                         {data.previous.map((prescription) => (
                             <li key={prescription.id} className="grid gap-2">
-                                <p className="text-xs text-muted-foreground">
-                                    Assinada em {prescription.signedAt} por{' '}
-                                    {prescription.author} · válida até{' '}
-                                    {prescription.validUntil}
-                                </p>
+                                <SignatureLine prescription={prescription} />
                                 <ol className="grid gap-2 border-l-2 pl-4">
                                     {prescription.items.map((item) => (
                                         <li key={item.id}>
@@ -236,6 +236,74 @@ export function PrescriptionPanel({
                 </details>
             )}
         </section>
+    );
+}
+
+/** Step 4b.5: who signed and how; the digital signature's files, or the author's button to sign with the certificate. */
+function SignatureLine({
+    prescription,
+}: {
+    prescription: PrescriptionSummary;
+}) {
+    const { certificate } = prescription;
+    const file = (part: 'pdf' | 'p7s') =>
+        PrescriptionSignatureController.download.url({
+            prescription: prescription.id,
+            part,
+        });
+
+    return (
+        <div className="grid gap-1 text-xs text-muted-foreground">
+            <p>
+                Assinada em {prescription.signedAt} por {prescription.author} ·
+                válida até {prescription.validUntil}
+            </p>
+            {certificate ? (
+                <p className="flex flex-wrap items-center gap-x-3">
+                    <span>
+                        Assinatura digital com {certificate.label}, titular{' '}
+                        {certificate.holder}, em {certificate.at}
+                    </span>
+                    <a
+                        href={file('pdf')}
+                        className="inline-flex min-h-11 items-center underline"
+                    >
+                        Documento assinado (PDF)
+                    </a>
+                    <a
+                        href={file('p7s')}
+                        className="inline-flex min-h-11 items-center underline"
+                    >
+                        Assinatura (.p7s)
+                    </a>
+                </p>
+            ) : (
+                <p>Assinatura eletrônica simples (senha)</p>
+            )}
+            {prescription.canCertify && (
+                <Form
+                    {...PrescriptionSignatureController.store.form(
+                        prescription.id,
+                    )}
+                    options={{ preserveScroll: true }}
+                    className="grid justify-items-start gap-1"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Assinar com certificado digital
+                            </Button>
+                            <InputError message={errors.certificate} />
+                        </>
+                    )}
+                </Form>
+            )}
+        </div>
     );
 }
 

@@ -182,6 +182,8 @@ class Membership extends Model
 
             AuditEvent::record('membership.revoked', $this->tenant_id, $this, ['user_id' => $this->user_id]);
             Shift::vacateFor($this);
+            // ADR-0006: the signer credential goes with the access.
+            SigningAccount::withoutTenantScope()->where('tenant_id', $this->tenant_id)->where('user_id', $this->user_id)->delete();
         });
     }
 }

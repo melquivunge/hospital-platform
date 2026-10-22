@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Tenancy;
 
+use App\Clinical\PatientIdentity;
 use App\Models\Professional;
 use App\Models\Unit;
 use App\Policies\UnitPolicy;
@@ -26,6 +27,7 @@ class ProfessionalRequest extends FormRequest
         $this->merge([
             'council' => is_string($this->input('council')) ? mb_strtoupper(trim($this->input('council'))) : $this->input('council'),
             'council_number' => is_string($this->input('council_number')) ? mb_strtoupper(trim($this->input('council_number'))) : $this->input('council_number'),
+            'cpf' => is_string($this->input('cpf')) && trim($this->input('cpf')) !== '' ? PatientIdentity::digits($this->input('cpf')) : null,
             'email' => is_string($this->input('email')) ? mb_strtolower(trim($this->input('email'))) : $this->input('email'),
         ]);
     }
@@ -76,6 +78,14 @@ class ProfessionalRequest extends FormRequest
                     $fail('Já existe um profissional com este identificador externo.');
                 }
             }],
+            // Step 4b.5: the holder of the doctor's certificate must have this CPF.
+            'cpf' => ['bail', 'nullable', 'string', function (string $attribute, mixed $value, Closure $fail) use ($professional) {
+                if (! PatientIdentity::validCpf((string) $value)) {
+                    $fail('CPF inválido.');
+                } elseif (Professional::query()->where('cpf', $value)->when($professional, fn ($query) => $query->whereKeyNot($professional->id))->exists()) {
+                    $fail('Já existe um profissional com este CPF.');
+                }
+            }],
             'email' => ['nullable', 'email:rfc', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30', 'regex:/^[0-9 ()+\-]+$/'],
         ];
@@ -95,6 +105,7 @@ class ProfessionalRequest extends FormRequest
             'council_uf' => 'UF do conselho',
             'external_id' => 'identificador externo',
             'phone' => 'telefone',
+            'cpf' => 'CPF',
         ];
     }
 }

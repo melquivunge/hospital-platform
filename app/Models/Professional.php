@@ -27,10 +27,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $external_id
  * @property string|null $email
  * @property string|null $phone
+ * @property string|null $cpf
  * @property int $eligibility_version
  * @property int|null $membership_id
  */
-#[Fillable(['base_unit_id', 'name', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone'])]
+#[Fillable(['base_unit_id', 'name', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone', 'cpf'])]
 class Professional extends Model
 {
     /** @use HasFactory<ProfessionalFactory> */
