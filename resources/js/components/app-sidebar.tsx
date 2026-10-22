@@ -19,6 +19,7 @@ import {
     Building2,
     Landmark,
     Pill,
+    FlaskConical,
     LayoutGrid,
     ListOrdered,
     Megaphone,
@@ -47,6 +48,7 @@ import { index as patientMerges } from '@/routes/patient-merges';
 import { index as appointments, queue } from '@/routes/appointments';
 import { index as admissions } from '@/routes/admissions';
 import { index as beds } from '@/routes/beds';
+import { index as pharmacy } from '@/routes/pharmacy';
 import { index as census } from '@/routes/census';
 import { index as emergency } from '@/routes/emergency';
 import { index as triageLevels } from '@/routes/triage-levels';
@@ -102,6 +104,7 @@ export function AppSidebar() {
         canViewClinicalAccess,
         canViewBeds,
         canViewCensus,
+        canUsePharmacy,
         canViewEmergency,
         canManageAdmissions,
         canManageTriageLevels,
@@ -204,6 +207,9 @@ export function AppSidebar() {
             : []),
         ...(canViewCensus
             ? [{ title: 'Censo', href: census(), icon: ChartPie }]
+            : []),
+        ...(canUsePharmacy
+            ? [{ title: 'Farmácia', href: pharmacy(), icon: FlaskConical }]
             : []),
         ...(canViewClinicalAccess
             ? [

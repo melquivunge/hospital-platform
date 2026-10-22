@@ -33,6 +33,7 @@ class DeliverNotifications implements ShouldQueue
         'attendance.occurrence_reported', 'attendance.occurrence_granted', 'attendance.occurrence_denied',
         'clinical.emergency_access',
         'transfer.requested', 'transfer.accepted', 'transfer.refused', 'transfer.cancelled', 'transfer.departed', 'transfer.completed',
+        'prescription_item.reviewed',
     ];
 
     /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
@@ -103,6 +104,15 @@ class DeliverNotifications implements ShouldQueue
             $managers = $this->usersWithRole($tenant, Role::UnitManager, (int) ($context['unit_id'] ?? 0));
 
             return [[$managers !== [] ? $managers : $this->usersWithRole($tenant, Role::NetworkAdmin), 'Acesso de emergência a um prontuário', '/clinical-access']];
+        }
+        // Step 4b.3a: a refused item reaches the prescriber, with no patient or drug in the text.
+        if ($event->action === 'prescription_item.reviewed') {
+            if (($context['decision'] ?? null) !== 'refused') {
+                return [];
+            }
+            $url = isset($context['admission_id']) ? "/ward/{$context['admission_id']}" : (isset($context['visit_id']) ? "/visits/{$context['visit_id']}" : '/notifications');
+
+            return [[array_filter([(int) ($context['author_user_id'] ?? 0)]), 'A farmácia recusou um item da sua prescrição', $url]];
         }
         if (isset(self::TRANSFER_TITLES[$event->action])) {
             $users = array_values(array_unique([

@@ -19,6 +19,7 @@ export type PrescriptionItemView = {
     suspendedAt: string | null;
     suspensionReason: string | null;
     doses?: string[];
+    review: { decision: string; label: string; note: string | null } | null;
 };
 
 export type PrescriptionSummary = {
@@ -61,6 +62,14 @@ export function PrescriptionItemLine({ item }: { item: PrescriptionItemView }) {
                 Início {item.startsAt}
                 {item.notes && ` · ${item.notes}`}
             </p>
+            {item.review && (
+                <p
+                    className={`text-xs font-medium ${item.review.decision === 'refused' ? 'text-destructive' : 'text-primary'}`}
+                >
+                    Farmácia: {item.review.label}
+                    {item.review.note && ` · ${item.review.note}`}
+                </p>
+            )}
             {item.suspendedAt && (
                 <p className="text-xs font-medium">
                     Suspenso em {item.suspendedAt}: {item.suspensionReason}

@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.2b (cópia, suspensão e aprazamento); depois a 4b.3 (avaliação farmacêutica e dispensação), plano em `plans/web-v4-prescricao.md`.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Próximo passo: revisão e merge da 4b.3a (papel Farmácia e avaliação por item); depois a 4b.3b (dispensação e devolução), plano em `plans/web-v4-prescricao.md`.
 
 ## Onde está cada coisa
 
@@ -79,7 +79,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #53 | Atualização do `vite-plus` para 1.3.0 (alertas altos do `npm audit`) | Mesclado |
 | #54 | Etapa 4b.1c: alergias do paciente | Mesclado |
 | #55 | Etapa 4b.2a: prescrição com alertas, justificativa e assinatura | Mesclado |
-| — | Etapa 4b.2b: cópia, suspensão de item e aprazamento (branch `feat/prescription-renewal`) | Em revisão |
+| #56 | Etapa 4b.2b: cópia, suspensão de item e aprazamento | Mesclado |
+| — | Etapa 4b.3a: papel Farmácia e avaliação por item (branch `feat/pharmacy`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -235,7 +236,15 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
-- **4b.2b (renovação, suspensão e aprazamento):**
+- **4b.3a (farmácia: papel e avaliação; a 4b.3 foi dividida em 4b.3a e 4b.3b dispensação e devolução):**
+  - Papel novo **Farmácia**, por unidade (ADR-0005), concedido como os demais papéis de unidade. Menu "Farmácia" com a fila das prescrições válidas da unidade (internação ativa ou atendimento de urgência aberto): paciente, local, hora da assinatura e itens a avaliar. A fila não grava leitura.
+  - Abrir uma prescrição grava leitura na trilha com o motivo "farmácia" e o vínculo com a prescrição. A tela mostra só a prescrição, as alergias e a identificação do paciente; a farmácia não chega ao prontuário nem ao atendimento. Prescrição substituída, vencida ou de atendimento encerrado fica fora de alcance.
+  - Cada item é aprovado, aprovado com observação ou recusado com motivo, uma vez (o banco não deixa mudar). Item suspenso não é avaliado. A recusa avisa o médico prescritor (notificação sem paciente nem medicamento). O médico e a enfermagem veem a avaliação no item.
+  - Revisão de segurança independente (sem crítico/alto; escopo da ADR-0005 mantido). Corrigido: a avaliação confere de novo, sob o lock do atendimento, se a prescrição ainda é a válida; a farmácia vê a idade, não a data de nascimento; a tela "Acessos ao prontuário" mostrava toda leitura que não fosse de atendimento como "Emergência" (inclusive as de internação, desde a entrega 4) e agora distingue internação e farmácia; limite de requisições na fila.
+  - Corrida real: duas avaliações simultâneas do mesmo item resultam numa só; avaliação × suspensão fica consistente.
+  - Achado ao migrar o banco local: a regra da trilha de leitura precisa ser recriada como "só para linhas novas" (como desde a 3.6b), porque a trilha só de inserção guarda linhas antigas que regras anteriores permitiam. O CI não pegaria (banco vazio).
+  - Navegador: fila, abertura, aprovação com observação e recusa, em 1440 e 360 px, sem erros.
+- **4b.2b (renovação, suspensão e aprazamento, PR #56):**
   - Nova prescrição nasce como cópia da última assinada do atendimento ou da internação (decisão 4): sem itens suspensos nem medicamentos desativados; os alertas são recalculados e a justificativa só fica se ainda cobre todos; o item por intervalo mantém a fase (08, 16, 00 continuam 08, 16, 00). Revisada, é assinada de novo.
   - Suspender item da prescrição válida, com motivo, uma vez (o banco só aceita essa alteração num item assinado). Para mudar a dose: suspender e prescrever de novo.
   - Aprazamento na assinatura: horários previstos de cada item (a cada N horas desde o início, ou os horários fixos de cada dia no fuso da unidade) dentro das 24 horas de validade; "se necessário" não tem horário. Horários só de inserção; aparecem no prontuário.
@@ -469,7 +478,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 369 testes passando (etapa 4b.2b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 372 testes passando (etapa 4b.3a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

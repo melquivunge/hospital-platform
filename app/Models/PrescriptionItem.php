@@ -7,6 +7,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -92,6 +93,14 @@ class PrescriptionItem extends Model
         }
 
         return $doses;
+    }
+
+    /**
+     * @return HasOne<PrescriptionReview, $this>
+     */
+    public function review(): HasOne
+    {
+        return $this->hasOne(PrescriptionReview::class);
     }
 
     /**
