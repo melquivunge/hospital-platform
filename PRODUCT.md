@@ -546,3 +546,75 @@ Todas as propostas abaixo foram aceitas: ciclo completo (1), dispensação por 2
 - **Esclarecimento de produto:** concluído (decisões acima).
 - **Arquitetura:** [ADR-0005](docs/adr/0005-pharmacy-prescription-access.md) e [ADR-0006](docs/adr/0006-icp-brasil-cloud-signature.md), aceitas.
 - **Plano em etapas:** `plans/web-v4-prescricao.md`, aceito. **Implementação autorizada pelo usuário em 19/10/2026**, começando pela 4b.1.
+
+## Contrato da entrega 4c — estoque da farmácia
+
+Método: ECC Product Capability. Data: 22/10/2026. Estado: **proposta para revisão do usuário; nenhuma implementação autorizada.** Origem: decisão do usuário de 19/10/2026 (questão 3 da entrega 4b: estoque fora da 4b, numa entrega 4c).
+
+### Capacidade
+
+A farmácia de cada unidade sabe quanto tem de cada medicamento do catálogo, em que lote e até quando vale. Ela registra as entradas, e a dispensação da entrega 4b passa a baixar o estoque do lote certo; a devolução repõe o mesmo lote. A farmácia descarta o que venceu ou se perdeu, com motivo, e faz inventário com ajuste justificado. Resultado esperado: saldo por lote confiável e rastreável de ponta a ponta, sem dispensar lote vencido. Essa base serve depois a materiais e cirurgia (entrega 5) e ao custo e faturamento de medicamentos (entrega 6).
+
+### Restrições e invariantes (propostas)
+
+- **Saldo derivado de movimentos:** o saldo nunca é editado. Cada mudança é um movimento só de inserção (entrada, dispensação, devolução, descarte, ajuste de inventário), com autor, data e motivo quando houver. O saldo é a soma dos movimentos, e uma tabela de saldo por lote, se existir, só muda junto com um movimento, na mesma transação.
+- **Nunca negativo:** um lote não fica com saldo negativo. Isso é garantido no banco (restrição), e não só na tela.
+- **Lote vencido não sai:** a dispensação nunca usa lote vencido.
+- **Concorrência:** duas dispensações simultâneas do último saldo de um lote resultam numa única baixa. O lock segue a ordem existente (internação → prescrição → item) e, por último, o lote. Isso será verificado com corrida real.
+- **Sem dado de paciente no estoque:** o movimento de dispensação aponta só para o id da dispensação. Estoque e movimentos não são tabelas clínicas, e nome de paciente ou de medicamento ligado a paciente não vai para logs, notificações nem auditoria (só ids). Ligar um movimento ao paciente continua exigindo o acesso clínico da 4b (ADR-0005).
+- **Por unidade:** cada unidade tem o seu estoque, e a farmácia de uma unidade não move o estoque de outra.
+- **Histórico preservado:** nada é apagado. Lote errado é corrigido por ajuste com motivo, e as dispensações já feitas não são reinterpretadas.
+
+### Atores e superfícies (proposta)
+
+| Ator | Superfície | Limite |
+|---|---|---|
+| Farmácia (papel da 4b, por unidade) | Entrada de lote, saldo por medicamento e lote, descarte, inventário, alertas de vencimento e de estoque mínimo | Só a própria unidade |
+| Gestor da unidade | Saldo, itens a vencer e abaixo do mínimo, perdas por motivo; aprova o ajuste de inventário (questão 5) | Sem dado de paciente |
+| Administrador de rede | Unidade de estoque de cada medicamento do catálogo; visão consolidada da rede | Não movimenta estoque |
+| Médico e enfermagem | Nada novo | — |
+
+### Estados e transições (proposta)
+
+- **Lote:** com saldo → zerado, ou vencido (calculado pela data, nunca gravado). Um lote zerado ou vencido continua no histórico.
+- **Movimento:** só existe gravado; não muda nem sai.
+- **Inventário:** aberto → contado (por lote) → ajustes aplicados ou cancelado. Durante a contagem, as dispensações continuam (questão 6).
+
+### Interface e dados (proposta)
+
+- **Entidades novas (não clínicas):**
+  - lote: medicamento, unidade, código do lote, validade, fabricante opcional;
+  - movimento de estoque;
+  - inventário e as contagens de cada lote.
+- **Catálogo:** ganha a unidade de estoque e o estoque mínimo por unidade (questão 2).
+- **Dispensação da 4b:**
+  - escolhe o lote e grava o movimento na mesma transação;
+  - a devolução gera o movimento de volta para o mesmo lote.
+- **Importação:** saldo inicial por CSV (lote, validade e quantidade), usando o mecanismo de importação existente, com relatório de exceções.
+
+### Não objetivos desta entrega (proposta)
+
+- Compras: pedido, cotação, fornecedor, nota fiscal eletrônica e contas a pagar.
+- Custo, preço e faturamento de medicamentos (entrega 6).
+- Farmácias satélites e estoque por setor (questão 1).
+- Livro de controlados e escrituração na Anvisa (SNGPC) (questão 7).
+- Materiais e insumos que não estão no catálogo de medicamentos (entrega 5).
+- Código de barras e leitura de DataMatrix ou GTIN.
+
+### Questões abertas
+
+1. **Onde fica o estoque.** Proposta: um estoque por unidade (a farmácia da unidade). Alternativa: também farmácias satélites e estoque por setor, com transferência interna.
+2. **Unidade de controle.** Proposta: o estoque conta na mesma unidade que a dispensação da 4b já usa ("unidades", como comprimido, ampola ou frasco). Cada medicamento ganha um rótulo de unidade de estoque e um estoque mínimo por unidade de hospital. Alternativa: embalagem com fator de conversão (caixa com 20 comprimidos).
+3. **Escolha do lote na dispensação.** Proposta: o sistema sugere o lote válido que vence primeiro, e a farmácia pode trocar por outro lote válido. Se a quantidade não couber num lote só, divide entre lotes. Alternativa: sempre automático, sem escolha.
+4. **Dispensar sem saldo.** Proposta: recusar, com a mensagem de que falta estoque, e a prescrição segue para outra solução fora do sistema. Alternativa: permitir como exceção com motivo, com o saldo ficando pendente. Isso violaria a invariante "nunca negativo", que teria de mudar.
+5. **Ajuste de inventário.** Proposta: a farmácia conta, e o ajuste só é aplicado com a aprovação do gestor da unidade (duas pessoas, motivo obrigatório). Alternativa: a própria farmácia aplica, com motivo e auditoria.
+6. **Inventário com farmácia funcionando.** Proposta: a contagem não bloqueia a dispensação. O ajuste compara a contagem com o saldo do momento da contagem e considera o que saiu depois. Alternativa: bloquear a dispensação do medicamento enquanto ele é contado.
+7. **Controlados.** Proposta: nesta entrega, o controlado tem o mesmo controle por lote, mais o relatório de movimentos por período para a escrituração manual. O livro e o SNGPC ficam fora. Alternativa: incluir já o livro de registro.
+8. **Alertas.** Proposta: aviso interno (as notificações existentes) para a farmácia e o gestor quando um lote vence em 30 dias e quando o saldo fica abaixo do mínimo, uma vez por dia. Alternativa: só a tela, sem aviso.
+9. **Prescrições abertas no início.** Proposta: as dispensações feitas antes da 4c ficam sem movimento, e a devolução delas também não gera movimento. O saldo começa pela importação ou pelo primeiro inventário. Alternativa: criar movimentos retroativos estimados (não recomendado, porque inventa dados).
+
+### Encaminhamento ECC
+
+- **Esclarecimento de produto:** pendente (questões 1 a 9).
+- **Arquitetura:** depois das respostas, uma **ADR-0007** (saldo derivado de movimentos, lock do lote na ordem existente, estoque fora do RLS sem dado de paciente) e o plano em etapas em `plans/web-v5-estoque.md`.
+- **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
