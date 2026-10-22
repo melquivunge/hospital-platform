@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureAccountIsActive;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\ResolveTenant;
+use App\Http\Middleware\ThrottleRequestsPerRoute;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -28,7 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
-        $middleware->alias(['tenant' => ResolveTenant::class]);
+        $middleware->alias(['tenant' => ResolveTenant::class, 'throttle' => ThrottleRequestsPerRoute::class]);
         // Tenant context must exist before route model binding resolves tenant-scoped models.
         $middleware->prependToPriorityList(SubstituteBindings::class, ResolveTenant::class);
 

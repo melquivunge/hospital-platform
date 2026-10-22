@@ -32,6 +32,8 @@ class PrescriptionSignatureController extends Controller
     public function store(Request $request, Prescription $prescription): RedirectResponse
     {
         abort_unless($prescription->author_user_id === $request->user()->id && $prescription->status === 'signed', 403);
+        // Step 4b.6: only the valid prescription, by someone who still prescribes there (not after expiry, discharge or transfer).
+        abort_unless(PrescriptionController::active($prescription)?->id === $prescription->id && PrescriptionController::prescriber($request->user(), $prescription->unit_id) !== null, 403);
         $digital = PrescriptionCertification::certify($prescription, $request->user());
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Prescrição assinada com '.PrescriptionCertification::label($digital->provider).'.']);
 

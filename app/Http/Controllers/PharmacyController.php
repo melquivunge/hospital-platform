@@ -238,6 +238,8 @@ class PharmacyController extends Controller
     private static function valid(): Builder
     {
         return Prescription::query()->where('status', 'signed')->where('valid_until', '>', now())
+            // Step 4b.6: a prescription of the unit the admission is in now (a transfer ends the origin's one).
+            ->where(fn ($unit) => $unit->whereNull('admission_id')->orWhereIn('admission_id', Admission::query()->whereColumn('admissions.unit_id', 'prescriptions.unit_id')->select('id')))
             ->whereNotExists(fn ($newer) => $newer->from('prescriptions as newer')->where('newer.status', 'signed')
                 ->where(fn ($same) => $same->whereColumn('newer.admission_id', 'prescriptions.admission_id')->orWhereColumn('newer.visit_id', 'prescriptions.visit_id'))
                 ->where(fn ($later) => $later->whereColumn('newer.signed_at', '>', 'prescriptions.signed_at')

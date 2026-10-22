@@ -25,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $frequency_hours
  * @property list<string>|null $times
  * @property bool $prn
+ * @property bool|null $double_check
  * @property string|null $prn_condition
  * @property Carbon $starts_at
  * @property string|null $notes
@@ -34,7 +35,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $suspended_at step 4b.2b: suspended once, with a reason
  * @property string|null $suspension_reason
  */
-#[Fillable(['prescription_id', 'medication_id', 'medication_label', 'dose', 'dose_unit', 'route', 'frequency_hours', 'times', 'prn', 'prn_condition', 'starts_at', 'notes', 'alerts', 'justification', 'created_at'])]
+#[Fillable(['prescription_id', 'medication_id', 'medication_label', 'dose', 'dose_unit', 'route', 'frequency_hours', 'times', 'prn', 'prn_condition', 'starts_at', 'notes', 'alerts', 'justification', 'double_check', 'created_at'])]
 class PrescriptionItem extends Model
 {
     use BelongsToTenant;
@@ -52,7 +53,7 @@ class PrescriptionItem extends Model
     protected function casts(): array
     {
         return [
-            'dose' => 'decimal:3', 'frequency_hours' => 'integer', 'times' => 'array', 'prn' => 'boolean',
+            'dose' => 'decimal:3', 'frequency_hours' => 'integer', 'times' => 'array', 'prn' => 'boolean', 'double_check' => 'boolean',
             'starts_at' => 'datetime', 'alerts' => 'array', 'created_at' => 'datetime', 'suspended_at' => 'datetime',
         ];
     }
@@ -120,5 +121,19 @@ class PrescriptionItem extends Model
     public function medication(): BelongsTo
     {
         return $this->belongsTo(Medication::class);
+    }
+
+    /**
+     * Step 4b.6: a second person at administration, as fixed when prescribed. Items from before have none and read
+     * the catalog; an item whose medication is gone needs one (fails closed).
+     */
+    public function needsDoubleCheck(): bool
+    {
+        if ($this->double_check !== null) {
+            return $this->double_check;
+        }
+        $medication = Medication::query()->find($this->medication_id);
+
+        return $medication === null || $medication->controlled || $medication->high_alert;
     }
 }

@@ -130,6 +130,15 @@ class PrescriptionSignatureTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user)->post(route('prescriptions.certify', $prescription))->assertSessionHasNoErrors();
         $this->assertSame(1, PrescriptionSignature::withoutTenantScope()->count());
 
+        // Step 4b.6: once expired, a prescription is no longer signed digitally.
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.prescriptions.start', $this->visit))->assertRedirect();
+        $later = Prescription::withoutTenantScope()->where('status', 'draft')->sole();
+        $this->post(route('certificate.unlink'));
+        $this->post(route('prescriptions.sign', $later), ['password' => 'password'])->assertSessionHasNoErrors();
+        $this->post(route('certificate.link'))->assertSessionHasNoErrors();
+        $this->travel(25)->hours();
+        $this->post(route('prescriptions.certify', $later))->assertForbidden();
+
         // Unlinking deletes the credential.
         $this->delete(route('certificate.unlink'))->assertSessionHasNoErrors();
         $this->assertSame(0, SigningAccount::withoutTenantScope()->count());

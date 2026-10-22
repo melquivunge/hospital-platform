@@ -14,12 +14,15 @@ export type PatientAllergy = {
     reaction: string | null;
     recordedAt: string | null;
     author: string | null;
+    recordedBy: number;
     inactivatedAt: string | null;
     inactivationReason: string | null;
 };
 
 export type AllergyForm = {
     patientId: number;
+    userId: number;
+    inactivateAny: boolean;
     substances: string[];
     severities: Record<string, string>;
 };
@@ -77,7 +80,11 @@ export function PatientAllergies({
                             <p className="text-xs text-muted-foreground">
                                 {allergy.recordedAt} · {allergy.author}
                             </p>
-                            {form && <InactivateForm allergy={allergy} />}
+                            {form &&
+                                (form.inactivateAny ||
+                                    allergy.recordedBy === form.userId) && (
+                                    <InactivateForm allergy={allergy} />
+                                )}
                         </li>
                     ))}
                 </ul>
