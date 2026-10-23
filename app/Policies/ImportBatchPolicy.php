@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Http\Controllers\PharmacyController;
 use App\Models\ImportBatch;
 use App\Models\Membership;
 use App\Models\RoleAssignment;
@@ -11,6 +12,7 @@ use App\Tenancy\Role;
 /**
  * Network admins import for any unit; importers only into their units (PRODUCT.md, "Papéis").
  * An importer sees and confirms only their own batches. Importing never approves qualifications.
+ * The initial stock balance (step 4c.1b, ADR-0007) is imported only by the unit's Pharmacy role.
  */
 class ImportBatchPolicy
 {
@@ -18,7 +20,7 @@ class ImportBatchPolicy
     {
         $membership = UnitPolicy::currentMembership($user);
 
-        return $membership !== null && self::importableUnitIds($membership) !== [];
+        return $membership !== null && (self::importableUnitIds($membership) !== [] || PharmacyController::unitIds($membership) !== []);
     }
 
     public function view(User $user, ImportBatch $batch): bool
@@ -27,8 +29,18 @@ class ImportBatchPolicy
 
         return $membership !== null && (
             $membership->hasRole(Role::NetworkAdmin)
-            || ($batch->created_by_user_id === $user->id && self::importableUnitIds($membership) !== [])
+            || ($batch->created_by_user_id === $user->id && self::unitIdsFor($membership, $batch->type) !== [])
         );
+    }
+
+    /**
+     * The units a batch of this type may write to: the stock goes only to the units of the Pharmacy role.
+     *
+     * @return list<int>|null null means every unit of the tenant
+     */
+    public static function unitIdsFor(Membership $membership, string $type): ?array
+    {
+        return $type === 'stock' ? PharmacyController::unitIds($membership) : self::importableUnitIds($membership);
     }
 
     /**

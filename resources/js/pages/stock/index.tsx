@@ -1,4 +1,5 @@
-import { Form, Head, router } from '@inertiajs/react';
+import { Form, Head, Link, router } from '@inertiajs/react';
+import { FileUp } from 'lucide-react';
 import StockController from '@/actions/App/Http/Controllers/StockController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -6,6 +7,7 @@ import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { create as newImport } from '@/routes/imports';
 import { index } from '@/routes/stock';
 
 type Lot = {
@@ -70,6 +72,14 @@ export default function StockIndex({
                     title="Estoque da farmácia"
                     description="Saldo por medicamento e lote. O saldo só muda por movimentos registrados; lote vencido não é dispensado."
                 />
+                <div className="mb-6">
+                    <Button asChild variant="outline" className="min-h-11">
+                        <Link href={newImport()}>
+                            <FileUp />
+                            Importar saldo inicial (CSV)
+                        </Link>
+                    </Button>
+                </div>
                 {units.length > 1 && (
                     <div className="mb-6 grid max-w-sm gap-2">
                         <Label htmlFor="unit">Unidade</Label>

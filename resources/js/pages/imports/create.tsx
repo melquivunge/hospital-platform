@@ -40,6 +40,10 @@ const columnHelp: Record<string, string> = {
     ingredient_b: 'outro princípio ativo já no catálogo (obrigatório)',
     severity: 'leve, moderada, grave ou contraindicada',
     note: 'orientação ao prescritor (obrigatório)',
+    lot_code: 'código do lote (obrigatório)',
+    expires_on: 'validade, 2027-05-31 ou 31/05/2027 (obrigatório)',
+    quantity: 'quantidade na unidade de estoque do medicamento (obrigatório)',
+    manufacturer: 'fabricante (opcional)',
     professional_source_id:
         'source_id do profissional importado pela mesma origem; vazio = vaga aberta',
 };
@@ -48,7 +52,8 @@ type ImportType =
     | 'professionals'
     | 'shifts'
     | 'medications'
-    | 'medication_interactions';
+    | 'medication_interactions'
+    | 'stock';
 
 const typeLabels: Record<ImportType, string> = {
     professionals: 'Profissionais',
@@ -56,6 +61,7 @@ const typeLabels: Record<ImportType, string> = {
     medications: 'Catálogo de medicamentos',
     medication_interactions:
         'Interações entre princípios ativos (depois do catálogo)',
+    stock: 'Saldo inicial do estoque da farmácia',
 };
 
 export default function ImportCreate({
@@ -65,7 +71,9 @@ export default function ImportCreate({
     columns: Partial<Record<ImportType, string[]>>;
     maxLines: number;
 }) {
-    const [type, setType] = useState<ImportType>('professionals');
+    const [type, setType] = useState<ImportType>(
+        (Object.keys(columns)[0] as ImportType | undefined) ?? 'professionals',
+    );
 
     return (
         <>

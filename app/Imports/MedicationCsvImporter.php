@@ -147,7 +147,7 @@ final class MedicationCsvImporter
     /**
      * @param  array<string, mixed>  $data
      */
-    private static function existing(array $data): ?Medication
+    public static function existing(array $data): ?Medication
     {
         return Medication::query()->where('ingredient_key', Medication::key((string) $data['active_ingredient']))
             ->whereRaw('lower(form) = lower(?)', [$data['form']])->whereRaw('lower(strength) = lower(?)', [$data['strength']])->first();

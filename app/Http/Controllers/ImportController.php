@@ -7,6 +7,7 @@ use App\Imports\MedicationCsvImporter;
 use App\Imports\MedicationInteractionCsvImporter;
 use App\Imports\ProfessionalCsvImporter;
 use App\Imports\ShiftCsvImporter;
+use App\Imports\StockCsvImporter;
 use App\Jobs\ApplyImportBatch;
 use App\Models\AuditEvent;
 use App\Models\ImportBatch;
@@ -91,7 +92,7 @@ class ImportController extends Controller
 
         $membership = UnitPolicy::currentMembership($request->user());
         abort_if($membership === null, 403);
-        $unitIds = ImportBatchPolicy::importableUnitIds($membership);
+        $unitIds = ImportBatchPolicy::unitIdsFor($membership, $type);
         $units = Unit::query()->when($unitIds !== null, fn (Builder $query) => $query->whereIn('id', $unitIds ?? []))->get(['id', 'name']);
         $tenantId = app(CurrentTenant::class)->require()->id;
 
@@ -163,6 +164,8 @@ class ImportController extends Controller
         Gate::authorize('view', $batch);
         // Step 4b.1b: the catalog is the network's; confirming needs the right to keep it.
         abort_if(in_array($batch->type, self::CATALOG, true) && $request->user()->cannot('manage', Medication::class), 403);
+        // Step 4c.1b (ADR-0007): only the pharmacist who previewed it moves the stock, not a network admin.
+        abort_if($batch->type === 'stock' && $batch->created_by_user_id !== $request->user()->id, 403);
 
         $updated = ImportBatch::query()->whereKey($batch->id)->whereIn('status', ['previewed', 'applying'])
             ->update(['status' => 'applying', 'confirmed_at' => DB::raw('COALESCE(confirmed_at, now())')]);
@@ -185,7 +188,7 @@ class ImportController extends Controller
     {
         Gate::authorize('create', ImportBatch::class);
         $types = self::types($request);
-        $type = array_key_exists($request->string('type')->value(), $types) ? $request->string('type')->value() : 'professionals';
+        $type = array_key_exists($request->string('type')->value(), $types) ? $request->string('type')->value() : (string) array_key_first($types);
         $columns = self::importer($type)::COLUMNS;
 
         return response()->streamDownload(function () use ($columns) {
@@ -200,19 +203,24 @@ class ImportController extends Controller
      */
     private static function types(Request $request): array
     {
-        $types = ['professionals' => ProfessionalCsvImporter::class, 'shifts' => ShiftCsvImporter::class];
+        $membership = UnitPolicy::currentMembership($request->user());
+        abort_if($membership === null, 403);
 
-        return $request->user()->can('manage', Medication::class)
-            ? [...$types, 'medications' => MedicationCsvImporter::class, 'medication_interactions' => MedicationInteractionCsvImporter::class]
-            : $types;
+        return [
+            ...(ImportBatchPolicy::importableUnitIds($membership) !== [] ? ['professionals' => ProfessionalCsvImporter::class, 'shifts' => ShiftCsvImporter::class] : []),
+            ...($request->user()->can('manage', Medication::class) ? ['medications' => MedicationCsvImporter::class, 'medication_interactions' => MedicationInteractionCsvImporter::class] : []),
+            // Step 4c.1b: the initial stock balance, by the unit's pharmacy.
+            ...(PharmacyController::unitIds($membership) !== [] ? ['stock' => StockCsvImporter::class] : []),
+        ];
     }
 
     /**
-     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>
+     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>|class-string<StockCsvImporter>
      */
     public static function importer(string $type): string
     {
         return match ($type) {
+            'stock' => StockCsvImporter::class,
             'shifts' => ShiftCsvImporter::class,
             'medications' => MedicationCsvImporter::class,
             'medication_interactions' => MedicationInteractionCsvImporter::class,
