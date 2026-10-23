@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da lista de descartes na tela de estoque; depois a 4c.3 (descarte e inventário).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge do histórico completo de descartes na tela de estoque; depois a 4c.3 (descarte e inventário).
 
 ## Onde está cada coisa
 
@@ -92,7 +92,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #66 | Correção: papel Farmácia relido a cada linha da importação de estoque | Mesclado |
 | #67 | Etapa 4c.2: dispensação e devolução com estoque | Mesclado |
 | #68 | Travas do estoque no banco e descarte da devolução em lote vencido | Mesclado |
-| — | Descartes dos últimos 30 dias na tela de estoque (branch `fix/stock-discards-visible`) | Em revisão |
+| #69 | Descartes dos últimos 30 dias na tela de estoque | Mesclado |
+| — | Histórico completo de descartes, paginado (branch `fix/stock-discards-history`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -251,7 +252,7 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
 - **Travas depois da 4c.2 (23/10/2026, a pedido do usuário):**
   - O banco recusa movimento de dispensação de lote de outra unidade, de outro medicamento ou vencido (fuso da unidade). A leitura da dispensação respeita o RLS: sem contexto clínico, recusa.
   - Devolução para lote que venceu nesse meio-tempo: entra e sai como descarte (motivo `expired`) na mesma transação, e o aviso pede para separar as unidades. O tipo "descarte" entra agora; a tela de descarte segue na 4c.3.
-  - A tela de estoque lista os descartes dos últimos 30 dias da unidade (data, medicamento, lote, quantidade, motivo; sem dado de paciente). O relatório completo de movimentos segue na 4c.4.
+  - A tela de estoque lista todos os descartes da unidade, do mais recente, 20 por página (data, medicamento, lote, quantidade, motivo; sem dado de paciente). O relatório completo de movimentos segue na 4c.4.
 - **4c.2 (dispensação e devolução com estoque, ADR-0007):**
   - A dispensação baixa os lotes da unidade: um movimento por lote, ligado só ao id da dispensação. A tela sugere os lotes válidos que vencem primeiro, já preenchidos até a quantidade das doses; a farmácia troca ou divide. Sem lotes enviados, o servidor aplica a mesma sugestão.
   - Recusados no servidor: lote vencido (fuso da unidade), lote de outra unidade ou de outro medicamento, mais que o saldo do lote, soma diferente da quantidade, lote repetido, todos zerados. Sem saldo, a mensagem aponta "Registrar entrada de lote", na própria tela (questão 4).
@@ -551,7 +552,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 405 testes passando (descartes na tela de estoque), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 405 testes passando (histórico de descartes), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

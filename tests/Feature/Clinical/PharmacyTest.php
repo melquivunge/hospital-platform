@@ -10,6 +10,7 @@ use App\Models\Membership;
 use App\Models\Prescription;
 use App\Models\PrescriptionDispensing;
 use App\Models\PrescriptionItem;
+use App\Models\StockMovement;
 use App\Models\Visit;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
@@ -309,11 +310,20 @@ class PharmacyTest extends ClinicalTestCase
         $this->assertSame('expired', DB::table('stock_movements')->where('type', 'discard')->value('reason'));
         $this->assertEquals([$today => 2], AuditEvent::where('action', 'prescription_item.returned')->sole()->context['discarded']);
 
-        // The stock screen shows the discard (no patient data) for 30 days.
-        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->has('discards', 1)
-            ->where('discards.0', fn ($discard) => $discard->only('lot', 'quantity', 'reason')->all() === ['lot' => 'HOJE', 'quantity' => 2, 'reason' => 'expired']));
+        // The stock screen keeps the whole history of discards (no patient data), 20 per page, newest first.
         $this->travel(31)->days();
-        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->has('discards', 0));
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->has('discards', 1)->where('discardPages', ['newer' => null, 'older' => null])
+            ->where('discards.0', fn ($discard) => $discard->only('lot', 'quantity', 'reason')->all() === ['lot' => 'HOJE', 'quantity' => 2, 'reason' => 'expired']));
+        $other = $this->stockLot($this->unit->id, Medication::withoutTenantScope()->findOrFail($dipyrone->medication_id), 100, 'OUTRO')->id;
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        foreach (range(1, 20) as $ignored) {
+            StockMovement::create(['stock_lot_id' => $other, 'type' => 'discard', 'quantity' => -1, 'reason' => 'expired', 'user_id' => $this->pharmacist->user_id, 'created_at' => now()]);
+        }
+        app(CurrentTenant::class)->set(null);
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->has('discards', 20)->where('discards.0.lot', 'OUTRO')
+            ->where('discardPages.newer', null)->where('discardPages.older', fn ($url) => str_contains((string) $url, 'discards=2')));
+        $this->get(route('stock.index', ['discards' => 2]))->assertInertia(fn (Assert $page) => $page->has('discards', 1)->where('discards.0.lot', 'HOJE')
+            ->where('discardPages.older', null));
     }
 
     public function test_a_dispensing_from_before_the_stock_returns_without_a_movement(): void

@@ -67,6 +67,7 @@ export default function StockIndex({
     today,
     medications,
     discards,
+    discardPages,
     catalog,
 }: {
     units: { id: number; name: string }[];
@@ -74,6 +75,7 @@ export default function StockIndex({
     today: string;
     medications: StockMedication[];
     discards: Discard[];
+    discardPages: { newer: string | null; older: string | null };
     catalog: CatalogOption[];
 }) {
     const unit = units.find((option) => option.id === unitId);
@@ -185,9 +187,7 @@ export default function StockIndex({
 
                 {discards.length > 0 && (
                     <section className="mt-10 grid gap-3">
-                        <h2 className="text-lg font-semibold">
-                            Descartes dos últimos 30 dias
-                        </h2>
+                        <h2 className="text-lg font-semibold">Descartes</h2>
                         <ul className="divide-y rounded-xl border bg-card px-5 text-sm">
                             {discards.map((discard) => (
                                 <li
@@ -208,6 +208,41 @@ export default function StockIndex({
                                 </li>
                             ))}
                         </ul>
+                        {(discardPages.newer || discardPages.older) && (
+                            <nav
+                                aria-label="Páginas de descartes"
+                                className="flex flex-wrap gap-2"
+                            >
+                                {discardPages.newer && (
+                                    <Button
+                                        asChild
+                                        variant="outline"
+                                        className="min-h-11"
+                                    >
+                                        <Link
+                                            href={discardPages.newer}
+                                            preserveScroll
+                                        >
+                                            Mais recentes
+                                        </Link>
+                                    </Button>
+                                )}
+                                {discardPages.older && (
+                                    <Button
+                                        asChild
+                                        variant="outline"
+                                        className="min-h-11"
+                                    >
+                                        <Link
+                                            href={discardPages.older}
+                                            preserveScroll
+                                        >
+                                            Anteriores
+                                        </Link>
+                                    </Button>
+                                )}
+                            </nav>
+                        )}
                     </section>
                 )}
 

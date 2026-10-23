@@ -36,13 +36,12 @@ class StockController extends Controller
         $minimums = StockMinimum::query()->where('unit_id', $unit->id)->pluck('minimum', 'medication_id');
         $medications = Medication::query()->whereKey([...$lots->keys(), ...$minimums->keys()])
             ->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->get();
-        // ponytail: the last 30 days on this screen; the full movement report comes in step 4c.4.
+        // Every discard of the unit, newest first, 20 per page; the full movement report comes in step 4c.4.
         $discards = StockMovement::query()->join('stock_lots', 'stock_lots.id', '=', 'stock_movements.stock_lot_id')
             ->where('stock_lots.unit_id', $unit->id)->where('stock_movements.type', 'discard')
-            ->where('stock_movements.created_at', '>=', now()->subDays(30))
-            ->orderByDesc('stock_movements.id')->limit(50)
-            ->get(['stock_movements.id', 'stock_movements.quantity', 'stock_movements.reason', 'stock_movements.created_at', 'stock_lots.lot_code', 'stock_lots.medication_id']);
-        $discarded = Medication::query()->whereKey($discards->pluck('medication_id')->unique()->all())->get()->keyBy('id');
+            ->orderByDesc('stock_movements.id')
+            ->simplePaginate(20, ['stock_movements.id', 'stock_movements.quantity', 'stock_movements.reason', 'stock_movements.created_at', 'stock_lots.lot_code', 'stock_lots.medication_id'], 'discards')->withQueryString();
+        $discarded = Medication::query()->whereKey($discards->getCollection()->pluck('medication_id')->unique()->all())->get()->keyBy('id');
 
         return Inertia::render('stock/index', [
             'units' => $units->map->only('id', 'name')->values(),
@@ -74,7 +73,8 @@ class StockController extends Controller
                     ])->values(),
                 ];
             })->values(),
-            'discards' => $discards->map(fn (StockMovement $movement) => [
+            'discardPages' => ['newer' => $discards->previousPageUrl(), 'older' => $discards->nextPageUrl()],
+            'discards' => $discards->getCollection()->map(fn (StockMovement $movement) => [
                 'id' => $movement->id,
                 'at' => $movement->created_at->timezone($unit->timezone ?? 'UTC')->format('d/m/Y H:i'),
                 'name' => self::label($discarded[$movement->getAttribute('medication_id')]),
