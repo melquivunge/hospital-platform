@@ -115,6 +115,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Step 4c.1a (ADR-0007): the unit's pharmacy stock.
     Route::get('stock', [StockController::class, 'index'])->middleware('throttle:120,1')->name('stock.index');
     Route::post('stock/entries', [StockController::class, 'storeEntry'])->middleware('throttle:60,1')->name('stock.entries.store');
+    Route::post('stock/lots/{lot}/discards', [StockController::class, 'discard'])->middleware('throttle:60,1')->name('stock.discards.store');
     Route::put('stock/minimums', [StockController::class, 'updateMinimum'])->middleware('throttle:60,1')->name('stock.minimums.update');
     Route::get('emergency', [EmergencyController::class, 'index'])->name('emergency.index');
     Route::post('units/{unit}/emergency-arrivals', [EmergencyController::class, 'arrive'])->middleware('throttle:60,1')->name('emergency.arrive');

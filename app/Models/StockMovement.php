@@ -16,14 +16,18 @@ use Illuminate\Support\Carbon;
  * @property string $type
  * @property int $quantity signed: what it adds to the lot
  * @property string|null $reason
+ * @property string|null $note the text of a discard for another reason
  * @property int $user_id
  * @property int|null $prescription_dispensing_id the dispensing a 'dispensing' or 'return' movement belongs to
  * @property Carbon $created_at
  */
-#[Fillable(['stock_lot_id', 'type', 'quantity', 'reason', 'user_id', 'prescription_dispensing_id', 'created_at'])]
+#[Fillable(['stock_lot_id', 'type', 'quantity', 'reason', 'note', 'user_id', 'prescription_dispensing_id', 'created_at'])]
 class StockMovement extends Model
 {
     use BelongsToTenant;
+
+    /** The reason codes of a discard; "other" comes with a text (note). */
+    public const DISCARD_REASONS = ['expired', 'damage', 'loss', 'other'];
 
     public $timestamps = false;
 

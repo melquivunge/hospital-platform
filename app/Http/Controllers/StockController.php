@@ -40,7 +40,7 @@ class StockController extends Controller
         $discards = StockMovement::query()->join('stock_lots', 'stock_lots.id', '=', 'stock_movements.stock_lot_id')
             ->where('stock_lots.unit_id', $unit->id)->where('stock_movements.type', 'discard')
             ->orderByDesc('stock_movements.id')
-            ->simplePaginate(20, ['stock_movements.id', 'stock_movements.quantity', 'stock_movements.reason', 'stock_movements.created_at', 'stock_lots.lot_code', 'stock_lots.medication_id'], 'discards')->withQueryString();
+            ->simplePaginate(20, ['stock_movements.id', 'stock_movements.quantity', 'stock_movements.reason', 'stock_movements.note', 'stock_movements.created_at', 'stock_lots.lot_code', 'stock_lots.medication_id'], 'discards')->withQueryString();
         $discarded = Medication::query()->whereKey($discards->getCollection()->pluck('medication_id')->unique()->all())->get()->keyBy('id');
 
         return Inertia::render('stock/index', [
@@ -81,6 +81,7 @@ class StockController extends Controller
                 'lot' => $movement->getAttribute('lot_code'),
                 'quantity' => -$movement->quantity,
                 'reason' => $movement->reason,
+                'note' => $movement->note,
             ])->values(),
             'catalog' => Medication::query()->where('active', true)->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->get()
                 ->map(fn (Medication $medication) => ['id' => $medication->id, 'name' => self::label($medication), 'stockUnit' => $medication->stock_unit])->values(),
@@ -118,6 +119,45 @@ class StockController extends Controller
 
         DB::transaction(fn () => self::enter((int) $data['unit_id'], $medication, $code, $data['expires_on'], $manufacturer, (int) $data['quantity'], $request->user()));
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Entrada registrada.']);
+
+        return back();
+    }
+
+    /**
+     * A discard from a lot of the unit (step 4c.3a): a reason (expired only for an expired lot; "other" with a
+     * text) and at most the lot's balance, read with the lot locked. An expired lot can be discarded whole.
+     */
+    public function discard(Request $request, StockLot $lot): RedirectResponse
+    {
+        abort_unless(in_array($lot->unit_id, self::unitIds($request), true), 403);
+        $bag = "discard{$lot->id}";
+        $data = $request->validateWithBag($bag, [
+            'reason' => ['required', Rule::in(StockMovement::DISCARD_REASONS)],
+            'note' => ['nullable', 'required_if:reason,other', 'exclude_unless:reason,other', 'string', 'max:200'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:100000'],
+        ], [], ['reason' => 'motivo', 'note' => 'descrição', 'quantity' => 'quantidade']);
+
+        DB::transaction(function () use ($request, $lot, $data, $bag) {
+            $lot = StockLot::query()->lockForUpdate()->findOrFail($lot->id);
+            $today = now(Unit::query()->whereKey($lot->unit_id)->value('timezone') ?? 'UTC')->toDateString();
+            $refusal = match (true) {
+                $data['reason'] === 'expired' && $lot->expires_on->toDateString() >= $today => ['reason', 'Este lote ainda está na validade. Escolha outro motivo.'],
+                $data['quantity'] > $lot->balance => ['quantity', "O lote tem {$lot->balance} em saldo."],
+                default => null,
+            };
+            if ($refusal !== null) {
+                throw ValidationException::withMessages([$refusal[0] => $refusal[1]])->errorBag($bag);
+            }
+            $movement = StockMovement::query()->create([
+                'stock_lot_id' => $lot->id, 'type' => 'discard', 'quantity' => -$data['quantity'], 'reason' => $data['reason'],
+                'note' => $data['reason'] === 'other' ? trim($data['note']) : null, 'user_id' => $request->user()->id, 'created_at' => now(),
+            ]);
+            // The reason code only: the text stays on the movement.
+            AuditEvent::record('stock.discard', $lot->tenant_id, $movement, [
+                'unit_id' => $lot->unit_id, 'medication_id' => $lot->medication_id, 'stock_lot_id' => $lot->id, 'quantity' => $data['quantity'], 'reason' => $data['reason'],
+            ]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Descarte registrado.']);
 
         return back();
     }
