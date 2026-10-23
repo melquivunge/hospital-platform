@@ -2,6 +2,7 @@
 
 namespace App\Imports;
 
+use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\StockController;
 use App\Models\ImportBatch;
 use App\Models\ImportIdentity;
@@ -59,11 +60,18 @@ final class StockCsvImporter
                 if ($item->status !== 'ready') {
                     return;
                 }
+                // The job applies as the batch's creator, whose Pharmacy role is read again for every line:
+                // revoking it in the middle of a large file stops the remaining lines.
+                $user = Auth::user();
+                if (! $user instanceof User) {
+                    throw new \LogicException('An import applies as its creator.');
+                }
+                $current = $user->deactivated_at === null ? PharmacyController::unitIds($user->activeMembershipIn($batch->tenant_id)) : [];
                 $data = $item->data;
                 $unit = Unit::query()->whereKey((int) $data['unit_id'])->first();
                 $medication = Medication::query()->where('active', true)->whereKey((int) $data['medication_id'])->first();
                 $refusal = match (true) {
-                    $unit === null || $allowedUnitIds === null || ! in_array($unit->id, $allowedUnitIds, true) => 'Sem o papel Farmácia nesta unidade no momento da aplicação.',
+                    $unit === null || $allowedUnitIds === null || ! in_array($unit->id, $allowedUnitIds, true) || ! in_array($unit->id, $current, true) => 'Sem o papel Farmácia nesta unidade no momento da aplicação.',
                     $medication === null => 'O medicamento foi desativado depois da prévia.',
                     $data['expires_on'] < now($unit->timezone ?? 'UTC')->toDateString() => 'O lote venceu depois da prévia.',
                     self::identity($batch, (int) $data['unit_id'], (string) $data['source_id']) !== null => 'Esta linha já foi importada. Nada foi alterado.',
@@ -73,11 +81,6 @@ final class StockCsvImporter
                     $item->update(['status' => 'conflict', 'messages' => [$refusal]]);
 
                     return;
-                }
-                // The job applies as the batch's creator.
-                $user = Auth::user();
-                if (! $user instanceof User) {
-                    throw new \LogicException('An import applies as its creator.');
                 }
                 try {
                     $movement = StockController::enter($unit->id, $medication, (string) $data['lot_code'], (string) $data['expires_on'], $data['manufacturer'], (int) $data['quantity'], $user,

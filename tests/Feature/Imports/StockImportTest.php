@@ -4,6 +4,7 @@ namespace Tests\Feature\Imports;
 
 use App\Jobs\ApplyImportBatch;
 use App\Models\ImportBatch;
+use App\Models\ImportItem;
 use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\Unit;
@@ -131,6 +132,21 @@ class StockImportTest extends TestCase
         (new ApplyImportBatch($batch->tenant_id, $batch->id))->handle(app(CurrentTenant::class));
         $this->assertSame([2 => 'conflict'], $this->statuses($batch));
         $this->assertSame(0, DB::table('stock_movements')->count());
+    }
+
+    public function test_the_role_revoked_in_the_middle_of_the_apply_stops_the_remaining_lines(): void
+    {
+        $this->upload([
+            '1;Hospital Norte;Dipirona;Comprimido;500 mg;L1;2027-01-01;10;',
+            '2;Hospital Norte;Dipirona;Comprimido;500 mg;L2;2027-01-01;10;',
+        ])->assertRedirect();
+        $batch = ImportBatch::withoutTenantScope()->sole();
+        // The role is revoked right after the first line is applied, while the job is still running.
+        ImportItem::updated(fn (ImportItem $item) => $item->status === 'created'
+            ? DB::table('role_assignments')->where('membership_id', $this->pharmacist->id)->delete() : null);
+        $this->confirm($batch);
+        $this->assertSame([2 => 'created', 3 => 'conflict'], $this->statuses($batch));
+        $this->assertSame(1, DB::table('stock_movements')->count());
     }
 
     public function test_dates_ids_per_unit_changed_content_and_changes_after_the_preview(): void
