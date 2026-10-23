@@ -568,7 +568,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 416 testes passando (4c.4a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 417 testes passando (4c.4a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
