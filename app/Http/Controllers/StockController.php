@@ -8,6 +8,7 @@ use App\Models\StockLot;
 use App\Models\StockMinimum;
 use App\Models\StockMovement;
 use App\Models\Unit;
+use App\Models\User;
 use App\Policies\UnitPolicy;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -100,25 +101,7 @@ class StockController extends Controller
 
         $manufacturer = ($data['manufacturer'] ?? null) === null ? null : Medication::clean($data['manufacturer']);
 
-        DB::transaction(function () use ($request, $data, $medication, $code, $manufacturer) {
-            // The same lot entered twice at once: one creates it, the other finds it (savepoint).
-            $lot = StockLot::query()->createOrFirst(
-                ['unit_id' => $data['unit_id'], 'medication_id' => $medication->id, 'lot_code' => $code, 'expires_on' => $data['expires_on']],
-                ['manufacturer' => $manufacturer, 'created_by_user_id' => $request->user()->id, 'created_at' => now()],
-            );
-            // A lot has one manufacturer: a different one is a different lot or a typo, never dropped silently.
-            if (! $lot->wasRecentlyCreated && $manufacturer !== null && mb_strtolower((string) $lot->manufacturer) !== mb_strtolower($manufacturer)) {
-                throw ValidationException::withMessages(['manufacturer' => $lot->manufacturer === null
-                    ? 'Este lote já foi cadastrado sem fabricante. Deixe o fabricante em branco.'
-                    : "Este lote já está cadastrado com o fabricante {$lot->manufacturer}."])->errorBag('entry');
-            }
-            $movement = StockMovement::query()->create([
-                'stock_lot_id' => $lot->id, 'type' => 'entry', 'quantity' => $data['quantity'], 'user_id' => $request->user()->id, 'created_at' => now(),
-            ]);
-            AuditEvent::record('stock.entry', $lot->tenant_id, $movement, [
-                'unit_id' => $lot->unit_id, 'medication_id' => $lot->medication_id, 'stock_lot_id' => $lot->id, 'quantity' => $movement->quantity,
-            ]);
-        });
+        DB::transaction(fn () => self::enter((int) $data['unit_id'], $medication, $code, $data['expires_on'], $manufacturer, (int) $data['quantity'], $request->user()));
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Entrada registrada.']);
 
         return back();
@@ -159,6 +142,36 @@ class StockController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Estoque mínimo atualizado.']);
 
         return back();
+    }
+
+    /**
+     * Under a transaction: finds or creates the lot and records an entry into it (the screen and the import of
+     * the initial balance, step 4c.1b). A manufacturer different from the lot's is refused (ValidationException
+     * on "manufacturer", bag "entry").
+     *
+     * @param  array<string, mixed>  $audit  more audit context (ids only)
+     */
+    public static function enter(int $unitId, Medication $medication, string $code, string $expiresOn, ?string $manufacturer, int $quantity, User $user, array $audit = []): StockMovement
+    {
+        // The same lot entered twice at once: one creates it, the other finds it (savepoint).
+        $lot = StockLot::query()->createOrFirst(
+            ['unit_id' => $unitId, 'medication_id' => $medication->id, 'lot_code' => $code, 'expires_on' => $expiresOn],
+            ['manufacturer' => $manufacturer, 'created_by_user_id' => $user->id, 'created_at' => now()],
+        );
+        // A lot has one manufacturer: a different one is a different lot or a typo, never dropped silently.
+        if (! $lot->wasRecentlyCreated && $manufacturer !== null && mb_strtolower((string) $lot->manufacturer) !== mb_strtolower($manufacturer)) {
+            throw ValidationException::withMessages(['manufacturer' => $lot->manufacturer === null
+                ? 'Este lote já foi cadastrado sem fabricante. Deixe o fabricante em branco.'
+                : "Este lote já está cadastrado com o fabricante {$lot->manufacturer}."])->errorBag('entry');
+        }
+        $movement = StockMovement::query()->create([
+            'stock_lot_id' => $lot->id, 'type' => 'entry', 'quantity' => $quantity, 'user_id' => $user->id, 'created_at' => now(),
+        ]);
+        AuditEvent::record('stock.entry', $lot->tenant_id, $movement, [
+            'unit_id' => $lot->unit_id, 'medication_id' => $lot->medication_id, 'stock_lot_id' => $lot->id, 'quantity' => $movement->quantity, ...$audit,
+        ]);
+
+        return $movement;
     }
 
     public static function label(Medication $medication): string

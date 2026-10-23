@@ -47,7 +47,7 @@ class ApplyImportBatch implements ShouldBeUnique, ShouldQueue
             Auth::setUser($creator);
 
             $membership = $creator->deactivated_at === null ? $creator->activeMembershipIn($batch->tenant_id) : null;
-            $allowed = $membership === null ? [] : ImportBatchPolicy::importableUnitIds($membership);
+            $allowed = $membership === null ? [] : ImportBatchPolicy::unitIdsFor($membership, $batch->type);
 
             $importer = ImportController::importer($batch->type);
             $batch->items()->where('status', 'ready')->orderBy('id')

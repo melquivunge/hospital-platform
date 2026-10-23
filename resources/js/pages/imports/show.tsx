@@ -39,6 +39,7 @@ const createdLabels = {
     shifts: 'plantões em rascunho',
     medications: 'apresentações no catálogo',
     medication_interactions: 'interações',
+    stock: 'entradas de lote no estoque',
 };
 
 export default function ImportShow({
