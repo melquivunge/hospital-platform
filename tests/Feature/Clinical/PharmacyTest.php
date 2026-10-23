@@ -308,6 +308,12 @@ class PharmacyTest extends ClinicalTestCase
         $this->assertSame(['discard' => -2, 'dispensing' => -2, 'entry' => 3, 'return' => 2], DB::table('stock_movements')->where('stock_lot_id', $today)->orderBy('type')->pluck('quantity', 'type')->map(fn ($quantity) => (int) $quantity)->all());
         $this->assertSame('expired', DB::table('stock_movements')->where('type', 'discard')->value('reason'));
         $this->assertEquals([$today => 2], AuditEvent::where('action', 'prescription_item.returned')->sole()->context['discarded']);
+
+        // The stock screen shows the discard (no patient data) for 30 days.
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->has('discards', 1)
+            ->where('discards.0', fn ($discard) => $discard->only('lot', 'quantity', 'reason')->all() === ['lot' => 'HOJE', 'quantity' => 2, 'reason' => 'expired']));
+        $this->travel(31)->days();
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->has('discards', 0));
     }
 
     public function test_a_dispensing_from_before_the_stock_returns_without_a_movement(): void
