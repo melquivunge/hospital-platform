@@ -25,6 +25,7 @@ type StockMedication = {
     name: string;
     stockUnit: string;
     total: number;
+    valid: number;
     minimum: number | null;
     below: boolean;
     lots: Lot[];
@@ -69,6 +70,7 @@ const lotState = {
 export default function StockIndex({
     units,
     unitId,
+    canMove,
     today,
     medications,
     discards,
@@ -77,6 +79,7 @@ export default function StockIndex({
 }: {
     units: { id: number; name: string }[];
     unitId: number;
+    canMove: boolean;
     today: string;
     medications: StockMedication[];
     discards: Discard[];
@@ -94,14 +97,21 @@ export default function StockIndex({
                     title="Estoque da farmácia"
                     description="Saldo por medicamento e lote. O saldo só muda por movimentos registrados; lote vencido não é dispensado."
                 />
-                <div className="mb-6">
-                    <Button asChild variant="outline" className="min-h-11">
-                        <Link href={newImport()}>
-                            <FileUp />
-                            Importar saldo inicial (CSV)
-                        </Link>
-                    </Button>
-                </div>
+                {canMove ? (
+                    <div className="mb-6">
+                        <Button asChild variant="outline" className="min-h-11">
+                            <Link href={newImport()}>
+                                <FileUp />
+                                Importar saldo inicial (CSV)
+                            </Link>
+                        </Button>
+                    </div>
+                ) : (
+                    <p className="mb-6 text-sm text-muted-foreground">
+                        Consulta do gestor da unidade: só a farmácia registra
+                        movimentos.
+                    </p>
+                )}
                 {units.length > 1 && (
                     <div className="mb-6 grid max-w-sm gap-2">
                         <Label htmlFor="unit">Unidade</Label>
@@ -146,6 +156,9 @@ export default function StockIndex({
                                             {medication.total}
                                         </span>{' '}
                                         {medication.stockUnit}
+                                        {medication.valid !==
+                                            medication.total &&
+                                            ` (${medication.valid} válidos)`}
                                         {medication.minimum !== null &&
                                             ` · mínimo ${medication.minimum}`}
                                         {medication.below && (
@@ -182,10 +195,12 @@ export default function StockIndex({
                                                     </span>
                                                 </div>
                                                 {/* Remounted when the balance changes: the reason and the quantity start over. */}
-                                                <DiscardForm
-                                                    key={lot.balance}
-                                                    lot={lot}
-                                                />
+                                                {canMove && (
+                                                    <DiscardForm
+                                                        key={lot.balance}
+                                                        lot={lot}
+                                                    />
+                                                )}
                                             </li>
                                         ))}
                                     </ul>
@@ -258,14 +273,16 @@ export default function StockIndex({
                     </section>
                 )}
 
-                <div className="mt-10 grid gap-8 lg:grid-cols-2">
-                    <EntryForm
-                        unitId={unitId}
-                        today={today}
-                        catalog={catalog}
-                    />
-                    <MinimumForm unitId={unitId} catalog={catalog} />
-                </div>
+                {canMove && (
+                    <div className="mt-10 grid gap-8 lg:grid-cols-2">
+                        <EntryForm
+                            unitId={unitId}
+                            today={today}
+                            catalog={catalog}
+                        />
+                        <MinimumForm unitId={unitId} catalog={catalog} />
+                    </div>
+                )}
             </Page>
         </>
     );

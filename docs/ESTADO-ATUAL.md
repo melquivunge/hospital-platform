@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da 4c.3b (inventário); depois a 4c.4 (avisos, relatório e indicadores).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da 4c.4a (avisos diários); depois a 4c.4b (relatório de movimentos com CSV).
 
 ## Onde está cada coisa
 
@@ -95,7 +95,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #69 | Descartes dos últimos 30 dias na tela de estoque | Mesclado |
 | #70 | Histórico completo de descartes, paginado | Mesclado |
 | #71 | 4c.3a: descarte manual com motivo | Mesclado |
-| — | 4c.3b: inventário com ajuste aprovado pelo gestor (branch `feat/stock-inventory`) | Em revisão |
+| #72 | 4c.3b: inventário com ajuste aprovado pelo gestor | Mesclado |
+| — | 4c.4a: avisos diários de estoque e serviço `scheduler` (branch `feat/stock-alerts`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -251,6 +252,10 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
+- **4c.4a (avisos diários, ADR-0007):**
+  - Novo serviço `scheduler` no `compose.yaml` (`schedule:work`); `stock:alerts` de hora em hora, um aviso por unidade e dia a partir das 7 h locais (vencendo em 30 dias, vencidos com saldo, abaixo do mínimo só com lotes válidos, como o selo da tela), para a farmácia e o gestor da unidade.
+  - Inventário enviado avisa o gestor; o gestor vê o estoque só para consulta.
+  - Corrida real: três execuções simultâneas do comando geram um aviso só.
 - **4c.3b (inventário, ADR-0007):**
   - Menu "Inventários" para a farmácia e o gestor da unidade. A farmácia abre um por unidade (todos os medicamentos ou alguns), conta lote por lote às cegas, inclui lote encontrado sem cadastro e envia.
   - O gestor da unidade, que não abriu, contou nem enviou, vê saldo na contagem e diferença e aprova (um ajuste por lote) ou recusa com motivo.
@@ -563,7 +568,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 413 testes passando (4c.3b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 416 testes passando (4c.4a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

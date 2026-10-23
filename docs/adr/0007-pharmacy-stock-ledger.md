@@ -50,6 +50,8 @@ A dispensação é uma tabela clínica (RLS, ADR-0003). O estoque não tem dado 
   - estoque e movimentos ficam fora do RLS, porque não têm dado de paciente, e a autorização é por unidade nas consultas e policies, como nas tabelas operacionais.
 - **Auditoria:** só ids e quantidades. O movimento de dispensação guarda só o id da dispensação; ligá-lo ao paciente continua exigindo o acesso clínico da ADR-0005.
 - **Avisos diários:** um comando agendado avisa a farmácia e o gestor de lotes que vencem em 30 dias e de saldo abaixo do mínimo, uma vez por dia, pelas notificações internas. Isso exige um serviço `scheduler` no `compose.yaml`, que hoje não existe.
+  - 4c.4a: `stock:alerts` roda de hora em hora no serviço `scheduler` e avisa cada unidade uma vez por dia da unidade, a partir das 7 h no fuso dela (uma linha por unidade e dia, com índice único, na mesma transação do evento). Conta também lotes vencidos com saldo; o mínimo considera só lotes válidos. Só contagens, sem dado de paciente.
+  - O gestor da unidade também é avisado de inventário enviado e passa a ver a tela de estoque só para consulta.
 
 ## Alternativas
 

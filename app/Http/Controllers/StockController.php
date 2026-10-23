@@ -27,7 +27,8 @@ class StockController extends Controller
 {
     public function index(Request $request): Response
     {
-        $units = Unit::query()->whereKey(self::unitIds($request))->orderBy('name')->get(['id', 'name', 'timezone']);
+        // The unit manager sees the balances read-only (ADR-0007); only the pharmacy moves them.
+        $units = Unit::query()->whereKey([...self::unitIds($request), ...StockInventoryController::managerUnitIds($request->user())])->orderBy('name')->get(['id', 'name', 'timezone']);
         abort_if($units->isEmpty(), 403);
         $unit = $units->firstWhere('id', (int) $request->query('unit')) ?? $units->first();
         $today = now($unit->timezone ?? 'UTC')->startOfDay();
@@ -46,10 +47,13 @@ class StockController extends Controller
         return Inertia::render('stock/index', [
             'units' => $units->map->only('id', 'name')->values(),
             'unitId' => $unit->id,
+            'canMove' => in_array($unit->id, self::unitIds($request), true),
             'today' => $today->toDateString(),
             'medications' => $medications->map(function (Medication $medication) use ($lots, $minimums, $today) {
                 $own = $lots->get($medication->id, collect());
                 $total = (int) $own->sum('balance');
+                // Expired lots do not serve: the minimum is checked against the valid ones (as the daily alert).
+                $valid = (int) $own->filter(fn (StockLot $lot) => ! $lot->expires_on->lt($today))->sum('balance');
                 $minimum = $minimums->get($medication->id);
 
                 return [
@@ -57,8 +61,9 @@ class StockController extends Controller
                     'name' => self::label($medication),
                     'stockUnit' => $medication->stock_unit,
                     'total' => $total,
+                    'valid' => $valid,
                     'minimum' => $minimum,
-                    'below' => $minimum !== null && $total < $minimum,
+                    'below' => $minimum !== null && $valid < $minimum,
                     'lots' => $own->map(fn (StockLot $lot) => [
                         'id' => $lot->id,
                         'code' => $lot->lot_code,
@@ -83,7 +88,7 @@ class StockController extends Controller
                 'reason' => $movement->reason,
                 'note' => $movement->note,
             ])->values(),
-            'catalog' => Medication::query()->where('active', true)->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->get()
+            'catalog' => ! in_array($unit->id, self::unitIds($request), true) ? [] : Medication::query()->where('active', true)->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->get()
                 ->map(fn (Medication $medication) => ['id' => $medication->id, 'name' => self::label($medication), 'stockUnit' => $medication->stock_unit])->values(),
         ]);
     }
