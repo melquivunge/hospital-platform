@@ -36,8 +36,12 @@ A dispensação é uma tabela clínica (RLS, ADR-0003). O estoque não tem dado 
 - **Entrada esquecida (decisão da questão 4):** a tela da dispensação permite à farmácia registrar uma entrada de lote. A entrada é uma ação separada, um movimento `entry` comum e auditado, e não um atalho que dispensa sem saldo.
 - **Inventário:**
   - a contagem de cada lote grava o horário;
-  - o ajuste é a diferença entre o contado e o saldo calculado pelos movimentos até aquele horário, para que o que saiu depois não seja ajustado de novo;
-  - o ajuste só é aplicado com a aprovação do gestor da unidade, que tem que ser outra pessoa;
+  - o ajuste é a diferença entre o contado e o saldo calculado pelos movimentos até aquele horário, para que o que saiu depois não seja ajustado de novo. Na 4c.3b esse saldo é lido com o lote travado no momento da contagem e guardado na linha (a precisão de segundos dos movimentos deixaria ambíguo o mesmo segundo);
+  - contagem cega: ninguém vê o saldo do sistema enquanto conta; o gestor vê saldo e diferença depois do envio;
+  - lote encontrado sem cadastro entra com código e validade e o lote é criado na aprovação; se ele foi cadastrado nesse meio-tempo, a aprovação é recusada e pede nova contagem;
+  - um inventário em andamento por unidade; um ajuste por lote e inventário (índice único); a aprovação recusa ajuste que deixaria lote negativo (saiu mais depois da contagem);
+  - o vínculo do ajuste à unidade do inventário é garantido pela aplicação, não pelo banco;
+  - o ajuste só é aplicado com a aprovação do gestor da unidade, que tem que ser outra pessoa: quem abriu, contou (mesmo se a contagem foi refeita por outro) ou enviou não decide;
   - a contagem não trava a dispensação.
 - **Acesso:**
   - a farmácia (papel da 4b) movimenta só a própria unidade;

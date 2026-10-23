@@ -7,6 +7,7 @@ import {
     BriefcaseMedical,
     CalendarCheck,
     CalendarPlus,
+    ClipboardCheck,
     ClipboardPlus,
     CalendarClock,
     CalendarDays,
@@ -51,6 +52,7 @@ import { index as admissions } from '@/routes/admissions';
 import { index as beds } from '@/routes/beds';
 import { index as pharmacy } from '@/routes/pharmacy';
 import { index as stock } from '@/routes/stock';
+import { index as inventories } from '@/routes/stock/inventories';
 import { index as census } from '@/routes/census';
 import { index as emergency } from '@/routes/emergency';
 import { index as triageLevels } from '@/routes/triage-levels';
@@ -107,6 +109,7 @@ export function AppSidebar() {
         canViewBeds,
         canViewCensus,
         canUsePharmacy,
+        canUseInventory,
         canViewEmergency,
         canManageAdmissions,
         canManageTriageLevels,
@@ -214,6 +217,15 @@ export function AppSidebar() {
             ? [
                   { title: 'Farmácia', href: pharmacy(), icon: FlaskConical },
                   { title: 'Estoque', href: stock(), icon: Boxes },
+              ]
+            : []),
+        ...(canUseInventory
+            ? [
+                  {
+                      title: 'Inventários',
+                      href: inventories(),
+                      icon: ClipboardCheck,
+                  },
               ]
             : []),
         ...(canViewClinicalAccess
