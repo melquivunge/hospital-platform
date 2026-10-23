@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Próximo passo: o usuário responder às questões do contrato da entrega 4c (estoque da farmácia, PRODUCT.md); depois ADR-0007 e plano, sem implementação antes da autorização.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Próximo passo: o usuário aprovar a ADR-0007 e o plano `plans/web-v5-estoque.md` da entrega 4c (estoque da farmácia; questões do contrato respondidas em 22/10/2026); só então a 4c.1.
 
 ## Onde está cada coisa
 
@@ -85,7 +85,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #59 | Etapa 4b.4: administração pela enfermagem | Mesclado |
 | #60 | Etapa 4b.5: assinatura digital da prescrição | Mesclado |
 | #61 | Etapa 4b.6: revisão integrada da entrega 4b | Mesclado |
-| — | Entrega 4c: contrato proposto (branch `docs/delivery-4c-contract`) | Em revisão |
+| #62 | Entrega 4c: contrato proposto | Mesclado |
+| — | Entrega 4c: decisões, ADR-0007 e plano (branch `docs/delivery-4c-adr-plan`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
