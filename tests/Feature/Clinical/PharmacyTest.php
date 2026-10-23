@@ -20,7 +20,8 @@ use Inertia\Testing\AssertableInertia as Assert;
 /**
  * Step 4b.3a (ADR-0005): the unit's pharmacy reviews each item of the valid prescription, sees only the
  * prescription, the allergies and the patient's identification, and every opening is in the read trail. An
- * approved item is dispensed once for the 24 hours and its return recorded once (step 4b.3b).
+ * approved item is dispensed once for the 24 hours and its return recorded once (step 4b.3b), taking from the unit's
+ * stock lots and putting back into them (step 4c.2, ADR-0007).
  */
 class PharmacyTest extends ClinicalTestCase
 {
@@ -40,6 +41,8 @@ class PharmacyTest extends ClinicalTestCase
             $medications[] = Medication::query()->create(['active_ingredient' => $ingredient, 'form' => 'Comprimido', 'strength' => $strength, 'dose_unit' => 'mg', 'routes' => $routes, 'controlled' => false, 'high_alert' => false]);
         }
         app(CurrentTenant::class)->set(null);
+        // Step 4c.2: dipyrone has stock; ceftriaxone has none.
+        $this->stockLot($this->unit->id, $medications[0]);
         $this->pharmacist = Membership::factory()->for($this->unit->tenant)->create();
         $this->pharmacist->grant(Role::Pharmacy, $this->unit);
 
@@ -157,7 +160,10 @@ class PharmacyTest extends ClinicalTestCase
         $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2])->assertSessionHasErrors('quantity', null, "dispense{$dipyrone->id}");
         $this->assertSame(1, DB::table('prescription_dispensings')->count());
         $audit = AuditEvent::where('action', 'prescription_item.dispensed')->sole();
-        $this->assertEquals(['quantity' => 2, 'prescription_id' => $this->prescription->id, 'visit_id' => $this->visit->id], $audit->context);
+        // Step 4c.2: the lot ids and quantities taken (no lot code or medication name), and the balance moved.
+        $lot = DB::table('stock_lots')->where('medication_id', $dipyrone->medication_id)->sole();
+        $this->assertEquals(['quantity' => 2, 'prescription_id' => $this->prescription->id, 'visit_id' => $this->visit->id, 'stock_lots' => [$lot->id => 2]], $audit->context);
+        $this->assertSame(998, $lot->balance);
 
         // The doctor and the nursing see what was dispensed.
         $this->actingAs($this->doctorAccount->user)->get(route('visits.show', $this->visit))->assertInertia(fn (Assert $page) => $page
@@ -182,7 +188,8 @@ class PharmacyTest extends ClinicalTestCase
         // Out of the queue and nothing left to return, the prescription is out of reach.
         $this->post(route('pharmacy.return', $dispensing), ['quantity' => 1, 'reason' => 'De novo.'])->assertForbidden();
         $this->assertSame([1, 'Prescrição renovada.'], [$dispensing->fresh()->returned_quantity, $dispensing->fresh()->return_reason]);
-        $this->assertEquals(['quantity' => 1, 'prescription_id' => $this->prescription->id, 'visit_id' => $this->visit->id], AuditEvent::where('action', 'prescription_item.returned')->sole()->context);
+        $this->assertEquals(['quantity' => 1, 'prescription_id' => $this->prescription->id, 'visit_id' => $this->visit->id, 'stock_lots' => [$lot->id => 1]], AuditEvent::where('action', 'prescription_item.returned')->sole()->context);
+        $this->assertSame(999, DB::table('stock_lots')->where('id', $lot->id)->value('balance'));
 
         // Returned, the old prescription is out of reach again; nothing of the dispensing changes.
         $this->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page->has('returns', 0));
@@ -205,6 +212,85 @@ class PharmacyTest extends ClinicalTestCase
                 $this->assertSame('P0001', $exception->getCode());
             }
         }
+    }
+
+    public function test_the_dispensing_takes_from_the_lots_that_expire_first_and_the_return_puts_back(): void
+    {
+        [$dipyrone, $ceftriaxone] = PrescriptionItem::withoutTenantScope()->orderBy('id')->get()->all();
+        $medication = Medication::withoutTenantScope()->findOrFail($dipyrone->medication_id);
+        $later = DB::table('stock_lots')->sole()->id;
+        $soon = $this->stockLot($this->unit->id, $medication, 3, 'CEDO', now()->addMonth()->toDateString())->id;
+        $expired = $this->stockLot($this->unit->id, $medication, 5, 'VENCIDO', now('America/Sao_Paulo')->subDay()->toDateString())->id;
+        $elsewhere = $this->stockLot($this->other->id, $medication, 50, 'OUTRA')->id;
+        $this->actingAs($this->pharmacist->user);
+        foreach ([$dipyrone, $ceftriaxone] as $item) {
+            $this->post(route('pharmacy.review', $item), ['decision' => 'approved'])->assertSessionHasNoErrors();
+        }
+
+        // The screen suggests the valid lots of the unit, the ones that expire first first; never the expired one.
+        $this->get(route('pharmacy.show', $this->prescription))->assertInertia(fn (Assert $page) => $page
+            ->where('items.0.lots.0.code', 'CEDO')->where('items.0.lots.1.code', 'TESTE1')->has('items.0.lots', 2)
+            ->where('items.0.stockUnit', 'unidade')->has('items.1.lots', 0));
+
+        // A chosen expired lot, another unit's lot or more than a lot has is refused, and so is a sum other than the quantity.
+        foreach ([[$expired, 1], [$elsewhere, 1], [$soon, 4]] as [$lot, $quantity]) {
+            $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => $quantity, 'lots' => [['id' => $lot, 'quantity' => $quantity]]])
+                ->assertSessionHasErrors('quantity', null, "dispense{$dipyrone->id}");
+        }
+        $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 3, 'lots' => [['id' => $soon, 'quantity' => 1], ['id' => $later, 'quantity' => 1]]])
+            ->assertSessionHasErrors('quantity', null, "dispense{$dipyrone->id}");
+        // All at zero is no choice (not the suggestion), and a lot sent twice is refused.
+        foreach ([[['id' => $soon, 'quantity' => 0]], [['id' => $soon, 'quantity' => 1], ['id' => (string) $soon, 'quantity' => 1]]] as $lots) {
+            $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2, 'lots' => $lots])->assertSessionHasErrors('quantity', null, "dispense{$dipyrone->id}");
+        }
+        $this->assertSame(0, DB::table('prescription_dispensings')->count());
+
+        // Without a choice, the suggestion: the lot that expires first, then the next one.
+        $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 5])->assertSessionHasNoErrors();
+        $balances = fn () => DB::table('stock_lots')->orderBy('id')->pluck('balance', 'id')->all();
+        $this->assertSame([$later => 998, $soon => 0, $expired => 5, $elsewhere => 50], $balances());
+
+        // The return goes back to those lots, up to what each gave, the longest expiry first.
+        $dispensing = PrescriptionDispensing::withoutTenantScope()->sole();
+        $this->post(route('pharmacy.return', $dispensing), ['quantity' => 4, 'reason' => 'Sobra.'])->assertSessionHasNoErrors();
+        $this->assertSame([$later => 1000, $soon => 2, $expired => 5, $elsewhere => 50], $balances());
+
+        // No stock: refused with the way out on the same screen, the lot entry (question 4); the pharmacy's choice
+        // then splits the quantity, a zero leaving a lot out.
+        $this->post(route('pharmacy.dispense', $ceftriaxone), ['quantity' => 2])->assertSessionHasErrors(['quantity' => 'Sem saldo deste medicamento no estoque da unidade. Registre a entrada do lote.'], null, "dispense{$ceftriaxone->id}");
+        $this->post(route('stock.entries.store'), ['unit_id' => $this->unit->id, 'medication_id' => $ceftriaxone->medication_id, 'lot_code' => 'C1', 'expires_on' => now()->addYear()->toDateString(), 'quantity' => 10])->assertSessionHasNoErrors();
+        $c1 = DB::table('stock_lots')->where('lot_code', 'C1')->value('id');
+        $this->post(route('pharmacy.dispense', $ceftriaxone), ['quantity' => 1, 'lots' => [['id' => $later, 'quantity' => 1]]])->assertSessionHasErrors(['quantity' => 'Lote fora do estoque deste medicamento na unidade.'], null, "dispense{$ceftriaxone->id}");
+        $this->post(route('pharmacy.dispense', $ceftriaxone), ['quantity' => 2, 'lots' => [['id' => $c1, 'quantity' => 2], ['id' => $later, 'quantity' => 0]]])->assertSessionHasNoErrors();
+        $this->assertSame(8, DB::table('stock_lots')->where('id', $c1)->value('balance'));
+        // The database keeps a return to what its dispensing took from each lot.
+        $ceftriaxoneDispensing = PrescriptionDispensing::withoutTenantScope()->where('prescription_item_id', $ceftriaxone->id)->sole()->id;
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        foreach ([[$c1, 3], [$later, 1]] as [$lot, $quantity]) {
+            try {
+                DB::transaction(fn () => DB::table('stock_movements')->insert(['tenant_id' => $this->unit->tenant_id, 'stock_lot_id' => $lot, 'type' => 'return', 'quantity' => $quantity, 'user_id' => $this->pharmacist->user_id, 'prescription_dispensing_id' => $ceftriaxoneDispensing, 'created_at' => now()]));
+                $this->fail('A return beyond what was taken was recorded.');
+            } catch (QueryException $exception) {
+                $this->assertSame('P0001', $exception->getCode());
+            }
+        }
+        app(CurrentTenant::class)->set(null);
+
+        // The ledger reconciles: every balance is the sum of its movements.
+        foreach (DB::table('stock_lots')->get() as $lot) {
+            $this->assertSame($lot->balance, (int) DB::table('stock_movements')->where('stock_lot_id', $lot->id)->sum('quantity'));
+        }
+    }
+
+    public function test_a_dispensing_from_before_the_stock_returns_without_a_movement(): void
+    {
+        [$dipyrone] = PrescriptionItem::withoutTenantScope()->orderBy('id')->get()->all();
+        $this->actingAs($this->pharmacist->user)->post(route('pharmacy.review', $dipyrone), ['decision' => 'approved'])->assertSessionHasNoErrors();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $dispensing = PrescriptionDispensing::query()->create(['prescription_item_id' => $dipyrone->id, 'quantity' => 4, 'dispensed_by_user_id' => $this->pharmacist->user_id, 'created_at' => now()]);
+        app(CurrentTenant::class)->set(null);
+        $this->post(route('pharmacy.return', $dispensing), ['quantity' => 2, 'reason' => 'Sobra.'])->assertSessionHasNoErrors();
+        $this->assertSame([2, 1, 1000], [$dispensing->fresh()->returned_quantity, DB::table('stock_movements')->count(), DB::table('stock_lots')->sole()->balance]);
     }
 
     public function test_a_suspended_item_is_not_dispensed_and_a_return_ends_after_48_hours(): void

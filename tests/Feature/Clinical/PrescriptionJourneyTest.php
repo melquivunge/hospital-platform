@@ -11,6 +11,7 @@ use App\Models\JobFunction;
 use App\Models\MedicationAdministration;
 use App\Models\Patient;
 use App\Models\Prescription;
+use App\Models\PrescriptionDispensing;
 use App\Models\PrescriptionItem;
 use App\Models\PrescriptionSignature;
 use App\Models\Professional;
@@ -148,10 +149,15 @@ class PrescriptionJourneyTest extends TestCase
         // 7. Pharmacy: the queue, the review (read logged) and the dispensing for 24 hours.
         $this->actingAs($users['farmacia'])->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page->has('prescriptions', 1)->where('prescriptions.0.pending', 2));
         $this->get(route('pharmacy.show', $first))->assertOk();
+        // Step 4c.2: the dispensing takes from the stock, so the pharmacy enters the lots first.
+        foreach (['Dipirona', 'Morfina'] as $ingredient) {
+            $this->post(route('stock.entries.store'), ['unit_id' => $unit->id, 'medication_id' => $medications[$ingredient], 'lot_code' => 'J1', 'expires_on' => '2027-06-30', 'quantity' => 100])->assertSessionHasNoErrors();
+        }
         foreach (PrescriptionItem::withoutTenantScope()->where('prescription_id', $first->id)->get() as $item) {
             $this->post(route('pharmacy.review', $item), ['decision' => 'approved'])->assertSessionHasNoErrors();
             $this->post(route('pharmacy.dispense', $item), ['quantity' => 4])->assertSessionHasNoErrors();
         }
+        $this->assertSame([96, 96], DB::table('stock_lots')->orderBy('id')->pluck('balance')->all());
         $this->get(route('ward.show', $admission))->assertForbidden();
 
         // 8. Administration: dipyrone by one nurse; morphine needs the second nurse's password.
@@ -175,6 +181,9 @@ class PrescriptionJourneyTest extends TestCase
         $this->actingAs($users['farmacia'])->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page
             ->has('prescriptions', 1)->where('prescriptions.0.id', $renewal->id)->has('returns', 1)->where('returns.0.id', $first->id));
         $this->post(route('pharmacy.dispense', PrescriptionItem::withoutTenantScope()->where('prescription_id', $first->id)->firstOrFail()), ['quantity' => 1])->assertForbidden();
+        // What came back returns to the lot it left.
+        $this->post(route('pharmacy.return', PrescriptionDispensing::withoutTenantScope()->orderBy('id')->firstOrFail()), ['quantity' => 3, 'reason' => 'Doses não administradas.'])->assertSessionHasNoErrors();
+        $this->assertSame(195, (int) DB::table('stock_lots')->sum('balance'));
 
         // 10. Discharge closes the prescription: out of the queue, nothing more to administer or download.
         $this->at('2026-11-21 15:00');
@@ -187,7 +196,7 @@ class PrescriptionJourneyTest extends TestCase
         $this->assertGreaterThan(0, DB::table('clinical_reads')->where('reason', 'pharmacy')->where('user_id', $users['farmacia']->id)->count());
         $this->actingAs($users['auditoria'])->get(route('clinical-access.index'))->assertOk();
         $audit = (string) json_encode(AuditEvent::where('tenant_id', $unit->tenant_id)->get(['action', 'context']));
-        foreach (['Benedita', '11144477735', '52998224725', 'Dipirona', 'Morfina', 'Reação leve', 'Fratura', 'password'] as $sensitive) {
+        foreach (['Benedita', '11144477735', '52998224725', 'Dipirona', 'Morfina', 'Reação leve', 'Fratura', 'Doses não', 'password'] as $sensitive) {
             $this->assertStringNotContainsString($sensitive, $audit, "Audit carries \"{$sensitive}\"");
         }
         foreach (['prescription.signed', 'prescription.certified', 'prescription_item.reviewed', 'prescription_item.dispensed', 'medication.recorded', 'admission.discharged'] as $action) {
