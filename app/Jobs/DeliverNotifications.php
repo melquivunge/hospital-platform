@@ -34,6 +34,7 @@ class DeliverNotifications implements ShouldQueue
         'clinical.emergency_access',
         'transfer.requested', 'transfer.accepted', 'transfer.refused', 'transfer.cancelled', 'transfer.departed', 'transfer.completed',
         'prescription_item.reviewed',
+        'stock.daily_alert', 'stock.inventory_submitted',
     ];
 
     /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
@@ -113,6 +114,21 @@ class DeliverNotifications implements ShouldQueue
             $url = isset($context['admission_id']) ? "/ward/{$context['admission_id']}" : (isset($context['visit_id']) ? "/visits/{$context['visit_id']}" : '/notifications');
 
             return [[array_filter([(int) ($context['author_user_id'] ?? 0)]), 'A farmácia recusou um item da sua prescrição', $url]];
+        }
+        // Step 4c.4a: the unit's pharmacy and managers hear of validity and minimums once a day (counts only), and
+        // the managers of an inventory waiting for them.
+        if ($event->action === 'stock.daily_alert') {
+            $unit = (int) ($context['unit_id'] ?? 0);
+            $parts = array_filter([
+                ($context['expired'] ?? 0) > 0 ? "{$context['expired']} lote(s) vencido(s) com saldo" : null,
+                ($context['expiring'] ?? 0) > 0 ? "{$context['expiring']} lote(s) vencem em 30 dias" : null,
+                ($context['below_minimum'] ?? 0) > 0 ? "{$context['below_minimum']} medicamento(s) abaixo do mínimo" : null,
+            ]);
+
+            return [[[...$this->usersWithRole($tenant, Role::Pharmacy, $unit), ...$this->usersWithRole($tenant, Role::UnitManager, $unit)], 'Estoque: '.implode(', ', $parts), "/stock?unit={$unit}"]];
+        }
+        if ($event->action === 'stock.inventory_submitted') {
+            return [[$this->usersWithRole($tenant, Role::UnitManager, (int) ($context['unit_id'] ?? 0)), 'Inventário de estoque aguardando aprovação', "/stock/inventories/{$event->subject_id}"]];
         }
         if (isset(self::TRANSFER_TITLES[$event->action])) {
             $users = array_values(array_unique([

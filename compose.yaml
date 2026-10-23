@@ -67,6 +67,13 @@ services:
         depends_on:
             init:
                 condition: service_completed_successfully
+    # Step 4c.4a: the scheduled commands (stock alerts), one process.
+    scheduler:
+        <<: *app
+        command: [php, artisan, schedule:work]
+        depends_on:
+            init:
+                condition: service_completed_successfully
     mailpit:
         image: axllent/mailpit:v1.27
         ports:

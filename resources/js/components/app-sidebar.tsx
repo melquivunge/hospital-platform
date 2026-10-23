@@ -214,13 +214,11 @@ export function AppSidebar() {
             ? [{ title: 'Censo', href: census(), icon: ChartPie }]
             : []),
         ...(canUsePharmacy
-            ? [
-                  { title: 'Farmácia', href: pharmacy(), icon: FlaskConical },
-                  { title: 'Estoque', href: stock(), icon: Boxes },
-              ]
+            ? [{ title: 'Farmácia', href: pharmacy(), icon: FlaskConical }]
             : []),
         ...(canUseInventory
             ? [
+                  { title: 'Estoque', href: stock(), icon: Boxes },
                   {
                       title: 'Inventários',
                       href: inventories(),
