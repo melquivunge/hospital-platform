@@ -12,6 +12,7 @@ import {
     CalendarClock,
     CalendarDays,
     GitMerge,
+    History,
     ChartColumn,
     ChartPie,
     FileUp,
@@ -53,6 +54,7 @@ import { index as beds } from '@/routes/beds';
 import { index as pharmacy } from '@/routes/pharmacy';
 import { index as stock } from '@/routes/stock';
 import { index as inventories } from '@/routes/stock/inventories';
+import { index as stockMovements } from '@/routes/stock/movements';
 import { index as census } from '@/routes/census';
 import { index as emergency } from '@/routes/emergency';
 import { index as triageLevels } from '@/routes/triage-levels';
@@ -219,6 +221,11 @@ export function AppSidebar() {
         ...(canUseInventory
             ? [
                   { title: 'Estoque', href: stock(), icon: Boxes },
+                  {
+                      title: 'Movimentos de estoque',
+                      href: stockMovements(),
+                      icon: History,
+                  },
                   {
                       title: 'Inventários',
                       href: inventories(),

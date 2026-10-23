@@ -35,6 +35,7 @@ use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\ShiftRequestController;
 use App\Http\Controllers\StockController;
 use App\Http\Controllers\StockInventoryController;
+use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\TriageLevelController;
 use App\Http\Controllers\UnitController;
@@ -117,6 +118,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('stock', [StockController::class, 'index'])->middleware('throttle:120,1')->name('stock.index');
     Route::post('stock/entries', [StockController::class, 'storeEntry'])->middleware('throttle:60,1')->name('stock.entries.store');
     Route::post('stock/lots/{lot}/discards', [StockController::class, 'discard'])->middleware('throttle:60,1')->name('stock.discards.store');
+    // Step 4c.4b (ADR-0007): the movements report and its CSV, for the pharmacy and the unit manager.
+    Route::get('stock/movements', [StockReportController::class, 'index'])->middleware('throttle:120,1')->name('stock.movements.index');
+    Route::get('stock/movements.csv', [StockReportController::class, 'csv'])->middleware('throttle:20,1')->name('stock.movements.csv');
     // Step 4c.3b (ADR-0007): the inventory, counted by the pharmacy and approved by another person, the unit manager.
     Route::get('stock/inventories', [StockInventoryController::class, 'index'])->middleware('throttle:120,1')->name('stock.inventories.index');
     Route::post('stock/inventories', [StockInventoryController::class, 'store'])->middleware('throttle:30,1')->name('stock.inventories.store');

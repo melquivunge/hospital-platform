@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Operational reports (step 9b, V1-11): same readers and units as the schedule (user decision,
@@ -254,6 +255,18 @@ class ReportController extends Controller
 
         $audit();
 
+        return self::csv($file, $header, $rows);
+    }
+
+    /**
+     * A CSV download for spreadsheets in pt-BR (`;` and a BOM), with cells a spreadsheet would run as a formula
+     * neutralized (PRODUCT.md). Also the stock movements report (step 4c.4b).
+     *
+     * @param  list<string>  $header
+     * @param  array<array<string>>  $rows
+     */
+    public static function csv(string $file, array $header, array $rows): StreamedResponse
+    {
         return response()->streamDownload(function () use ($header, $rows) {
             $out = fopen('php://output', 'w');
             if ($out === false) {

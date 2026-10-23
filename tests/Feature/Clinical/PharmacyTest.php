@@ -256,6 +256,11 @@ class PharmacyTest extends ClinicalTestCase
         $dispensing = PrescriptionDispensing::withoutTenantScope()->sole();
         $this->post(route('pharmacy.return', $dispensing), ['quantity' => 4, 'reason' => 'Sobra.'])->assertSessionHasNoErrors();
         $this->assertSame([$later => 1000, $soon => 2, $expired => 5, $elsewhere => 50], $balances());
+        // The movements report shows them by type only: nothing that leads to the patient (step 4c.4b).
+        $this->get(route('stock.movements.index', ['medication' => $dipyrone->medication_id]))->assertInertia(fn (Assert $page) => $page
+            ->where('summary.0.dispensing', -5)->where('summary.0.return', 4)
+            ->where('movements.0.type', 'Devolução')->where('movements.0.reason', '')
+            ->where('movements.0', fn ($row) => array_keys($row->all()) === ['id', 'at', 'medication', 'controlled', 'lot', 'expiresOn', 'type', 'in', 'out', 'reason', 'user']));
 
         // No stock: refused with the way out on the same screen, the lot entry (question 4); the pharmacy's choice
         // then splits the quantity, a zero leaving a lot out.
