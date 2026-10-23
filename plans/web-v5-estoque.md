@@ -1,6 +1,6 @@
 # Plano — entrega 4c: estoque da farmácia
 
-Data: 22/10/2026. Estado: **proposto, aguardando aprovação do usuário.** Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
+Data: 22/10/2026. Estado: **aceito pelo usuário e implementação autorizada em 22/10/2026**, Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
 Contrato: ../PRODUCT.md, seção "Contrato da entrega 4c" (decisões do usuário de 22/10/2026). Arquitetura: ../docs/adr/0007-pharmacy-stock-ledger.md e ../docs/adr/0005-pharmacy-prescription-access.md. Regras de trabalho: ../AGENTS.md.
 
 ## Princípios herdados
@@ -24,6 +24,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 4c" (decisões do usuário
 - **Tela de saldo:** por medicamento e lote, com validade, a vencer em 30 dias, vencido e abaixo do mínimo.
 - **Importação CSV do saldo inicial** (mecanismo da V1, com relatório de exceções e sem duplicar no reprocesso).
 - **Saída:** saldo por lote igual à soma dos movimentos (teste); `CHECK` e gatilhos provados com teste de banco.
+- Divisão (23/10/2026): 4c.1a lotes, entradas, saldo, unidade de estoque e estoque mínimo; 4c.1b importação CSV do saldo inicial.
 
 ### 4c.2 Dispensação e devolução com estoque
 - A dispensação da 4b sugere os lotes válidos que vencem primeiro. A farmácia aceita ou troca e pode dividir a quantidade entre lotes.

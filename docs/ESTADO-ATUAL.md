@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Próximo passo: o usuário aprovar a ADR-0007 e o plano `plans/web-v5-estoque.md` da entrega 4c (estoque da farmácia; questões do contrato respondidas em 22/10/2026); só então a 4c.1.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da 4c.1a; depois a 4c.1b (importação do saldo inicial).
 
 ## Onde está cada coisa
 
@@ -86,7 +86,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #60 | Etapa 4b.5: assinatura digital da prescrição | Mesclado |
 | #61 | Etapa 4b.6: revisão integrada da entrega 4b | Mesclado |
 | #62 | Entrega 4c: contrato proposto | Mesclado |
-| — | Entrega 4c: decisões, ADR-0007 e plano (branch `docs/delivery-4c-adr-plan`) | Em revisão |
+| #63 | Entrega 4c: decisões, ADR-0007 e plano | Mesclado |
+| — | Etapa 4c.1a: lotes, entradas, saldo e estoque mínimo (branch `feat/stock-lots-4c1`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -242,6 +243,13 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
+- **4c.1a (lotes, entradas, saldo e estoque mínimo, ADR-0007):**
+  - Catálogo: cada medicamento ganha a unidade de estoque (comprimido, ampola, frasco...); os já cadastrados ficam com "unidade" até o administrador ajustar. A importação CSV do catálogo não tem a coluna (fica "unidade").
+  - Tela "Estoque" (papel Farmácia, por unidade): saldo por medicamento e lote, vencido, a vencer em 30 dias e abaixo do mínimo. Entrada de lote (medicamento, lote, validade, quantidade, fabricante opcional): o mesmo lote digitado de outro jeito ("ab 12-3" e "AB12-3") soma no mesmo; lote vencido, validade além de 10 anos, medicamento inativo, unidade alheia e fabricante diferente do lote já cadastrado são recusados. Estoque mínimo por medicamento e unidade (vazio retira).
+  - Banco: movimento só de inserção; o saldo do lote é mantido por gatilho a partir dos movimentos, com `CHECK (balance >= 0)`; o lote nasce vazio e só muda pelo gatilho do saldo, com a mudança anunciada (depth 2 e valor exato); nada é apagado. O `down` recusa se houver movimentos (conferido no banco local). Estoque fora do RLS: sem dado de paciente.
+  - Corrida real (3 processos, a mesma entrada de lote novo, 8 rodadas): sempre um lote, saldo 30 igual à soma dos movimentos (uma rodada inicial falhou no próprio script antes de chegar ao banco).
+  - Navegador (1440, 768 e 360 px): menu, lote inválido recusado, entrada, mínimo; sem erros.
+  - Revisão de segurança independente (sem crítico/alto). Corrigido: a trava do lote aceitava qualquer saldo vindo de dentro de um gatilho (agora só a mudança anunciada pelo gatilho do saldo); fabricante diferente era descartado em silêncio; saldo em 64 bits; validade com teto de 10 anos; auditoria do mínimo só quando muda; testes de outro cliente e sem papel Farmácia.
 - **4b.6 (revisão integrada da entrega 4b):**
   - `tests/Feature/Clinical/PrescriptionJourneyTest.php`: a jornada inteira num cliente novo, só pelas rotas: catálogo, papéis (recepção, leitos, farmácia, auditoria), profissionais com habilitação, internação, alergia, prescrição com alerta justificado assinada com senha e certificado de teste, avaliação e dispensação, administração com dupla checagem, renovação no dia seguinte (a anterior só para devolução), alta encerrando a prescrição. Depois confere a trilha de leitura da farmácia e a auditoria sem nome, CPF, medicamento ou texto clínico.
   - Limite de requisições por rota: o `throttle:X,Y` do Laravel somava todas as rotas limitadas da pessoa num contador só; agora cada rota tem o seu (`ThrottleRequestsPerRoute`). Os limitadores nomeados (login, 2FA, recuperação de senha) e as tentativas de senha (assinatura, segunda pessoa) não mudam.
@@ -522,7 +530,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 390 testes passando (etapa 4b.6), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 397 testes passando (etapa 4c.1a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

@@ -18,6 +18,7 @@ type Medication = {
     form: string;
     strength: string;
     dose_unit: string;
+    stock_unit: string;
     routes: string[];
     controlled: boolean;
     high_alert: boolean;
@@ -39,6 +40,7 @@ type Interaction = {
 
 type Options = {
     doseUnits: string[];
+    stockUnits: string[];
     routes: Record<string, string>;
     severities: Record<string, string>;
 };
@@ -452,6 +454,24 @@ function MedicationFields({
                             Selecione
                         </option>
                         {options.doseUnits.map((unit) => (
+                            <option key={unit} value={unit}>
+                                {unit}
+                            </option>
+                        ))}
+                    </select>
+                </Field>
+                <Field
+                    id={`${id}-stock`}
+                    label="Unidade de estoque"
+                    error={errors.stock_unit}
+                >
+                    <select
+                        id={`${id}-stock`}
+                        name="stock_unit"
+                        defaultValue={medication?.stock_unit ?? 'unidade'}
+                        className={selectClassName}
+                    >
+                        {options.stockUnits.map((unit) => (
                             <option key={unit} value={unit}>
                                 {unit}
                             </option>

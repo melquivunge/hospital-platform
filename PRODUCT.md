@@ -549,7 +549,7 @@ Todas as propostas abaixo foram aceitas: ciclo completo (1), dispensação por 2
 
 ## Contrato da entrega 4c — estoque da farmácia
 
-Método: ECC Product Capability. Data: 22/10/2026. Estado: **decisões do usuário de 22/10/2026 registradas; ADR-0007 e plano propostos, aguardando aprovação. Nenhuma implementação autorizada.** Origem: decisão do usuário de 19/10/2026 (questão 3 da entrega 4b: estoque fora da 4b, numa entrega 4c).
+Método: ECC Product Capability. Data: 22/10/2026. Estado: **aprovado; ADR-0007 e plano aceitos e implementação autorizada pelo usuário em 22/10/2026, uma etapa por vez.** Origem: decisão do usuário de 19/10/2026 (questão 3 da entrega 4b: estoque fora da 4b, numa entrega 4c).
 
 ### Capacidade
 
@@ -620,6 +620,6 @@ Propostas aceitas nas questões 1, 2, 3, 5, 6, 7, 8 e 9. Na questão 4, o usuár
 ### Encaminhamento ECC
 
 - **Esclarecimento de produto:** concluído (decisões acima).
-- **Arquitetura:** [ADR-0007](docs/adr/0007-pharmacy-stock-ledger.md), proposta.
-- **Plano em etapas:** `plans/web-v5-estoque.md`, proposto.
+- **Arquitetura:** [ADR-0007](docs/adr/0007-pharmacy-stock-ledger.md), aceita.
+- **Plano em etapas:** `plans/web-v5-estoque.md`, aceito. **Implementação autorizada pelo usuário em 22/10/2026**, começando pela 4c.1.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
