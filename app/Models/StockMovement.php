@@ -19,9 +19,10 @@ use Illuminate\Support\Carbon;
  * @property string|null $note the text of a discard for another reason
  * @property int $user_id
  * @property int|null $prescription_dispensing_id the dispensing a 'dispensing' or 'return' movement belongs to
+ * @property int|null $stock_inventory_id the inventory an 'adjustment' movement belongs to
  * @property Carbon $created_at
  */
-#[Fillable(['stock_lot_id', 'type', 'quantity', 'reason', 'note', 'user_id', 'prescription_dispensing_id', 'created_at'])]
+#[Fillable(['stock_lot_id', 'type', 'quantity', 'reason', 'note', 'user_id', 'prescription_dispensing_id', 'stock_inventory_id', 'created_at'])]
 class StockMovement extends Model
 {
     use BelongsToTenant;

@@ -34,6 +34,7 @@ use App\Http\Controllers\SectorController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\ShiftRequestController;
 use App\Http\Controllers\StockController;
+use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\TriageLevelController;
 use App\Http\Controllers\UnitController;
@@ -116,6 +117,15 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('stock', [StockController::class, 'index'])->middleware('throttle:120,1')->name('stock.index');
     Route::post('stock/entries', [StockController::class, 'storeEntry'])->middleware('throttle:60,1')->name('stock.entries.store');
     Route::post('stock/lots/{lot}/discards', [StockController::class, 'discard'])->middleware('throttle:60,1')->name('stock.discards.store');
+    // Step 4c.3b (ADR-0007): the inventory, counted by the pharmacy and approved by another person, the unit manager.
+    Route::get('stock/inventories', [StockInventoryController::class, 'index'])->middleware('throttle:120,1')->name('stock.inventories.index');
+    Route::post('stock/inventories', [StockInventoryController::class, 'store'])->middleware('throttle:30,1')->name('stock.inventories.store');
+    Route::get('stock/inventories/{inventory}', [StockInventoryController::class, 'show'])->middleware('throttle:120,1')->name('stock.inventories.show');
+    Route::put('stock/inventories/{inventory}/lines/{line}', [StockInventoryController::class, 'count'])->middleware('throttle:240,1')->name('stock.inventories.count');
+    Route::post('stock/inventories/{inventory}/found', [StockInventoryController::class, 'found'])->middleware('throttle:60,1')->name('stock.inventories.found');
+    Route::post('stock/inventories/{inventory}/submit', [StockInventoryController::class, 'submit'])->middleware('throttle:30,1')->name('stock.inventories.submit');
+    Route::post('stock/inventories/{inventory}/approve', [StockInventoryController::class, 'approve'])->middleware('throttle:30,1')->name('stock.inventories.approve');
+    Route::post('stock/inventories/{inventory}/refuse', [StockInventoryController::class, 'refuse'])->middleware('throttle:30,1')->name('stock.inventories.refuse');
     Route::put('stock/minimums', [StockController::class, 'updateMinimum'])->middleware('throttle:60,1')->name('stock.minimums.update');
     Route::get('emergency', [EmergencyController::class, 'index'])->name('emergency.index');
     Route::post('units/{unit}/emergency-arrivals', [EmergencyController::class, 'arrive'])->middleware('throttle:60,1')->name('emergency.arrive');

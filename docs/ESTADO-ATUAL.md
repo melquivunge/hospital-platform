@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da 4c.3a (descarte manual); depois a 4c.3b (inventário com ajuste aprovado pelo gestor).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da 4c.3b (inventário); depois a 4c.4 (avisos, relatório e indicadores).
 
 ## Onde está cada coisa
 
@@ -94,7 +94,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #68 | Travas do estoque no banco e descarte da devolução em lote vencido | Mesclado |
 | #69 | Descartes dos últimos 30 dias na tela de estoque | Mesclado |
 | #70 | Histórico completo de descartes, paginado | Mesclado |
-| — | 4c.3a: descarte manual com motivo (branch `feat/stock-discard`) | Em revisão |
+| #71 | 4c.3a: descarte manual com motivo | Mesclado |
+| — | 4c.3b: inventário com ajuste aprovado pelo gestor (branch `feat/stock-inventory`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -250,6 +251,11 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
+- **4c.3b (inventário, ADR-0007):**
+  - Menu "Inventários" para a farmácia e o gestor da unidade. A farmácia abre um por unidade (todos os medicamentos ou alguns), conta lote por lote às cegas, inclui lote encontrado sem cadastro e envia.
+  - O gestor da unidade, que não abriu, contou nem enviou, vê saldo na contagem e diferença e aprova (um ajuste por lote) ou recusa com motivo.
+  - O ajuste usa o saldo lido com o lote travado na contagem: o que saiu depois não é ajustado de novo; ajuste que deixaria lote negativo é recusado.
+  - Corrida real: aprovar × dispensar e aprovar × aprovar, 6/6 consistentes.
 - **4c.3a (descarte manual, ADR-0007):**
   - Na tela de estoque, cada lote tem "Descartar": motivo vencido (só lote vencido, que já vem com o saldo inteiro), avaria, perda ou outro com descrição; quantidade até o saldo.
   - O banco aceita só esses códigos e exige a descrição só em "outro". A auditoria guarda o código, não o texto.
@@ -557,7 +563,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 407 testes passando (4c.3a), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 413 testes passando (4c.3b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
