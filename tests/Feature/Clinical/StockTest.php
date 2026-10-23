@@ -100,6 +100,62 @@ class StockTest extends TestCase
         $this->actingAs($elsewhere->user)->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('unitId', $this->other->id)->has('medications', 0));
     }
 
+    public function test_a_discard_takes_from_the_lot_with_a_reason_and_never_more_than_its_balance(): void
+    {
+        $this->entry();
+        $lot = StockLot::withoutTenantScope()->sole();
+        $discard = fn (array $data) => $this->actingAs($this->pharmacist->user)->post(route('stock.discards.store', $lot), $data);
+
+        $discard(['reason' => 'damage', 'quantity' => 10, 'note' => 'ignorado'])->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Descarte registrado.');
+        $discard(['reason' => 'other', 'quantity' => 5, 'note' => ' Frasco sem rótulo '])->assertSessionHasNoErrors();
+        $discard(['reason' => 'other', 'quantity' => 5])->assertSessionHasErrorsIn("discard{$lot->id}", ['note']);
+        $discard(['reason' => 'expired', 'quantity' => 5])->assertSessionHasErrorsIn("discard{$lot->id}", ['reason' => 'Este lote ainda está na validade. Escolha outro motivo.']);
+        $discard(['reason' => 'loss', 'quantity' => 86])->assertSessionHasErrorsIn("discard{$lot->id}", ['quantity' => 'O lote tem 85 em saldo.']);
+        $discard(['reason' => 'stolen', 'quantity' => 1])->assertSessionHasErrorsIn("discard{$lot->id}", ['reason']);
+        $discard(['reason' => 'loss', 'quantity' => 0])->assertSessionHasErrorsIn("discard{$lot->id}", ['quantity']);
+        $discard(['reason' => 'other', 'quantity' => 1, 'note' => '   '])->assertSessionHasErrorsIn("discard{$lot->id}", ['note']);
+        $discard(['reason' => 'other', 'quantity' => 1, 'note' => str_repeat('a', 201)])->assertSessionHasErrorsIn("discard{$lot->id}", ['note']);
+
+        $this->assertSame(85, $lot->fresh()->balance);
+        $this->assertSame([['damage', null, -10], ['other', 'Frasco sem rótulo', -5]], DB::table('stock_movements')->where('type', 'discard')->orderBy('id')->get()
+            ->map(fn ($row) => [$row->reason, $row->note, (int) $row->quantity])->all());
+        // The audit keeps the reason code, never the text.
+        $audit = AuditEvent::where('action', 'stock.discard')->latest('id')->firstOrFail();
+        $this->assertEquals(['unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'stock_lot_id' => $lot->id, 'quantity' => 5, 'reason' => 'other'], $audit->context);
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('discards.0.note', 'Frasco sem rótulo')->where('discards.1.reason', 'damage'));
+
+        // The database keeps the codes and the text together.
+        $movement = (array) DB::table('stock_movements')->where('type', 'discard')->first();
+        foreach ([['reason' => 'stolen'], ['reason' => 'damage', 'note' => 'texto'], ['reason' => 'other', 'note' => null], ['reason' => 'other', 'note' => '  '], ['reason' => 'damage', 'note' => '  '], ['type' => 'entry', 'quantity' => 1, 'reason' => null, 'note' => 'texto']] as $wrong) {
+            try {
+                DB::transaction(fn () => DB::table('stock_movements')->insert([...$movement, 'id' => $movement['id'] + 100, ...$wrong]));
+                $this->fail('The database accepted '.json_encode($wrong));
+            } catch (QueryException $exception) {
+                $this->assertSame('23514', $exception->getCode());
+            }
+        }
+    }
+
+    public function test_an_expired_lot_is_discarded_whole_and_only_by_the_units_pharmacy(): void
+    {
+        $this->entry(['expires_on' => '2026-11-20', 'quantity' => 7]);
+        $lot = StockLot::withoutTenantScope()->sole();
+        // The last day of validity is not expired yet (unit time zone); the next day it is.
+        $this->travelTo('2026-11-21 02:59:00');
+        $this->actingAs($this->pharmacist->user)->post(route('stock.discards.store', $lot), ['reason' => 'expired', 'quantity' => 7])->assertSessionHasErrorsIn("discard{$lot->id}", ['reason']);
+        $this->travelTo('2026-12-01 12:00:00');
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('medications.0.lots.0.state', 'expired'));
+
+        $this->actingAs($this->admin->user)->post(route('stock.discards.store', $lot), ['reason' => 'expired', 'quantity' => 7])->assertForbidden();
+        $elsewhere = Membership::factory()->for($this->admin->tenant)->create();
+        $elsewhere->grant(Role::Pharmacy, $this->other);
+        $this->actingAs($elsewhere->user)->post(route('stock.discards.store', $lot), ['reason' => 'expired', 'quantity' => 7])->assertForbidden();
+        $this->assertSame(7, $lot->fresh()->balance);
+
+        $this->actingAs($this->pharmacist->user)->post(route('stock.discards.store', $lot), ['reason' => 'expired', 'quantity' => 7])->assertSessionHasNoErrors();
+        $this->assertSame(0, $lot->fresh()->balance);
+    }
+
     public function test_the_database_keeps_the_balance_and_the_history(): void
     {
         $this->entry();

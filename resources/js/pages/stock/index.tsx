@@ -1,5 +1,6 @@
 import { Form, Head, Link, router } from '@inertiajs/react';
 import { FileUp } from 'lucide-react';
+import { useState } from 'react';
 import StockController from '@/actions/App/Http/Controllers/StockController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -38,10 +39,14 @@ type Discard = {
     lot: string;
     quantity: number;
     reason: string;
+    note: string | null;
 };
 
 const discardReason: Record<string, string> = {
-    expired: 'Vencido (voltou na devolução de lote vencido)',
+    expired: 'Vencido',
+    damage: 'Avaria',
+    loss: 'Perda',
+    other: 'Outro',
 };
 
 const lotState = {
@@ -153,29 +158,34 @@ export default function StockIndex({
                                 {medication.lots.length > 0 && (
                                     <ul className="mt-3 divide-y border-t text-sm">
                                         {medication.lots.map((lot) => (
-                                            <li
-                                                key={lot.id}
-                                                className="flex flex-wrap items-center justify-between gap-2 py-2"
-                                            >
-                                                <span>
-                                                    Lote {lot.code} · validade{' '}
-                                                    {lot.expiresOn}
-                                                    {lot.manufacturer &&
-                                                        ` · ${lot.manufacturer}`}
-                                                </span>
-                                                <span className="flex items-center gap-2">
-                                                    <span
-                                                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${lotState[lot.state].className}`}
-                                                    >
-                                                        {
-                                                            lotState[lot.state]
-                                                                .label
-                                                        }
+                                            <li key={lot.id} className="py-2">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <span>
+                                                        Lote {lot.code} ·
+                                                        validade {lot.expiresOn}
+                                                        {lot.manufacturer &&
+                                                            ` · ${lot.manufacturer}`}
                                                     </span>
-                                                    <span className="font-medium">
-                                                        {lot.balance}
+                                                    <span className="flex items-center gap-2">
+                                                        <span
+                                                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${lotState[lot.state].className}`}
+                                                        >
+                                                            {
+                                                                lotState[
+                                                                    lot.state
+                                                                ].label
+                                                            }
+                                                        </span>
+                                                        <span className="font-medium">
+                                                            {lot.balance}
+                                                        </span>
                                                     </span>
-                                                </span>
+                                                </div>
+                                                {/* Remounted when the balance changes: the reason and the quantity start over. */}
+                                                <DiscardForm
+                                                    key={lot.balance}
+                                                    lot={lot}
+                                                />
                                             </li>
                                         ))}
                                     </ul>
@@ -200,6 +210,8 @@ export default function StockIndex({
                                         <span className="block text-muted-foreground">
                                             {discardReason[discard.reason] ??
                                                 discard.reason}
+                                            {discard.note &&
+                                                `: ${discard.note}`}
                                         </span>
                                     </span>
                                     <span className="font-medium">
@@ -256,6 +268,103 @@ export default function StockIndex({
                 </div>
             </Page>
         </>
+    );
+}
+
+function DiscardForm({ lot }: { lot: Lot }) {
+    const expired = lot.state === 'expired';
+    const [reason, setReason] = useState(expired ? 'expired' : '');
+
+    return (
+        <details className="mt-1">
+            <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary">
+                Descartar
+            </summary>
+            <Form
+                {...StockController.discard.form(lot.id)}
+                options={{ preserveScroll: true }}
+                errorBag={`discard${lot.id}`}
+                resetOnSuccess
+                className="mt-2 grid gap-3 rounded-lg border p-4 sm:grid-cols-2"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <div className="grid gap-2">
+                            <Label htmlFor={`discard-reason-${lot.id}`}>
+                                Motivo
+                            </Label>
+                            <select
+                                id={`discard-reason-${lot.id}`}
+                                name="reason"
+                                required
+                                value={reason}
+                                onChange={(event) =>
+                                    setReason(event.target.value)
+                                }
+                                className={selectClassName}
+                            >
+                                <option value="" disabled>
+                                    Selecione
+                                </option>
+                                {Object.entries(discardReason)
+                                    .filter(
+                                        ([code]) =>
+                                            code !== 'expired' || expired,
+                                    )
+                                    .map(([code, label]) => (
+                                        <option key={code} value={code}>
+                                            {label}
+                                        </option>
+                                    ))}
+                            </select>
+                            <InputError message={errors.reason} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor={`discard-quantity-${lot.id}`}>
+                                Quantidade (saldo {lot.balance})
+                            </Label>
+                            <Input
+                                id={`discard-quantity-${lot.id}`}
+                                name="quantity"
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={lot.balance}
+                                defaultValue={expired ? lot.balance : undefined}
+                                required
+                                className="h-11"
+                            />
+                            <InputError message={errors.quantity} />
+                        </div>
+                        {reason === 'other' && (
+                            <div className="grid gap-2 sm:col-span-2">
+                                <Label htmlFor={`discard-note-${lot.id}`}>
+                                    Descrição (sem dado de paciente)
+                                </Label>
+                                <Input
+                                    id={`discard-note-${lot.id}`}
+                                    name="note"
+                                    required
+                                    maxLength={200}
+                                    className="h-11"
+                                />
+                                <InputError message={errors.note} />
+                            </div>
+                        )}
+                        <div className="sm:col-span-2">
+                            <Button
+                                type="submit"
+                                variant="destructive"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Registrar descarte
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </Form>
+        </details>
     );
 }
 

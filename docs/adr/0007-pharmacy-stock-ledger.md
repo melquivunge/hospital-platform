@@ -32,6 +32,7 @@ A dispensação é uma tabela clínica (RLS, ADR-0003). O estoque não tem dado 
   - grava a dispensação da 4b e um movimento `dispensing` por lote, na mesma transação;
   - lote vencido (validade antes de hoje no fuso da unidade) é recusado no servidor.
 - **Devolução:** volta para os lotes que a dispensação usou, até o que cada um deu, começando pelo de validade mais longa. Dispensações anteriores à 4c não têm movimento e a devolução delas também não gera. Se o lote venceu nesse meio-tempo, a devolução entra e sai na mesma transação como descarte com motivo `expired`, e a farmácia é avisada para separar as unidades (decisão de 23/10/2026, a pedido do usuário). O banco também recusa movimento de dispensação de lote vencido ou de outra unidade ou medicamento, e devolução acima do que o lote deu.
+- **Descarte (4c.3a):** motivo codificado (`expired`, `damage`, `loss`, `other`); só "outro" leva um texto curto (`note`, até 200 caracteres), e o banco amarra código e texto. "Vencido" só vale para lote vencido no fuso da unidade, e um lote vencido pode ser descartado inteiro. A quantidade vai até o saldo, lido com o lote travado. A auditoria guarda o código, nunca o texto.
 - **Entrada esquecida (decisão da questão 4):** a tela da dispensação permite à farmácia registrar uma entrada de lote. A entrada é uma ação separada, um movimento `entry` comum e auditado, e não um atalho que dispensa sem saldo.
 - **Inventário:**
   - a contagem de cada lote grava o horário;
