@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
 use App\Models\AuditEvent;
+use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\Patient;
 use App\Models\Prescription;
@@ -12,6 +13,8 @@ use App\Models\PrescriptionDispensing;
 use App\Models\PrescriptionItem;
 use App\Models\PrescriptionReview;
 use App\Models\RoleAssignment;
+use App\Models\StockLot;
+use App\Models\StockMovement;
 use App\Models\Unit;
 use App\Models\Visit;
 use App\Policies\UnitPolicy;
@@ -33,6 +36,7 @@ use Inertia\Response;
  * approved, approved with a note or refused with a reason, once; a refusal notifies the prescriber. An approved
  * item is dispensed once for the 24 hours (step 4b.3b), and what comes back is recorded as its return, once, up to
  * 48 hours after the dispensing: also after a renewal or a discharge, when the prescription leaves the queue.
+ * Step 4c.2 (ADR-0007): the dispensing takes from the unit's stock lots and the return puts back into them.
  */
 class PharmacyController extends Controller
 {
@@ -77,6 +81,11 @@ class PharmacyController extends Controller
         $timezone = Unit::query()->whereKey($encounter->unit_id)->value('timezone') ?? 'UTC';
         $prescription->load(['items.review', 'items.dispensing', 'professional:id,name']);
         $doses = PrescriptionController::doses($prescription->items->modelKeys(), $timezone, withRecords: false);
+        // Step 4c.2: the valid lots with balance, the ones that expire first first (the suggestion).
+        $lots = $current ? StockLot::query()->where('unit_id', $prescription->unit_id)->whereIn('medication_id', $prescription->items->pluck('medication_id')->all())
+            ->where('expires_on', '>=', now($timezone)->toDateString())->where('balance', '>', 0)->orderBy('expires_on')->orderBy('id')
+            ->get()->groupBy('medication_id') : collect();
+        $stockUnits = Medication::query()->whereKey($prescription->items->pluck('medication_id')->all())->pluck('stock_unit', 'id');
 
         return Inertia::render('pharmacy/show', [
             'prescription' => [
@@ -97,10 +106,16 @@ class PharmacyController extends Controller
                 // The times only: the administration records are not the pharmacy's (ADR-0005).
                 'doses' => $doses[$item->id]['doses'] ?? [],
                 'given' => [],
+                'medicationId' => $item->medication_id,
+                'stockUnit' => $stockUnits[$item->medication_id] ?? 'unidade',
+                'lots' => ($lots[$item->medication_id] ?? collect())->map(fn (StockLot $lot) => [
+                    'id' => $lot->id, 'code' => $lot->lot_code, 'expiresOn' => $lot->expires_on->format('d/m/Y'), 'balance' => $lot->balance,
+                ])->values(),
                 'returnable' => $item->dispensing !== null && $item->dispensing->returned_at === null
                     && $item->dispensing->created_at->gt(now()->subHours(PrescriptionDispensing::RETURN_HOURS)),
             ], $prescription->items->all()),
             'decisions' => PrescriptionReview::DECISIONS,
+            'today' => now($timezone)->toDateString(),
         ]);
     }
 
@@ -147,10 +162,28 @@ class PharmacyController extends Controller
         [$encounter, , $current] = self::access($request, $prescription);
         abort_unless($current, 403);
         $bag = "dispense{$item->id}";
-        $data = $request->validateWithBag($bag, ['quantity' => ['required', 'integer', 'min:1', 'max:500']], [], ['quantity' => 'quantidade']);
+        $data = $request->validateWithBag($bag, [
+            'quantity' => ['required', 'integer', 'min:1', 'max:500'],
+            // Step 4c.2: the lots the pharmacy chose (a zero is a lot left out); without them, the suggestion.
+            'lots' => ['sometimes', 'array', 'max:20'],
+            'lots.*.id' => ['required', 'integer'],
+            'lots.*.quantity' => ['required', 'integer', 'min:0', 'max:500'],
+        ], [], ['quantity' => 'quantidade', 'lots' => 'lotes']);
+        $chosen = [];
+        foreach ($data['lots'] ?? [] as $lot) {
+            if (isset($chosen[(int) $lot['id']])) {
+                throw ValidationException::withMessages(['quantity' => 'Um lote aparece duas vezes.'])->errorBag($bag);
+            }
+            $chosen[(int) $lot['id']] = (int) $lot['quantity'];
+        }
+        $chosen = array_filter($chosen);
+        // A choice sent is the choice: all at zero is no lot, not the suggestion.
+        if (isset($data['lots']) && array_sum($chosen) !== (int) $data['quantity']) {
+            throw ValidationException::withMessages(['quantity' => 'A soma dos lotes tem que ser a quantidade dispensada.'])->errorBag($bag);
+        }
 
         try {
-            DB::transaction(function () use ($item, $request, $data, $prescription, $encounter, $bag) {
+            DB::transaction(function () use ($item, $request, $data, $prescription, $encounter, $bag, $chosen) {
                 self::lockCurrent($encounter, $prescription);
                 $locked = PrescriptionItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
                 $decision = PrescriptionReview::query()->where('prescription_item_id', $locked->id)->value('decision');
@@ -163,11 +196,18 @@ class PharmacyController extends Controller
                 if ($refusal !== null) {
                     throw ValidationException::withMessages(['quantity' => $refusal])->errorBag($bag);
                 }
+                $taken = self::takeFromLots((int) $prescription->unit_id, $locked->medication_id, (int) $data['quantity'], $chosen, $bag);
                 $dispensing = PrescriptionDispensing::query()->create([
                     'prescription_item_id' => $locked->id, 'quantity' => $data['quantity'], 'dispensed_by_user_id' => $request->user()->id, 'created_at' => now(),
                 ]);
+                foreach ($taken as $lotId => $quantity) {
+                    StockMovement::query()->create([
+                        'stock_lot_id' => $lotId, 'type' => 'dispensing', 'quantity' => -$quantity, 'user_id' => $request->user()->id,
+                        'prescription_dispensing_id' => $dispensing->id, 'created_at' => now(),
+                    ]);
+                }
                 AuditEvent::record('prescription_item.dispensed', $dispensing->tenant_id, $locked, [
-                    'quantity' => $dispensing->quantity, 'prescription_id' => $prescription->id,
+                    'quantity' => $dispensing->quantity, 'prescription_id' => $prescription->id, 'stock_lots' => $taken,
                     ...($encounter instanceof Admission ? ['admission_id' => $encounter->id] : ['visit_id' => $encounter->id]),
                 ]);
             });
@@ -200,12 +240,29 @@ class PharmacyController extends Controller
             if ($refusal !== null) {
                 throw ValidationException::withMessages(['quantity' => $refusal])->errorBag($bag);
             }
+            // Step 4c.2: back into the lots the dispensing took from, up to what each gave, the longest expiry first.
+            // A dispensing from before the stock has no movement, and its return none either.
+            $given = StockMovement::query()->where('prescription_dispensing_id', $locked->id)->where('type', 'dispensing')->get();
+            $lots = StockLot::query()->whereKey($given->pluck('stock_lot_id')->all())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $remaining = (int) $data['quantity'];
+            $back = [];
+            foreach ($given->sortByDesc(fn (StockMovement $movement) => $lots[$movement->stock_lot_id]->expires_on->toDateString().sprintf('%020d', $movement->stock_lot_id)) as $movement) {
+                $quantity = min(-$movement->quantity, $remaining);
+                if ($quantity > 0) {
+                    StockMovement::query()->create([
+                        'stock_lot_id' => $movement->stock_lot_id, 'type' => 'return', 'quantity' => $quantity, 'user_id' => $request->user()->id,
+                        'prescription_dispensing_id' => $locked->id, 'created_at' => now(),
+                    ]);
+                    $back[$movement->stock_lot_id] = $quantity;
+                    $remaining -= $quantity;
+                }
+            }
             $locked->forceFill([
                 'returned_quantity' => $data['quantity'], 'return_reason' => $data['reason'], 'returned_by_user_id' => $request->user()->id, 'returned_at' => now(),
             ])->save();
             // The reason may be clinical: only the quantities go to the audit.
             AuditEvent::record('prescription_item.returned', $locked->tenant_id, $locked, [
-                'quantity' => $locked->returned_quantity, 'prescription_id' => $prescription->id,
+                'quantity' => $locked->returned_quantity, 'prescription_id' => $prescription->id, 'stock_lots' => $back,
                 ...($encounter instanceof Admission ? ['admission_id' => $encounter->id] : ['visit_id' => $encounter->id]),
             ]);
         });
@@ -228,6 +285,55 @@ class PharmacyController extends Controller
         return array_values(array_unique($membership->roleAssignments
             ->filter(fn (RoleAssignment $assignment) => $assignment->role === Role::Pharmacy)
             ->map(fn (RoleAssignment $assignment) => (int) $assignment->unit_id)->all()));
+    }
+
+    /**
+     * Under the transaction, after the item (ADR-0007): the lots of the medication in the unit, locked in id order,
+     * and what to take from each: the pharmacy's choice, or else the valid lots that expire first. An expired lot,
+     * a lot of another unit or medication, or a balance short of the quantity is refused.
+     *
+     * @param  array<int, int>  $chosen  lot id => quantity
+     * @return array<int, int> lot id => quantity
+     */
+    private static function takeFromLots(int $unitId, int $medicationId, int $quantity, array $chosen, string $bag): array
+    {
+        $today = now(Unit::query()->whereKey($unitId)->value('timezone') ?? 'UTC')->toDateString();
+        // FOR UPDATE re-reads a lot changed by a dispensing that committed while this one waited.
+        $lots = StockLot::query()->where(['unit_id' => $unitId, 'medication_id' => $medicationId])
+            ->when($chosen !== [], fn (Builder $query) => $query->whereKey(array_keys($chosen)), fn (Builder $query) => $query->where('expires_on', '>=', $today)->where('balance', '>', 0))
+            ->orderBy('id')->lockForUpdate()->get();
+        if ($chosen === []) {
+            $remaining = $quantity;
+            foreach ($lots->sortBy(fn (StockLot $lot) => $lot->expires_on->toDateString().sprintf('%020d', $lot->id)) as $lot) {
+                $take = min($lot->balance, $remaining);
+                if ($take > 0) {
+                    $chosen[$lot->id] = $take;
+                    $remaining -= $take;
+                }
+            }
+            if ($remaining > 0) {
+                throw ValidationException::withMessages(['quantity' => $lots->isEmpty()
+                    ? 'Sem saldo deste medicamento no estoque da unidade. Registre a entrada do lote.'
+                    : "Saldo insuficiente: há só {$lots->sum('balance')} no estoque da unidade."])->errorBag($bag);
+            }
+
+            return $chosen;
+        }
+        $lots = $lots->keyBy('id');
+        foreach ($chosen as $id => $take) {
+            $lot = $lots->get($id);
+            $refusal = match (true) {
+                $lot === null => 'Lote fora do estoque deste medicamento na unidade.',
+                $lot->expires_on->toDateString() < $today => "O lote {$lot->lot_code} venceu e não é dispensado.",
+                $lot->balance < $take => "O lote {$lot->lot_code} tem só {$lot->balance} em estoque.",
+                default => null,
+            };
+            if ($refusal !== null) {
+                throw ValidationException::withMessages(['quantity' => $refusal])->errorBag($bag);
+            }
+        }
+
+        return $chosen;
     }
 
     /**

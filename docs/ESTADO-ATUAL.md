@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: a 4c.2 (dispensação e devolução com estoque).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da 4c.2; depois a 4c.3 (descarte e inventário).
 
 ## Onde está cada coisa
 
@@ -89,7 +89,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #63 | Entrega 4c: decisões, ADR-0007 e plano | Mesclado |
 | #64 | Etapa 4c.1a: lotes, entradas, saldo e estoque mínimo | Mesclado |
 | #65 | Etapa 4c.1b: importação do saldo inicial | Mesclado |
-| — | Correção: papel Farmácia relido a cada linha da importação de estoque (branch `fix/stock-import-role-recheck`) | Em revisão |
+| #66 | Correção: papel Farmácia relido a cada linha da importação de estoque | Mesclado |
+| — | Etapa 4c.2: dispensação e devolução com estoque (branch `feat/stock-dispensing-4c2`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -245,6 +246,12 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
+- **4c.2 (dispensação e devolução com estoque, ADR-0007):**
+  - A dispensação baixa os lotes da unidade: um movimento por lote, ligado só ao id da dispensação. A tela sugere os lotes válidos que vencem primeiro, já preenchidos até a quantidade das doses; a farmácia troca ou divide. Sem lotes enviados, o servidor aplica a mesma sugestão.
+  - Recusados no servidor: lote vencido (fuso da unidade), lote de outra unidade ou de outro medicamento, mais que o saldo do lote, soma diferente da quantidade, lote repetido, todos zerados. Sem saldo, a mensagem aponta "Registrar entrada de lote", na própria tela (questão 4).
+  - A devolução volta para os lotes que a dispensação usou, até o que cada um deu, começando pela validade mais longa. Dispensação anterior ao estoque devolve sem movimento. O banco recusa devolução para lote que a dispensação não usou ou acima do que ele deu.
+  - Locks: internação → item → lotes por id crescente. Corrida real: duas dispensações simultâneas do último saldo de um lote, 5 de 5 rodadas com uma baixa só e saldo 0.
+  - Revisão de segurança independente (sem crítico/alto). Corrigido: lotes todos zerados caíam na sugestão; lote repetido; devolução protegida também no banco; testes de lote de outro medicamento, dispensação anterior ao estoque e devolução dividida entre lotes.
 - **4c.1b (importação do saldo inicial, ADR-0007):**
   - Tipo de importação "Saldo inicial do estoque da farmácia" (fluxo da V1: prévia sem gravar, confirmação, aplicação retomável), aberto pelo botão da tela Estoque. Colunas: source_id, unidade, princípio ativo, forma, concentração, lote, validade (2027-05-31 ou 31/05/2027), quantidade, fabricante. Cada linha é uma entrada de lote pela mesma regra da tela (`StockController::enter`).
   - Só quem tem o papel Farmácia importa estoque, nas suas unidades; confirma só quem gerou a prévia (o administrador da rede vê, não move). Um farmacêutico sem papel de importação não vê mais profissionais e plantões (não poderia aplicá-los). Na aplicação o papel, o medicamento ativo, a validade e a identidade são conferidos de novo.
@@ -538,7 +545,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 402 testes passando (correção da 4c.1b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 404 testes passando (etapa 4c.2), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

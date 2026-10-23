@@ -55,6 +55,9 @@ class MedicationAdministrationTest extends ClinicalTestCase
             $catalog[$ingredient] = Medication::query()->create(['active_ingredient' => $ingredient, 'form' => 'Comprimido', 'strength' => $strength, 'dose_unit' => 'mg', 'routes' => $routes, 'controlled' => $controlled, 'high_alert' => false]);
         }
         app(CurrentTenant::class)->set(null);
+        foreach ($catalog as $medication) {
+            $this->stockLot($this->unit->id, $medication);
+        }
         $this->wardNurse = $this->teamMember('Enf. Carla', $ward);
         $this->secondNurse = $this->teamMember('Enf. Beatriz', $ward);
         $this->icuNurse = $this->teamMember('Enf. Davi', $icu);

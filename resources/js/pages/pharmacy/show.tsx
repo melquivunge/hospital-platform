@@ -1,6 +1,7 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
 import PharmacyController from '@/actions/App/Http/Controllers/PharmacyController';
+import StockController from '@/actions/App/Http/Controllers/StockController';
 import { sexLabels } from '@/components/patient-display';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -16,14 +17,31 @@ import { index } from '@/routes/pharmacy';
 /**
  * One prescription for the pharmacist (step 4b.3a, ADR-0005): only the prescription, the allergies and the
  * patient's identification. Each item is reviewed once; an approved one is dispensed once for the 24 hours (step
- * 4b.3b), and what comes back is recorded as its return, also once the prescription is out of the queue.
+ * 4b.3b), and what comes back is recorded as its return, also once the prescription is out of the queue. Step 4c.2:
+ * the dispensing takes from the unit's lots, the ones that expire first suggested; a lot left out of the stock is
+ * entered right here.
  */
+type StockLotOption = {
+    id: number;
+    code: string;
+    expiresOn: string;
+    balance: number;
+};
+
+type PharmacyItem = PrescriptionItemView & {
+    returnable: boolean;
+    medicationId: number;
+    stockUnit: string;
+    lots: StockLotOption[];
+};
+
 export default function PharmacyShow({
     prescription,
     patient,
     allergies,
     items,
     decisions,
+    today,
 }: {
     prescription: {
         id: number;
@@ -36,8 +54,9 @@ export default function PharmacyShow({
     };
     patient: { name: string; age: number | null; sex: string | null };
     allergies: PatientAllergy[];
-    items: (PrescriptionItemView & { returnable: boolean })[];
+    items: PharmacyItem[];
     decisions: Record<string, string>;
+    today: string;
 }) {
     return (
         <>
@@ -88,7 +107,22 @@ export default function PharmacyShow({
                                 item.review.decision !== 'refused' &&
                                 !item.dispensing &&
                                 !item.suspendedAt && (
-                                    <DispenseForm item={item} />
+                                    <>
+                                        <DispenseForm
+                                            key={item.lots
+                                                .map(
+                                                    (lot) =>
+                                                        `${lot.id}:${lot.balance}`,
+                                                )
+                                                .join()}
+                                            item={item}
+                                        />
+                                        <EntryForm
+                                            item={item}
+                                            unitId={prescription.unitId}
+                                            today={today}
+                                        />
+                                    </>
                                 )}
                             {item.returnable && item.dispensing && (
                                 <ReturnForm item={item} />
@@ -181,8 +215,34 @@ function ReviewForm({
     );
 }
 
-function DispenseForm({ item }: { item: PrescriptionItemView }) {
-    const id = `quantity-${item.id}`;
+/**
+ * The valid lots that expire first, filled up to the quantity: the suggestion the pharmacy accepts or changes.
+ */
+function suggest(lots: StockLotOption[], quantity: number): number[] {
+    let remaining = quantity;
+
+    return lots.map((lot) => {
+        const take = Math.min(lot.balance, remaining);
+        remaining -= take;
+
+        return take;
+    });
+}
+
+function DispenseForm({ item }: { item: PharmacyItem }) {
+    const [taken, setTaken] = useState(() =>
+        suggest(item.lots, item.doses?.length || 1),
+    );
+    const total = taken.reduce((sum, quantity) => sum + quantity, 0);
+
+    if (item.lots.length === 0) {
+        return (
+            <p className="border-t pt-3 text-sm">
+                Sem saldo de {item.medication} no estoque da unidade. Registre a
+                entrada do lote abaixo para dispensar.
+            </p>
+        );
+    }
 
     return (
         <Form
@@ -193,28 +253,66 @@ function DispenseForm({ item }: { item: PrescriptionItemView }) {
         >
             {({ processing, errors }) => (
                 <>
-                    <div className="grid max-w-xs gap-2">
-                        <Label htmlFor={id}>
-                            Quantidade para 24 horas (unidades)
-                        </Label>
-                        <Input
-                            id={id}
-                            name="quantity"
-                            type="number"
-                            inputMode="numeric"
-                            min={1}
-                            max={500}
-                            required
-                            defaultValue={item.doses?.length || undefined}
-                            className="h-11"
-                        />
+                    <fieldset className="grid gap-2">
+                        <legend className="mb-1 text-sm font-medium">
+                            Lotes para 24 horas ({item.stockUnit}) · os que
+                            vencem primeiro vêm sugeridos
+                        </legend>
+                        <input type="hidden" name="quantity" value={total} />
+                        {item.lots.map((lot, index) => (
+                            <div
+                                key={lot.id}
+                                className="flex flex-wrap items-center gap-3"
+                            >
+                                <input
+                                    type="hidden"
+                                    name={`lots[${index}][id]`}
+                                    value={lot.id}
+                                />
+                                <Label
+                                    htmlFor={`lot-${item.id}-${lot.id}`}
+                                    className="font-normal"
+                                >
+                                    Lote {lot.code} · vence {lot.expiresOn} ·
+                                    saldo {lot.balance}
+                                </Label>
+                                <Input
+                                    id={`lot-${item.id}-${lot.id}`}
+                                    name={`lots[${index}][quantity]`}
+                                    type="number"
+                                    inputMode="numeric"
+                                    min={0}
+                                    max={Math.min(lot.balance, 500)}
+                                    value={taken[index]}
+                                    onChange={(event) =>
+                                        setTaken(
+                                            taken.map((quantity, other) =>
+                                                other === index
+                                                    ? Math.max(
+                                                          0,
+                                                          Number(
+                                                              event.target
+                                                                  .value,
+                                                          ) || 0,
+                                                      )
+                                                    : quantity,
+                                            ),
+                                        )
+                                    }
+                                    className="h-11 w-24"
+                                />
+                            </div>
+                        ))}
+                        <p className="text-sm text-muted-foreground">
+                            Total: {total} {item.stockUnit}
+                        </p>
                         <InputError message={errors.quantity} />
-                    </div>
+                    </fieldset>
                     <div>
                         <Button
                             type="submit"
-                            disabled={processing}
-                            className="min-h-11"
+                            disabled={processing || total < 1}
+                            className="h-auto min-h-11 whitespace-normal"
                         >
                             Dispensar {item.medication}
                         </Button>
@@ -225,7 +323,115 @@ function DispenseForm({ item }: { item: PrescriptionItemView }) {
     );
 }
 
-function ReturnForm({ item }: { item: PrescriptionItemView }) {
+/**
+ * The lot the stock missed, entered from the dispensing (question 4 of delivery 4c): an ordinary entry.
+ */
+function EntryForm({
+    item,
+    unitId,
+    today,
+}: {
+    item: PharmacyItem;
+    unitId: number;
+    today: string;
+}) {
+    const id = `entry-${item.id}`;
+
+    return (
+        <Form
+            {...StockController.storeEntry.form()}
+            options={{ preserveScroll: true }}
+            errorBag="entry"
+            resetOnSuccess
+        >
+            {({ processing, errors }) => (
+                <details open={item.lots.length === 0}>
+                    <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">
+                        Registrar entrada de lote de {item.medication}
+                    </summary>
+                    <input type="hidden" name="unit_id" value={unitId} />
+                    <input
+                        type="hidden"
+                        name="medication_id"
+                        value={item.medicationId}
+                    />
+                    <div className="grid gap-3 pt-2 sm:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label htmlFor={`${id}-lot`}>Lote</Label>
+                            <Input
+                                id={`${id}-lot`}
+                                name="lot_code"
+                                required
+                                maxLength={50}
+                                autoCapitalize="characters"
+                                className="h-11"
+                            />
+                            <InputError message={errors.lot_code} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor={`${id}-expiry`}>Validade</Label>
+                            <Input
+                                id={`${id}-expiry`}
+                                name="expires_on"
+                                type="date"
+                                min={today}
+                                required
+                                className="h-11"
+                            />
+                            <InputError message={errors.expires_on} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor={`${id}-quantity`}>
+                                Quantidade ({item.stockUnit})
+                            </Label>
+                            <Input
+                                id={`${id}-quantity`}
+                                name="quantity"
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={100000}
+                                required
+                                className="h-11"
+                            />
+                            <InputError
+                                message={
+                                    errors.quantity ??
+                                    errors.medication_id ??
+                                    errors.unit_id
+                                }
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor={`${id}-manufacturer`}>
+                                Fabricante (opcional)
+                            </Label>
+                            <Input
+                                id={`${id}-manufacturer`}
+                                name="manufacturer"
+                                maxLength={100}
+                                className="h-11"
+                            />
+                            <InputError message={errors.manufacturer} />
+                        </div>
+                    </div>
+                    <div className="pt-3">
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            className="min-h-11"
+                        >
+                            Registrar entrada
+                        </Button>
+                    </div>
+                </details>
+            )}
+        </Form>
+    );
+}
+
+function ReturnForm({ item }: { item: PharmacyItem }) {
     const dispensing = item.dispensing!;
     const id = `return-${item.id}`;
 
