@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da 4c.1b; depois a 4c.2 (dispensação e devolução com estoque).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: a 4c.2 (dispensação e devolução com estoque).
 
 ## Onde está cada coisa
 
@@ -88,7 +88,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #62 | Entrega 4c: contrato proposto | Mesclado |
 | #63 | Entrega 4c: decisões, ADR-0007 e plano | Mesclado |
 | #64 | Etapa 4c.1a: lotes, entradas, saldo e estoque mínimo | Mesclado |
-| — | Etapa 4c.1b: importação do saldo inicial (branch `feat/stock-import-4c1b`) | Em revisão |
+| #65 | Etapa 4c.1b: importação do saldo inicial | Mesclado |
+| — | Correção: papel Farmácia relido a cada linha da importação de estoque (branch `fix/stock-import-role-recheck`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -249,7 +250,7 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Só quem tem o papel Farmácia importa estoque, nas suas unidades; confirma só quem gerou a prévia (o administrador da rede vê, não move). Um farmacêutico sem papel de importação não vê mais profissionais e plantões (não poderia aplicá-los). Na aplicação o papel, o medicamento ativo, a validade e a identidade são conferidos de novo.
   - Reprocessar não entra o saldo de novo: o source_id vale por unidade e origem; o mesmo id com o mesmo conteúdo é "idêntico", com conteúdo diferente é conflito (corrigir saldo é pelo inventário, 4c.3).
   - Navegador (1440 e 360 px): botão do Estoque, tipo já marcado, prévia (1 pronta, 1 recusada), confirmação e saldo na tela; sem erros.
-  - Revisão de segurança independente (sem crítico/alto). Corrigido: o mesmo source_id em outra unidade era tratado como já importado (o saldo dela não entrava); "idêntico" não comparava o conteúdo; nome de unidade ambíguo; testes de data inválida (31/02), validade e medicamento mudados depois da prévia, ids por unidade e tipos por papel. Aceito: a lista de unidades do criador é lida uma vez por aplicação (padrão das importações da V1).
+  - Revisão de segurança independente (sem crítico/alto). Corrigido: o mesmo source_id em outra unidade era tratado como já importado (o saldo dela não entrava); "idêntico" não comparava o conteúdo; nome de unidade ambíguo; testes de data inválida (31/02), validade e medicamento mudados depois da prévia, ids por unidade e tipos por papel. Depois do merge, o papel Farmácia do criador passou a ser relido a cada linha: retirá-lo no meio de um arquivo grande para as linhas restantes.
 - **4c.1a (lotes, entradas, saldo e estoque mínimo, ADR-0007):**
   - Catálogo: cada medicamento ganha a unidade de estoque (comprimido, ampola, frasco...); os já cadastrados ficam com "unidade" até o administrador ajustar. A importação CSV do catálogo não tem a coluna (fica "unidade").
   - Tela "Estoque" (papel Farmácia, por unidade): saldo por medicamento e lote, vencido, a vencer em 30 dias e abaixo do mínimo. Entrada de lote (medicamento, lote, validade, quantidade, fabricante opcional): o mesmo lote digitado de outro jeito ("ab 12-3" e "AB12-3") soma no mesmo; lote vencido, validade além de 10 anos, medicamento inativo, unidade alheia e fabricante diferente do lote já cadastrado são recusados. Estoque mínimo por medicamento e unidade (vazio retira).
@@ -537,7 +538,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 401 testes passando (etapa 4c.1b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 402 testes passando (correção da 4c.1b), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
