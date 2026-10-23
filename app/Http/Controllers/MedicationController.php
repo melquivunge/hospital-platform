@@ -39,7 +39,7 @@ class MedicationController extends Controller
             'limit' => self::LIMIT,
             'medications' => Medication::query()->when($search !== '', fn (Builder $query) => $query->where('ingredient_key', 'like', $like))
                 ->orderByDesc('active')->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->limit(self::LIMIT)
-                ->get(['id', 'active_ingredient', 'form', 'strength', 'dose_unit', 'routes', 'controlled', 'high_alert', 'max_single_dose', 'max_daily_dose', 'active', 'updated_at']),
+                ->get(['id', 'active_ingredient', 'form', 'strength', 'dose_unit', 'routes', 'controlled', 'high_alert', 'max_single_dose', 'max_daily_dose', 'active', 'stock_unit', 'updated_at']),
             'totalInteractions' => MedicationInteraction::query()->count(),
             'interactions' => MedicationInteraction::query()
                 ->when($search !== '', fn (Builder $query) => $query->where(fn (Builder $either) => $either->where('ingredient_a', 'like', $like)->orWhere('ingredient_b', 'like', $like)))
@@ -47,6 +47,7 @@ class MedicationController extends Controller
                 ->get(['id', 'ingredient_a', 'ingredient_b', 'severity', 'note', 'active', 'updated_at']),
             'ingredients' => Medication::query()->where('active', true)->distinct()->orderBy('ingredient_key')->pluck('ingredient_key'),
             'doseUnits' => Medication::DOSE_UNITS,
+            'stockUnits' => Medication::STOCK_UNITS,
             'routes' => Medication::ROUTES,
             'severities' => Medication::SEVERITIES,
         ]);
@@ -162,6 +163,8 @@ class MedicationController extends Controller
             'form' => ['required', 'string', 'max:100'],
             'strength' => ['required', 'string', 'max:100'],
             'dose_unit' => ['required', Rule::in(Medication::DOSE_UNITS)],
+            // Step 4c.1a: optional, the catalog default ("unidade") until the admin picks one.
+            'stock_unit' => ['sometimes', Rule::in(Medication::STOCK_UNITS)],
             'routes' => ['required', 'array', 'min:1'],
             'routes.*' => ['distinct', Rule::in(array_keys(Medication::ROUTES))],
             'controlled' => ['boolean'],
@@ -175,7 +178,7 @@ class MedicationController extends Controller
             }],
             ...($withActive ? ['active' => ['required', 'boolean']] : []),
         ], [], [
-            'active_ingredient' => 'princípio ativo', 'form' => 'forma', 'strength' => 'concentração', 'dose_unit' => 'unidade de dose',
+            'active_ingredient' => 'princípio ativo', 'form' => 'forma', 'strength' => 'concentração', 'dose_unit' => 'unidade de dose', 'stock_unit' => 'unidade de estoque',
             'routes' => 'vias', 'max_single_dose' => 'dose máxima por administração', 'max_daily_dose' => 'dose máxima por dia',
         ]);
 

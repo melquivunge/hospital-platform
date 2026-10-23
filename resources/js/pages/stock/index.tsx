@@ -1,0 +1,365 @@
+import { Form, Head, router } from '@inertiajs/react';
+import StockController from '@/actions/App/Http/Controllers/StockController';
+import InputError from '@/components/input-error';
+import { Page, PageHeader } from '@/components/page';
+import { selectClassName } from '@/components/role-fields';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { index } from '@/routes/stock';
+
+type Lot = {
+    id: number;
+    code: string;
+    expiresOn: string;
+    manufacturer: string | null;
+    balance: number;
+    state: 'valid' | 'expiring' | 'expired';
+};
+
+type StockMedication = {
+    id: number;
+    name: string;
+    stockUnit: string;
+    total: number;
+    minimum: number | null;
+    below: boolean;
+    lots: Lot[];
+};
+
+type CatalogOption = { id: number; name: string; stockUnit: string };
+
+const lotState = {
+    expired: {
+        label: 'Vencido',
+        className: 'bg-destructive text-white',
+    },
+    expiring: {
+        label: 'Vence em até 30 dias',
+        className:
+            'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100',
+    },
+    valid: { label: 'Válido', className: 'text-muted-foreground' },
+};
+
+/**
+ * The unit's pharmacy stock (step 4c.1a, ADR-0007): balance by medication and lot, from the movements. Lot
+ * entries and the minimum of each medication. No patient data.
+ */
+export default function StockIndex({
+    units,
+    unitId,
+    today,
+    medications,
+    catalog,
+}: {
+    units: { id: number; name: string }[];
+    unitId: number;
+    today: string;
+    medications: StockMedication[];
+    catalog: CatalogOption[];
+}) {
+    const unit = units.find((option) => option.id === unitId);
+
+    return (
+        <>
+            <Head title="Estoque" />
+            <Page>
+                <PageHeader
+                    eyebrow={unit?.name}
+                    title="Estoque da farmácia"
+                    description="Saldo por medicamento e lote. O saldo só muda por movimentos registrados; lote vencido não é dispensado."
+                />
+                {units.length > 1 && (
+                    <div className="mb-6 grid max-w-sm gap-2">
+                        <Label htmlFor="unit">Unidade</Label>
+                        <select
+                            id="unit"
+                            value={unitId}
+                            onChange={(event) =>
+                                router.get(
+                                    index({
+                                        query: { unit: event.target.value },
+                                    }).url,
+                                )
+                            }
+                            className={selectClassName}
+                        >
+                            {units.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                    {option.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                {medications.length === 0 ? (
+                    <p className="rounded-xl border bg-card px-5 py-12 text-center text-muted-foreground">
+                        Nenhum medicamento em estoque nesta unidade.
+                    </p>
+                ) : (
+                    <ul className="grid gap-3">
+                        {medications.map((medication) => (
+                            <li
+                                key={medication.id}
+                                className="rounded-xl border bg-card px-5 py-4"
+                            >
+                                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                    <h2 className="font-medium">
+                                        {medication.name}
+                                    </h2>
+                                    <p className="text-sm">
+                                        <span className="font-semibold">
+                                            {medication.total}
+                                        </span>{' '}
+                                        {medication.stockUnit}
+                                        {medication.minimum !== null &&
+                                            ` · mínimo ${medication.minimum}`}
+                                        {medication.below && (
+                                            <span className="ml-2 inline-block rounded-full bg-destructive px-2 py-0.5 text-xs font-medium whitespace-nowrap text-white">
+                                                Abaixo do mínimo
+                                            </span>
+                                        )}
+                                    </p>
+                                </div>
+                                {medication.lots.length > 0 && (
+                                    <ul className="mt-3 divide-y border-t text-sm">
+                                        {medication.lots.map((lot) => (
+                                            <li
+                                                key={lot.id}
+                                                className="flex flex-wrap items-center justify-between gap-2 py-2"
+                                            >
+                                                <span>
+                                                    Lote {lot.code} · validade{' '}
+                                                    {lot.expiresOn}
+                                                    {lot.manufacturer &&
+                                                        ` · ${lot.manufacturer}`}
+                                                </span>
+                                                <span className="flex items-center gap-2">
+                                                    <span
+                                                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${lotState[lot.state].className}`}
+                                                    >
+                                                        {
+                                                            lotState[lot.state]
+                                                                .label
+                                                        }
+                                                    </span>
+                                                    <span className="font-medium">
+                                                        {lot.balance}
+                                                    </span>
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+
+                <div className="mt-10 grid gap-8 lg:grid-cols-2">
+                    <EntryForm
+                        unitId={unitId}
+                        today={today}
+                        catalog={catalog}
+                    />
+                    <MinimumForm unitId={unitId} catalog={catalog} />
+                </div>
+            </Page>
+        </>
+    );
+}
+
+function MedicationSelect({
+    id,
+    catalog,
+}: {
+    id: string;
+    catalog: CatalogOption[];
+}) {
+    return (
+        <select
+            id={id}
+            name="medication_id"
+            required
+            defaultValue=""
+            className={selectClassName}
+        >
+            <option value="" disabled>
+                Selecione
+            </option>
+            {catalog.map((option) => (
+                <option key={option.id} value={option.id}>
+                    {option.name} — {option.stockUnit}
+                </option>
+            ))}
+        </select>
+    );
+}
+
+function EntryForm({
+    unitId,
+    today,
+    catalog,
+}: {
+    unitId: number;
+    today: string;
+    catalog: CatalogOption[];
+}) {
+    return (
+        <section className="grid content-start gap-3">
+            <h2 className="text-lg font-semibold">Entrada de lote</h2>
+            <Form
+                {...StockController.storeEntry.form()}
+                options={{ preserveScroll: true }}
+                errorBag="entry"
+                resetOnSuccess
+                className="grid gap-4 rounded-xl border bg-card p-5"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <input type="hidden" name="unit_id" value={unitId} />
+                        <div className="grid gap-2">
+                            <Label htmlFor="entry-medication">
+                                Medicamento
+                            </Label>
+                            <MedicationSelect
+                                id="entry-medication"
+                                catalog={catalog}
+                            />
+                            <InputError
+                                message={errors.medication_id ?? errors.unit_id}
+                            />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label htmlFor="entry-lot">Lote</Label>
+                                <Input
+                                    id="entry-lot"
+                                    name="lot_code"
+                                    required
+                                    maxLength={50}
+                                    autoCapitalize="characters"
+                                    className="h-11"
+                                />
+                                <InputError message={errors.lot_code} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="entry-expiry">Validade</Label>
+                                <Input
+                                    id="entry-expiry"
+                                    name="expires_on"
+                                    type="date"
+                                    min={today}
+                                    required
+                                    className="h-11"
+                                />
+                                <InputError message={errors.expires_on} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="entry-quantity">
+                                    Quantidade
+                                </Label>
+                                <Input
+                                    id="entry-quantity"
+                                    name="quantity"
+                                    type="number"
+                                    inputMode="numeric"
+                                    min={1}
+                                    max={100000}
+                                    required
+                                    className="h-11"
+                                />
+                                <InputError message={errors.quantity} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="entry-manufacturer">
+                                    Fabricante (opcional)
+                                </Label>
+                                <Input
+                                    id="entry-manufacturer"
+                                    name="manufacturer"
+                                    maxLength={100}
+                                    className="h-11"
+                                />
+                                <InputError message={errors.manufacturer} />
+                            </div>
+                        </div>
+                        <div>
+                            <Button
+                                type="submit"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Registrar entrada
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </Form>
+        </section>
+    );
+}
+
+function MinimumForm({
+    unitId,
+    catalog,
+}: {
+    unitId: number;
+    catalog: CatalogOption[];
+}) {
+    return (
+        <section className="grid content-start gap-3">
+            <h2 className="text-lg font-semibold">Estoque mínimo</h2>
+            <Form
+                {...StockController.updateMinimum.form()}
+                options={{ preserveScroll: true }}
+                errorBag="minimum"
+                resetOnSuccess
+                className="grid gap-4 rounded-xl border bg-card p-5"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <input type="hidden" name="unit_id" value={unitId} />
+                        <div className="grid gap-2">
+                            <Label htmlFor="minimum-medication">
+                                Medicamento
+                            </Label>
+                            <MedicationSelect
+                                id="minimum-medication"
+                                catalog={catalog}
+                            />
+                            <InputError message={errors.medication_id} />
+                        </div>
+                        <div className="grid max-w-xs gap-2">
+                            <Label htmlFor="minimum-value">
+                                Mínimo (vazio retira)
+                            </Label>
+                            <Input
+                                id="minimum-value"
+                                name="minimum"
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={100000}
+                                className="h-11"
+                            />
+                            <InputError message={errors.minimum} />
+                        </div>
+                        <div>
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Salvar mínimo
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </Form>
+        </section>
+    );
+}

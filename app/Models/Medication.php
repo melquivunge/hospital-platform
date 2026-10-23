@@ -23,8 +23,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $max_single_dose
  * @property string|null $max_daily_dose
  * @property bool $active
+ * @property string $stock_unit what the stock counts (step 4c.1a): the same unit the dispensing quantity is in
  */
-#[Fillable(['active_ingredient', 'form', 'strength', 'dose_unit', 'routes', 'controlled', 'high_alert', 'max_single_dose', 'max_daily_dose', 'active'])]
+#[Fillable(['active_ingredient', 'form', 'strength', 'dose_unit', 'routes', 'controlled', 'high_alert', 'max_single_dose', 'max_daily_dose', 'active', 'stock_unit'])]
 class Medication extends Model
 {
     use BelongsToTenant;
@@ -36,6 +37,8 @@ class Medication extends Model
         'sc' => 'Subcutânea', 'inhalation' => 'Inalatória', 'nasal' => 'Nasal', 'topical' => 'Tópica', 'ophthalmic' => 'Oftálmica',
         'otic' => 'Otológica', 'rectal' => 'Retal', 'vaginal' => 'Vaginal',
     ];
+
+    public const STOCK_UNITS = ['unidade', 'comprimido', 'cápsula', 'drágea', 'ampola', 'frasco', 'frasco-ampola', 'bolsa', 'seringa', 'envelope', 'sachê', 'tubo', 'bisnaga', 'adesivo', 'supositório', 'óvulo'];
 
     public const SEVERITIES = ['mild' => 'Leve', 'moderate' => 'Moderada', 'severe' => 'Grave', 'contraindicated' => 'Contraindicada'];
 

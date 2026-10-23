@@ -33,6 +33,7 @@ use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SectorController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\ShiftRequestController;
+use App\Http\Controllers\StockController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\TriageLevelController;
 use App\Http\Controllers\UnitController;
@@ -111,6 +112,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('pharmacy/items/{item}/review', [PharmacyController::class, 'review'])->middleware('throttle:120,1')->name('pharmacy.review');
     Route::post('pharmacy/items/{item}/dispense', [PharmacyController::class, 'dispense'])->middleware('throttle:120,1')->name('pharmacy.dispense');
     Route::post('pharmacy/dispensings/{dispensing}/return', [PharmacyController::class, 'returnItem'])->middleware('throttle:120,1')->name('pharmacy.return');
+    // Step 4c.1a (ADR-0007): the unit's pharmacy stock.
+    Route::get('stock', [StockController::class, 'index'])->middleware('throttle:120,1')->name('stock.index');
+    Route::post('stock/entries', [StockController::class, 'storeEntry'])->middleware('throttle:60,1')->name('stock.entries.store');
+    Route::put('stock/minimums', [StockController::class, 'updateMinimum'])->middleware('throttle:60,1')->name('stock.minimums.update');
     Route::get('emergency', [EmergencyController::class, 'index'])->name('emergency.index');
     Route::post('units/{unit}/emergency-arrivals', [EmergencyController::class, 'arrive'])->middleware('throttle:60,1')->name('emergency.arrive');
     Route::post('emergency-episodes/{episode}/triage', [EmergencyController::class, 'triage'])->middleware('throttle:60,1')->name('emergency.triage');

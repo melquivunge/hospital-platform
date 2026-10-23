@@ -1,7 +1,7 @@
 # ADR-0007: estoque da farmácia como livro de movimentos
 
 Data: 22/10/2026
-Estado: proposta (aguardando aprovação do usuário)
+Estado: aceita pelo usuário (22/10/2026)
 
 ## Contexto
 

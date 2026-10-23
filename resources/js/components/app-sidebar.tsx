@@ -3,6 +3,7 @@ import {
     ArrowLeftRight,
     BedDouble,
     BedSingle,
+    Boxes,
     BriefcaseMedical,
     CalendarCheck,
     CalendarPlus,
@@ -49,6 +50,7 @@ import { index as appointments, queue } from '@/routes/appointments';
 import { index as admissions } from '@/routes/admissions';
 import { index as beds } from '@/routes/beds';
 import { index as pharmacy } from '@/routes/pharmacy';
+import { index as stock } from '@/routes/stock';
 import { index as census } from '@/routes/census';
 import { index as emergency } from '@/routes/emergency';
 import { index as triageLevels } from '@/routes/triage-levels';
@@ -209,7 +211,10 @@ export function AppSidebar() {
             ? [{ title: 'Censo', href: census(), icon: ChartPie }]
             : []),
         ...(canUsePharmacy
-            ? [{ title: 'Farmácia', href: pharmacy(), icon: FlaskConical }]
+            ? [
+                  { title: 'Farmácia', href: pharmacy(), icon: FlaskConical },
+                  { title: 'Estoque', href: stock(), icon: Boxes },
+              ]
             : []),
         ...(canViewClinicalAccess
             ? [
