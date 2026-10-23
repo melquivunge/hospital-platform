@@ -31,6 +31,19 @@ type StockMedication = {
 
 type CatalogOption = { id: number; name: string; stockUnit: string };
 
+type Discard = {
+    id: number;
+    at: string;
+    name: string;
+    lot: string;
+    quantity: number;
+    reason: string;
+};
+
+const discardReason: Record<string, string> = {
+    expired: 'Vencido (voltou na devolução de lote vencido)',
+};
+
 const lotState = {
     expired: {
         label: 'Vencido',
@@ -53,12 +66,14 @@ export default function StockIndex({
     unitId,
     today,
     medications,
+    discards,
     catalog,
 }: {
     units: { id: number; name: string }[];
     unitId: number;
     today: string;
     medications: StockMedication[];
+    discards: Discard[];
     catalog: CatalogOption[];
 }) {
     const unit = units.find((option) => option.id === unitId);
@@ -166,6 +181,34 @@ export default function StockIndex({
                             </li>
                         ))}
                     </ul>
+                )}
+
+                {discards.length > 0 && (
+                    <section className="mt-10 grid gap-3">
+                        <h2 className="text-lg font-semibold">
+                            Descartes dos últimos 30 dias
+                        </h2>
+                        <ul className="divide-y rounded-xl border bg-card px-5 text-sm">
+                            {discards.map((discard) => (
+                                <li
+                                    key={discard.id}
+                                    className="flex flex-wrap items-center justify-between gap-2 py-3"
+                                >
+                                    <span>
+                                        {discard.at} · {discard.name} · lote{' '}
+                                        {discard.lot}
+                                        <span className="block text-muted-foreground">
+                                            {discardReason[discard.reason] ??
+                                                discard.reason}
+                                        </span>
+                                    </span>
+                                    <span className="font-medium">
+                                        −{discard.quantity}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
                 )}
 
                 <div className="mt-10 grid gap-8 lg:grid-cols-2">
