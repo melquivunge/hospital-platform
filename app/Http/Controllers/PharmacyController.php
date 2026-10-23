@@ -230,7 +230,7 @@ class PharmacyController extends Controller
             'reason' => ['required', 'string', 'max:255'],
         ], [], ['quantity' => 'quantidade', 'reason' => 'motivo']);
 
-        DB::transaction(function () use ($dispensing, $request, $data, $prescription, $encounter, $bag) {
+        $discarded = DB::transaction(function () use ($dispensing, $request, $data, $prescription, $encounter, $bag) {
             $locked = PrescriptionDispensing::query()->whereKey($dispensing->id)->lockForUpdate()->firstOrFail();
             $refusal = match (true) {
                 $locked->returned_at !== null => 'A devolução deste item já foi registrada.',
@@ -246,6 +246,8 @@ class PharmacyController extends Controller
             $lots = StockLot::query()->whereKey($given->pluck('stock_lot_id')->all())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $remaining = (int) $data['quantity'];
             $back = [];
+            $discarded = [];
+            $today = now(Unit::query()->whereKey($prescription->unit_id)->value('timezone') ?? 'UTC')->toDateString();
             foreach ($given->sortByDesc(fn (StockMovement $movement) => $lots[$movement->stock_lot_id]->expires_on->toDateString().sprintf('%020d', $movement->stock_lot_id)) as $movement) {
                 $quantity = min(-$movement->quantity, $remaining);
                 if ($quantity > 0) {
@@ -255,6 +257,14 @@ class PharmacyController extends Controller
                     ]);
                     $back[$movement->stock_lot_id] = $quantity;
                     $remaining -= $quantity;
+                    // What came back to a lot that expired in the meantime never waits on the shelf: discarded at once.
+                    if ($lots[$movement->stock_lot_id]->expires_on->toDateString() < $today) {
+                        StockMovement::query()->create([
+                            'stock_lot_id' => $movement->stock_lot_id, 'type' => 'discard', 'quantity' => -$quantity, 'reason' => 'expired',
+                            'user_id' => $request->user()->id, 'prescription_dispensing_id' => $locked->id, 'created_at' => now(),
+                        ]);
+                        $discarded[$movement->stock_lot_id] = $quantity;
+                    }
                 }
             }
             $locked->forceFill([
@@ -262,11 +272,15 @@ class PharmacyController extends Controller
             ])->save();
             // The reason may be clinical: only the quantities go to the audit.
             AuditEvent::record('prescription_item.returned', $locked->tenant_id, $locked, [
-                'quantity' => $locked->returned_quantity, 'prescription_id' => $prescription->id, 'stock_lots' => $back,
+                'quantity' => $locked->returned_quantity, 'prescription_id' => $prescription->id, 'stock_lots' => $back, ...($discarded === [] ? [] : ['discarded' => $discarded]),
                 ...($encounter instanceof Admission ? ['admission_id' => $encounter->id] : ['visit_id' => $encounter->id]),
             ]);
+
+            return array_sum($discarded);
         });
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Devolução registrada.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => $discarded > 0
+            ? "Devolução registrada. {$discarded} voltaram de lote vencido e foram baixadas como descarte: separe-as para descartar."
+            : 'Devolução registrada.']);
 
         return back();
     }

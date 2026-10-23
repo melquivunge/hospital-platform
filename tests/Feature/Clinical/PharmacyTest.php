@@ -220,7 +220,8 @@ class PharmacyTest extends ClinicalTestCase
         $medication = Medication::withoutTenantScope()->findOrFail($dipyrone->medication_id);
         $later = DB::table('stock_lots')->sole()->id;
         $soon = $this->stockLot($this->unit->id, $medication, 3, 'CEDO', now()->addMonth()->toDateString())->id;
-        $expired = $this->stockLot($this->unit->id, $medication, 5, 'VENCIDO', now('America/Sao_Paulo')->subDay()->toDateString())->id;
+        // Expired by the application's clock and by the database's (the tests travel; the database does not).
+        $expired = $this->stockLot($this->unit->id, $medication, 5, 'VENCIDO', '2026-01-01')->id;
         $elsewhere = $this->stockLot($this->other->id, $medication, 50, 'OUTRA')->id;
         $this->actingAs($this->pharmacist->user);
         foreach ([$dipyrone, $ceftriaxone] as $item) {
@@ -266,6 +267,16 @@ class PharmacyTest extends ClinicalTestCase
         // The database keeps a return to what its dispensing took from each lot.
         $ceftriaxoneDispensing = PrescriptionDispensing::withoutTenantScope()->where('prescription_item_id', $ceftriaxone->id)->sole()->id;
         app(CurrentTenant::class)->set($this->unit->tenant);
+        // ...and a dispensing to a valid lot of the prescription's unit and of the item's medication.
+        $dipyroneDispensing = PrescriptionDispensing::withoutTenantScope()->where('prescription_item_id', $dipyrone->id)->sole()->id;
+        foreach ([$elsewhere, $expired, $c1] as $lot) {
+            try {
+                DB::transaction(fn () => DB::table('stock_movements')->insert(['tenant_id' => $this->unit->tenant_id, 'stock_lot_id' => $lot, 'type' => 'dispensing', 'quantity' => -1, 'user_id' => $this->pharmacist->user_id, 'prescription_dispensing_id' => $dipyroneDispensing, 'created_at' => now()]));
+                $this->fail('A dispensing took from a lot it may not.');
+            } catch (QueryException $exception) {
+                $this->assertSame('P0001', $exception->getCode());
+            }
+        }
         foreach ([[$c1, 3], [$later, 1]] as [$lot, $quantity]) {
             try {
                 DB::transaction(fn () => DB::table('stock_movements')->insert(['tenant_id' => $this->unit->tenant_id, 'stock_lot_id' => $lot, 'type' => 'return', 'quantity' => $quantity, 'user_id' => $this->pharmacist->user_id, 'prescription_dispensing_id' => $ceftriaxoneDispensing, 'created_at' => now()]));
@@ -280,6 +291,23 @@ class PharmacyTest extends ClinicalTestCase
         foreach (DB::table('stock_lots')->get() as $lot) {
             $this->assertSame($lot->balance, (int) DB::table('stock_movements')->where('stock_lot_id', $lot->id)->sum('quantity'));
         }
+    }
+
+    public function test_a_return_into_a_lot_expired_in_the_meantime_is_discarded_at_once(): void
+    {
+        [$dipyrone] = PrescriptionItem::withoutTenantScope()->orderBy('id')->get()->all();
+        $today = $this->stockLot($this->unit->id, Medication::withoutTenantScope()->findOrFail($dipyrone->medication_id), 3, 'HOJE', now('America/Sao_Paulo')->toDateString())->id;
+        $this->actingAs($this->pharmacist->user)->post(route('pharmacy.review', $dipyrone), ['decision' => 'approved'])->assertSessionHasNoErrors();
+        $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2, 'lots' => [['id' => $today, 'quantity' => 2]]])->assertSessionHasNoErrors();
+
+        // The next day the lot is expired: what comes back goes in and out as a discard, and the pharmacy is told.
+        $this->travel(1)->days();
+        $this->post(route('pharmacy.return', PrescriptionDispensing::withoutTenantScope()->sole()), ['quantity' => 2, 'reason' => 'Sobra.'])
+            ->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Devolução registrada. 2 voltaram de lote vencido e foram baixadas como descarte: separe-as para descartar.');
+        $this->assertSame(1, DB::table('stock_lots')->where('id', $today)->value('balance'));
+        $this->assertSame(['discard' => -2, 'dispensing' => -2, 'entry' => 3, 'return' => 2], DB::table('stock_movements')->where('stock_lot_id', $today)->orderBy('type')->pluck('quantity', 'type')->map(fn ($quantity) => (int) $quantity)->all());
+        $this->assertSame('expired', DB::table('stock_movements')->where('type', 'discard')->value('reason'));
+        $this->assertEquals([$today => 2], AuditEvent::where('action', 'prescription_item.returned')->sole()->context['discarded']);
     }
 
     public function test_a_dispensing_from_before_the_stock_returns_without_a_movement(): void
