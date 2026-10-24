@@ -13,6 +13,7 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Models\Visit;
 use App\Policies\UnitPolicy;
+use App\Tenancy\CurrentTenant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,9 +29,6 @@ use Inertia\Response;
  */
 class ExamQueueController extends Controller
 {
-    // ponytail: fixed targets for the waiting time highlight; per network if the clients ask (to confirm, 24/10/2026).
-    public const TARGET_MINUTES = ['urgent' => 60, 'routine' => 24 * 60];
-
     public function index(Request $request): Response
     {
         $scopes = ClinicalAccess::examScopes(UnitPolicy::currentMembership($request->user()));
@@ -45,13 +43,16 @@ class ExamQueueController extends Controller
             ->orderByRaw("priority = 'urgent' DESC")->orderBy('created_at')->get();
         $places = self::places($orders);
         $patients = Patient::query()->whereKey($orders->pluck('patient_id')->unique()->all())->get(['id', 'name', 'social_name'])->keyBy('id');
+        // The network admin's targets, on the exam catalog page.
+        $tenant = app(CurrentTenant::class)->require();
+        $targets = ['urgent' => $tenant->exam_target_urgent_minutes, 'routine' => $tenant->exam_target_routine_minutes];
 
         return Inertia::render('exam-queue/index', [
             'units' => $units->map->only('id', 'name')->values(),
             'unitId' => $unit->id,
             'types' => array_intersect_key(Exam::TYPES, array_flip($types)),
             'priorities' => ExamOrder::PRIORITIES,
-            'orders' => $orders->map(function (ExamOrder $order) use ($patients, $places) {
+            'orders' => $orders->map(function (ExamOrder $order) use ($patients, $places, $targets) {
                 $waiting = (int) $order->created_at->diffInMinutes(now());
                 $pending = $order->items->whereNull('collected_at')->isNotEmpty();
 
@@ -61,7 +62,7 @@ class ExamQueueController extends Controller
                     'place' => $places[$order->id],
                     'priority' => $order->priority,
                     'waitingMinutes' => $waiting,
-                    'late' => $pending && $waiting > self::TARGET_MINUTES[$order->priority],
+                    'late' => $pending && $waiting > $targets[$order->priority],
                     'items' => $order->items->map(fn (ExamOrderItem $item) => ['id' => $item->id, 'name' => $item->exam_name, 'type' => $item->exam_type, 'collected' => $item->collected_at !== null])->values(),
                 ];
             })->values(),
@@ -101,6 +102,8 @@ class ExamQueueController extends Controller
             'patient' => VisitController::patientHeader($patient),
             'allergies' => PatientAllergyController::listing($ids, $timezone),
             'record' => VisitController::signedRecord($ids, $timezone),
+            // ADR-0008: the prescriptions of the order's encounter, read-only for the exam team.
+            'prescriptions' => self::readOnlyPrescriptions($request->user(), $order, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
         ]);
     }
@@ -124,6 +127,20 @@ class ExamQueueController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => $item->exam_type === 'imaging' ? 'Realização registrada.' : 'Coleta registrada.']);
 
         return back();
+    }
+
+    /**
+     * The prescriptions of the order's encounter with every action off, even for a user who also prescribes.
+     *
+     * @return array<string, mixed>
+     */
+    private static function readOnlyPrescriptions(User $user, ExamOrder $order, string $timezone): array
+    {
+        $panel = PrescriptionController::panel($user, $order->admission_id === null ? null : Admission::query()->findOrFail($order->admission_id),
+            $order->visit_id === null ? null : Visit::query()->findOrFail($order->visit_id), $timezone);
+        $off = fn (?array $prescription) => $prescription === null ? null : [...$prescription, 'canCertify' => false];
+
+        return [...$panel, 'active' => $off($panel['active']), 'previous' => array_map($off, $panel['previous']), 'draftId' => null, 'canPrescribe' => false, 'canSuspend' => false, 'administration' => null];
     }
 
     /**

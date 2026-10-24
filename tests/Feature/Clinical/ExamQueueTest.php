@@ -8,7 +8,9 @@ use App\Models\EmergencyEpisode;
 use App\Models\Exam;
 use App\Models\ExamOrder;
 use App\Models\ExamOrderItem;
+use App\Models\Medication;
 use App\Models\Membership;
+use App\Models\Prescription;
 use App\Models\Visit;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
@@ -84,7 +86,9 @@ class ExamQueueTest extends ClinicalTestCase
     public function test_the_team_reads_the_record_and_collects_each_item_once(): void
     {
         $this->actingAs($this->lab->user)->get(route('exam-queue.show', $this->order))->assertInertia(fn (Assert $page) => $page->component('exam-queue/show')
-            ->has('items', 1)->where('items.0.name', 'Hemograma')->has('documents', 1)->where('patient.name', 'Joana Prado'));
+            ->has('items', 1)->where('items.0.name', 'Hemograma')->has('documents', 1)->where('patient.name', 'Joana Prado')
+            // The encounter's prescriptions, read-only.
+            ->has('prescriptions.previous')->where('prescriptions.canPrescribe', false)->where('prescriptions.canSuspend', false)->where('prescriptions.administration', null));
         $this->assertSame(1, DB::table('clinical_reads')->where('user_id', $this->lab->user_id)->where('reason', 'exam')->where('exam_order_id', $this->order->id)->count());
         $this->get(route('clinical-documents.download', ClinicalDocument::withoutGlobalScopes()->sole()))->assertOk();
 
@@ -145,5 +149,46 @@ class ExamQueueTest extends ClinicalTestCase
         $this->get(route('exam-queue.show', $imagingOnly))->assertForbidden();
         $this->post(route('exam-queue.collect', $item))->assertForbidden();
         $this->assertNull($item->fresh()->collected_at);
+    }
+
+    public function test_the_network_admin_sets_the_target_times_of_the_queues(): void
+    {
+        $admin = Membership::factory()->for($this->unit->tenant)->create();
+        $admin->grant(Role::NetworkAdmin);
+        $this->actingAs($admin->user)->get(route('exams.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('targets', ['exam_target_urgent_minutes' => 60, 'exam_target_routine_minutes' => 1440]));
+        $this->put(route('exams.targets'), ['exam_target_urgent_minutes' => 0, 'exam_target_routine_minutes' => 10081])
+            ->assertSessionHasErrorsIn('targets', ['exam_target_urgent_minutes', 'exam_target_routine_minutes']);
+        $this->actingAs($this->lab->user)->put(route('exams.targets'), ['exam_target_urgent_minutes' => 30, 'exam_target_routine_minutes' => 30])->assertForbidden();
+
+        $this->travel(31)->minutes();
+        $this->get(route('exam-queue.index'))->assertInertia(fn (Assert $page) => $page->where('orders.0.late', false));
+        // The routine order waits 31 minutes: late past a 30-minute routine target, not under the urgent one.
+        $this->actingAs($admin->user)->put(route('exams.targets'), ['exam_target_urgent_minutes' => 20, 'exam_target_routine_minutes' => 40])
+            ->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Tempos-alvo atualizados.');
+        $this->assertEquals(['fields' => ['exam_target_urgent_minutes', 'exam_target_routine_minutes']], AuditEvent::where('action', 'exam_targets.updated')->sole()->context);
+        $this->actingAs($this->lab->user)->get(route('exam-queue.index'))->assertInertia(fn (Assert $page) => $page->where('orders.0.late', false));
+        $this->actingAs($admin->user)->put(route('exams.targets'), ['exam_target_urgent_minutes' => 20, 'exam_target_routine_minutes' => 30])->assertSessionHasNoErrors();
+        $this->put(route('exams.targets'), ['exam_target_urgent_minutes' => 20, 'exam_target_routine_minutes' => 30])->assertSessionHasNoErrors();
+        $this->assertSame(2, AuditEvent::where('action', 'exam_targets.updated')->count());
+        $this->actingAs($this->lab->user)->get(route('exam-queue.index'))->assertInertia(fn (Assert $page) => $page->where('orders.0.late', true));
+    }
+
+    public function test_the_execution_shows_the_signed_prescriptions_of_the_encounter_read_only(): void
+    {
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->doctor->forceFill(['council' => 'CRM', 'council_number' => '123456', 'council_uf' => 'SP'])->save();
+        $medication = Medication::query()->create(['active_ingredient' => 'Dipirona', 'form' => 'Comprimido', 'strength' => '500 mg', 'dose_unit' => 'mg', 'routes' => ['oral'], 'controlled' => false, 'high_alert' => false]);
+        app(CurrentTenant::class)->set(null);
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.prescriptions.start', $this->visit))->assertRedirect();
+        $prescription = Prescription::withoutTenantScope()->where('status', 'draft')->sole();
+        $this->post(route('prescriptions.items.store', $prescription), ['medication_id' => $medication->id, 'dose' => '500', 'route' => 'oral', 'schedule' => 'interval', 'frequency_hours' => 6, 'prn' => '0'])->assertSessionHasNoErrors();
+        $this->post(route('prescriptions.sign', $prescription), ['password' => 'password'])->assertSessionHasNoErrors();
+        // A new draft of the doctor stays out of the exam team's view.
+        $this->post(route('visits.prescriptions.start', $this->visit))->assertRedirect();
+
+        $this->actingAs($this->lab->user)->get(route('exam-queue.show', $this->order))->assertInertia(fn (Assert $page) => $page
+            ->where('prescriptions.active.id', $prescription->id)->where('prescriptions.active.items.0.medication', fn (string $name) => str_contains($name, 'Dipirona'))
+            ->where('prescriptions.active.canCertify', false)->where('prescriptions.draftId', null)->where('prescriptions.canPrescribe', false));
     }
 }

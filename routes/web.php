@@ -216,6 +216,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('exams', [ExamController::class, 'index'])->name('exams.index');
     Route::post('exams', [ExamController::class, 'store'])->middleware('throttle:60,1')->name('exams.store');
     Route::put('exams/{exam}', [ExamController::class, 'update'])->middleware('throttle:60,1')->name('exams.update');
+    Route::put('exam-targets', [ExamController::class, 'targets'])->middleware('throttle:60,1')->name('exams.targets');
     Route::get('medications', [MedicationController::class, 'index'])->name('medications.index');
     Route::post('medications', [MedicationController::class, 'store'])->middleware('throttle:60,1')->name('medications.store');
     Route::put('medications/{medication}', [MedicationController::class, 'update'])->middleware('throttle:60,1')->name('medications.update');
