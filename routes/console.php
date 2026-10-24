@@ -11,3 +11,5 @@ Artisan::command('inspire', function () {
 // Step 4c.4a (ADR-0007): hourly, so each unit hears once per day from 7 h in its time zone (idempotent per day);
 // a run killed midway frees its lock after 10 minutes instead of a day.
 Schedule::command('stock:alerts')->hourly()->withoutOverlapping(10);
+// Step 5.3b (ADR-0008): orders without collection for 7 days, to the unit managers.
+Schedule::command('exams:overdue')->hourly()->withoutOverlapping(10);

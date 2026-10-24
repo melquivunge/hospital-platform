@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\ExamOrder;
 use App\Tenancy\Role;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -35,6 +36,7 @@ class DeliverNotifications implements ShouldQueue
         'transfer.requested', 'transfer.accepted', 'transfer.refused', 'transfer.cancelled', 'transfer.departed', 'transfer.completed',
         'prescription_item.reviewed',
         'stock.daily_alert', 'stock.inventory_submitted', 'stock.discard',
+        'exam.overdue_orders',
     ];
 
     /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
@@ -128,6 +130,14 @@ class DeliverNotifications implements ShouldQueue
             ]);
 
             return [[[...$this->usersWithRole($tenant, Role::Pharmacy, $unit), ...$this->usersWithRole($tenant, Role::UnitManager, $unit)], 'Estoque: '.implode(', ', $parts), "/stock?unit={$unit}"]];
+        }
+        // Step 5.3b (ADR-0008): the unit's managers (without one, the network admins) hear of forgotten orders, counts only.
+        if ($event->action === 'exam.overdue_orders') {
+            $unit = (int) ($context['unit_id'] ?? 0);
+            $managers = $this->usersWithRole($tenant, Role::UnitManager, $unit);
+            $title = "Exames: {$context['orders']} pedido(s) sem coleta há mais de ".ExamOrder::OVERDUE_DAYS.' dias';
+
+            return [[$managers !== [] ? $managers : $this->usersWithRole($tenant, Role::NetworkAdmin), $title, "/exam-overdue?unit={$unit}"]];
         }
         // Decision of 23/10/2026 (option A of the 4c.5 security review): every discard of a controlled medication
         // reaches the unit's managers (without one, the network admins), with the medication, quantity and reason.

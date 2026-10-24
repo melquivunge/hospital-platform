@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -36,7 +37,21 @@ class ExamOrder extends Model
 
     public const PRIORITIES = ['routine' => 'Rotina', 'urgent' => 'Urgente'];
 
+    /** Step 5.3b (ADR-0008): an order still open with an item not collected after this many days reaches the manager. */
+    public const OVERDUE_DAYS = 7;
+
     public $timestamps = false;
+
+    /**
+     * Open orders with an item still not collected or performed, ordered more than OVERDUE_DAYS ago.
+     *
+     * @return Builder<ExamOrder>
+     */
+    public static function overdue(): Builder
+    {
+        return self::query()->where('status', 'requested')->where('created_at', '<=', now()->subDays(self::OVERDUE_DAYS))
+            ->whereHas('items', fn (Builder $items) => $items->whereNull('collected_at'));
+    }
 
     /**
      * @return HasMany<ExamOrderItem, $this>

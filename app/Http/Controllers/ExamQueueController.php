@@ -173,7 +173,7 @@ class ExamQueueController extends Controller
      * @param  iterable<ExamOrder>  $orders
      * @return array<int, string>
      */
-    private static function places(iterable $orders): array
+    public static function places(iterable $orders): array
     {
         $orders = collect($orders);
         $admissions = Admission::query()->whereKey($orders->pluck('admission_id')->filter()->all())->with(['bed:id,code,room,sector_id', 'bed.sector:id,name'])->get()->keyBy('id');
