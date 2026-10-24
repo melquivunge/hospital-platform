@@ -9,3 +9,4 @@
 | [0005](0005-pharmacy-prescription-access.md) | Acesso da farmácia e da enfermagem à prescrição | Aceita | 19/10/2026 |
 | [0006](0006-icp-brasil-cloud-signature.md) | Assinatura ICP-Brasil em nuvem para a prescrição | Aceita | 19/10/2026 |
 | [0007](0007-pharmacy-stock-ledger.md) | Estoque da farmácia como livro de movimentos | Aceita | 22/10/2026 |
+| [0008](0008-exam-team-record-access.md) | Acesso das equipes de laboratório e de imagem ao prontuário durante a execução | Proposta | 23/10/2026 |

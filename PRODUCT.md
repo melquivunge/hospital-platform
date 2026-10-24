@@ -626,7 +626,7 @@ Propostas aceitas nas questões 1, 2, 3, 5, 6, 7, 8 e 9. Na questão 4, o usuár
 
 ## Contrato da entrega 5 — exames e cirurgia
 
-Método: ECC Product Capability. Data: 23/10/2026. Estado: **proposto; aguardando as decisões do usuário nas questões abaixo. Nenhuma implementação autorizada.** Origem: roteiro ("Diagnóstico e cirurgia: solicitações e agendas → resultados e procedimentos", mapa de capacidades) e as entregas 3, 4, 4b e 4c, que deixaram exames, cirurgia e materiais para esta entrega.
+Método: ECC Product Capability. Data: 23/10/2026. Estado: **decisões do usuário registradas (23/10/2026); [ADR-0008](docs/adr/0008-exam-team-record-access.md) e plano `plans/web-v6-exames.md` propostos, aguardando aprovação. Nenhuma implementação autorizada.** Origem: roteiro ("Diagnóstico e cirurgia: solicitações e agendas → resultados e procedimentos", mapa de capacidades) e as entregas 3, 4, 4b e 4c, que deixaram exames, cirurgia e materiais para esta entrega.
 
 ### Capacidade
 
@@ -673,7 +673,16 @@ O médico que atende o paciente (ambulatório, urgência ou internação) pede e
 - Portal do paciente com resultados (entrega 7).
 - Hemoterapia e banco de sangue.
 
-### Questões abertas (para decisão do usuário)
+### Decisões do usuário (23/10/2026)
+
+Propostas aceitas nas questões 1, 2, 4, 5, 7, 8, 9 e 10. Duas escolhas diferentes da proposta:
+
+- **Questão 3:** **dois papéis separados, Laboratório e Imagem**, por unidade, cada um com a sua fila.
+- **Questão 6:** **quem executa lê o prontuário do paciente durante a execução, com trilha de leitura** (em vez de só o pedido). Detalhado na ADR-0008: vale enquanto o paciente tem um pedido em aberto daquele tipo na unidade; cada abertura fica na trilha. O centro cirúrgico segue a mesma regra na entrega 5b, em ADR própria.
+
+Consequência para o recorte (questão 1): **entrega 5 = exames** (laboratório e imagem); **entrega 5b = cirurgia** (agenda de salas, checklist, termo obrigatório, descrição e materiais no livro de estoque).
+
+### Questões (respondidas)
 
 1. **Recorte.** Proposta: dividir como nas entregas 4 e 4b: **entrega 5 = exames** (laboratório e imagem) e **entrega 5b = cirurgia** (agenda, checklist, descrição e materiais). Alternativa: tudo numa entrega só (maior, mais demorada até o primeiro uso).
 2. **Quem pede.** Proposta: só profissional com função que atende e habilitação na unidade, dentro do atendimento ou da internação (como a prescrição). Alternativa: também enfermagem, por protocolo.
@@ -688,7 +697,7 @@ O médico que atende o paciente (ambulatório, urgência ou internação) pede e
 
 ### Encaminhamento ECC
 
-- **Esclarecimento de produto:** pendente (questões acima).
-- **Arquitetura:** depois das decisões, uma ADR nova para o acesso de quem executa (questão 6) e, se a cirurgia entrar, para materiais no livro de estoque (questão 8).
-- **Plano em etapas:** depois da ADR, `plans/web-v6-exames.md` (e `web-v7-cirurgia.md`, se dividido).
+- **Esclarecimento de produto:** concluído (decisões acima).
+- **Arquitetura:** [ADR-0008](docs/adr/0008-exam-team-record-access.md), proposta (acesso das equipes de laboratório e imagem). Materiais no livro de estoque e acesso do centro cirúrgico ficam em ADR da entrega 5b.
+- **Plano em etapas:** `plans/web-v6-exames.md` (entrega 5), proposto; `web-v7-cirurgia.md` (entrega 5b) depois.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
