@@ -50,6 +50,10 @@ const columnHelp: Record<string, string> = {
         'material (laboratório) ou região (imagem), por exemplo Sangue (obrigatório)',
     preparation: 'preparo do paciente (opcional)',
     code: 'código TUSS ou SIGTAP (opcional)',
+    procedure_name:
+        'nome do procedimento, por exemplo Colecistectomia videolaparoscópica (obrigatório)',
+    duration_minutes: 'duração prevista em minutos, de 5 a 1440 (obrigatório)',
+    size: 'porte: pequeno, médio ou grande (obrigatório)',
     analyte: 'nome do analito, por exemplo Hemoglobina (obrigatório)',
     analyte_unit: 'unidade do analito, por exemplo g/dL (opcional)',
     reference_min: 'mínimo da faixa de referência (opcional)',
@@ -66,7 +70,8 @@ type ImportType =
     | 'medication_interactions'
     | 'stock'
     | 'exams'
-    | 'exam_analytes';
+    | 'exam_analytes'
+    | 'surgical_procedures';
 
 const typeLabels: Record<ImportType, string> = {
     professionals: 'Profissionais',
@@ -77,6 +82,7 @@ const typeLabels: Record<ImportType, string> = {
     stock: 'Saldo inicial do estoque da farmácia',
     exams: 'Catálogo de exames',
     exam_analytes: 'Analitos dos exames de laboratório (depois do catálogo)',
+    surgical_procedures: 'Procedimentos cirúrgicos',
 };
 
 export default function ImportCreate({
@@ -115,7 +121,7 @@ export default function ImportCreate({
                                 value={option}
                                 checked={type === option}
                                 onChange={() => setType(option)}
-                                className="size-4 accent-primary"
+                                className="size-4 shrink-0 accent-primary"
                             />
                             {typeLabels[option]}
                         </label>

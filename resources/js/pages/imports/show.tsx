@@ -42,6 +42,7 @@ const createdLabels = {
     stock: 'entradas de lote no estoque',
     exams: 'exames no catálogo',
     exam_analytes: 'analitos nos exames',
+    surgical_procedures: 'procedimentos cirúrgicos',
 };
 
 export default function ImportShow({

@@ -21,6 +21,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - **Saída:** unicidade e validação; papel com escopo de unidade.
 - Divisão (24/10/2026): 5b.1a procedimentos, salas e papel; 5b.1b importação CSV dos procedimentos.
 - **Feito na 5b.1a:** tela "Procedimentos e salas" do administrador da rede: procedimentos (nome único na rede, duração prevista de 5 a 1440 minutos, porte pequeno, médio ou grande, código TUSS/SIGTAP opcional) e salas por unidade (nome único na unidade; a sala nunca muda de unidade). Desativados, nunca apagados; o banco confere os valores. Papel Centro cirúrgico por unidade, concedido na tela de pessoas. Auditoria só com ids e campos alterados.
+- **Feito na 5b.1b:** importação CSV dos procedimentos pelo mecanismo existente (`procedure_name;duration_minutes;size;code`, porte em português ou inglês), só pelo administrador da rede: prévia sem gravar, confirmação, aplicação retomável; procedimento existente nunca muda (idêntico ou conflito). As salas continuam na tela, por serem poucas.
 
 ### 5b.2 Pedido de cirurgia
 - O profissional que atende pede no atendimento, na urgência ou na internação: procedimento, lateralidade quando houver, indicação, caráter (eletiva ou urgência), data desejada e assinatura com senha.
