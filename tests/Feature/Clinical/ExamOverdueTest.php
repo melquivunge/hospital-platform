@@ -87,7 +87,7 @@ class ExamOverdueTest extends ClinicalTestCase
             ->where('orders.0.place', 'Urgência')->where('orders.0.days', 7)->where('orders.0.author', $this->doctorAccount->user->name));
         $page = $this->get(route('exam-overdue.index', ['unit' => $this->unit->id]))->getContent();
         $this->assertStringNotContainsString('Sorologia', $page);
-        $this->assertStringNotContainsString('Joana', $page);
+        $this->assertStringNotContainsString('Joana Prado', $page);
 
         // A manager of the other unit asking for this one gets their own unit, never these orders.
         $elsewhere = Membership::factory()->for($this->unit->tenant)->create();

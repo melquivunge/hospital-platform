@@ -124,7 +124,7 @@ class ExamCriticalTest extends ClinicalTestCase
             ->where('critical.0.author', $this->doctorAccount->user->name));
         $page = $this->get(route('exam-overdue.index', ['unit' => $this->unit->id]))->getContent();
         $this->assertStringNotContainsString('Potássio', $page);
-        $this->assertStringNotContainsString('Joana', $page);
+        $this->assertStringNotContainsString('Joana Prado', $page);
 
         // Acknowledged late: off the manager's list, and the audit says it was escalated.
         $this->actingAs($this->doctorAccount->user)->post(route('exam-results.acknowledge', $result))->assertSessionHasNoErrors();

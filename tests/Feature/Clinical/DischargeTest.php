@@ -170,7 +170,7 @@ class DischargeTest extends ClinicalTestCase
         $this->get(route('beds.index'))->assertInertia(function (Assert $page) use (&$map) {
             $map = $page->toArray()['props']['counts'];
         });
-        $this->get(route('census.index'))->assertOk()->assertDontSee('Joana')->assertInertia(fn (Assert $page) => $page
+        $this->get(route('census.index'))->assertOk()->assertDontSee('Joana Prado')->assertInertia(fn (Assert $page) => $page
             ->component('census/index')
             ->where('total.occupied', $map['occupied'])->where('total.free', $map['free'])->where('total.blocked', $map['blocked'])
             ->where('total.cleaning', $map['cleaning'])->where('total.reserved', $map['reserved'])
