@@ -1,6 +1,6 @@
 # Plano — entrega 5: exames (laboratório e imagem)
 
-Data: 23/10/2026. Estado: **proposto, aguardando aprovação do usuário.** Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
+Data: 23/10/2026. Estado: **aceito pelo usuário e implementação autorizada em 24/10/2026.** Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
 Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário de 23/10/2026). Arquitetura: ../docs/adr/0008-exam-team-record-access.md, ../docs/adr/0003-rls-on-clinical-tables.md e ../docs/adr/0004-ward-team-record-access.md. Regras de trabalho: ../AGENTS.md. A cirurgia é a entrega 5b, em plano próprio.
 
 ## Princípios herdados
@@ -30,12 +30,12 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - Filas de Laboratório e de Imagem por unidade, ordenadas por prioridade e espera, com tempo-alvo em destaque (como a classificação de risco); a fila não grava leitura.
 - Enquanto o pedido está aberto, a equipe abre o prontuário com a base "execução de exame", gravando cada abertura na trilha com o motivo `exam`.
 - Registro da coleta (laboratório) ou da realização (imagem), com horário e quem fez.
-- Pedido sem coleta em prazo configurável aparece para o gestor da unidade (risco da ADR-0008).
+- Pedido sem coleta há 7 dias aparece para o gestor da unidade (risco da ADR-0008, decisão de 24/10/2026).
 - **Saída:** acesso termina com o resultado ou o cancelamento (teste); corrida real em coletar o mesmo pedido.
 
 ### 5.4 Resultado e laudo
 - Laboratório: valores por analito, com a faixa de referência e marcação fora da faixa; texto livre; anexo PDF.
-- Imagem: laudo em texto e anexo PDF; liberação por profissional com conselho médico (CRM), se o usuário confirmar a regra (pendência da ADR-0008).
+- Imagem: laudo em texto e anexo PDF; liberação só por profissional com conselho médico (CRM) (decisão de 24/10/2026).
 - Liberação assinada com senha; retificação como nova versão, com a anterior visível e motivo.
 - Aviso a quem pediu, sem dado clínico no texto.
 - **Saída:** resultado imutável no banco depois de liberado (gatilho); corrida real em liberar o mesmo resultado.
@@ -55,7 +55,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - Integração com equipamentos e sistemas (LIS, PACS, DICOM, HL7/FHIR), visualizador de imagens e laboratório externo.
 - Faturamento e autorização de convênio (entrega 6); portal do paciente (entrega 7).
 
-## Pendências para o usuário
+## Pendências resolvidas (24/10/2026)
 
-- Confirmar se o laudo de imagem só é liberado por profissional com CRM (proposta original da questão 3).
-- Prazo para o pedido sem coleta aparecer ao gestor (proposta: 7 dias).
+- Laudo de imagem liberado só por profissional com CRM.
+- Pedido sem coleta aparece ao gestor depois de 7 dias.

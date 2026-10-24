@@ -1,7 +1,7 @@
 # ADR-0008: acesso das equipes de laboratório e de imagem ao prontuário durante a execução
 
 Data: 23/10/2026
-Estado: proposta (aguardando aceite do usuário)
+Estado: aceita pelo usuário (24/10/2026)
 
 ## Contexto
 
@@ -47,6 +47,6 @@ A entrega 5 (contrato no PRODUCT.md) traz pedidos e resultados de exames. Hoje o
 - Mais uma base no `ClinicalAccess`, com testes negativos obrigatórios: outra unidade, outro tipo (Laboratório lendo pedido de imagem), pedido liberado ou cancelado, papel revogado.
 
 ### Riscos
-- **Pedido esquecido em aberto** mantém o acesso. Mitigação: a fila mostra o tempo de espera com destaque, e um pedido sem coleta em prazo configurável (proposta: 7 dias) aparece para o gestor; prazo e ação a definir no plano.
+- **Pedido esquecido em aberto** mantém o acesso. Mitigação: a fila mostra o tempo de espera com destaque, e um pedido sem coleta há 7 dias aparece para o gestor da unidade (decisão de 24/10/2026).
 - **Papel dado por engano** abre os pacientes com pedido em aberto da unidade. Mitigação: concessão auditada, trilha de leitura visível em "Acessos ao prontuário" e revisão de segurança da etapa.
-- **Laudo de imagem:** a liberação por profissional com conselho médico (CRM), proposta original da questão 3, continua no plano como regra a confirmar pelo usuário.
+- **Laudo de imagem:** liberado só por profissional com conselho médico (CRM) (decisão de 24/10/2026).

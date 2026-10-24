@@ -626,7 +626,7 @@ Propostas aceitas nas questões 1, 2, 3, 5, 6, 7, 8 e 9. Na questão 4, o usuár
 
 ## Contrato da entrega 5 — exames e cirurgia
 
-Método: ECC Product Capability. Data: 23/10/2026. Estado: **decisões do usuário registradas (23/10/2026); [ADR-0008](docs/adr/0008-exam-team-record-access.md) e plano `plans/web-v6-exames.md` propostos, aguardando aprovação. Nenhuma implementação autorizada.** Origem: roteiro ("Diagnóstico e cirurgia: solicitações e agendas → resultados e procedimentos", mapa de capacidades) e as entregas 3, 4, 4b e 4c, que deixaram exames, cirurgia e materiais para esta entrega.
+Método: ECC Product Capability. Data: 23/10/2026. Estado: **aprovado; [ADR-0008](docs/adr/0008-exam-team-record-access.md) e plano `plans/web-v6-exames.md` aceitos e implementação autorizada pelo usuário em 24/10/2026, uma etapa por vez.** Pendências do plano resolvidas com as propostas: laudo de imagem liberado só por profissional com CRM; pedido sem coleta aparece ao gestor depois de 7 dias. Origem: roteiro ("Diagnóstico e cirurgia: solicitações e agendas → resultados e procedimentos", mapa de capacidades) e as entregas 3, 4, 4b e 4c, que deixaram exames, cirurgia e materiais para esta entrega.
 
 ### Capacidade
 
@@ -698,6 +698,6 @@ Consequência para o recorte (questão 1): **entrega 5 = exames** (laboratório 
 ### Encaminhamento ECC
 
 - **Esclarecimento de produto:** concluído (decisões acima).
-- **Arquitetura:** [ADR-0008](docs/adr/0008-exam-team-record-access.md), proposta (acesso das equipes de laboratório e imagem). Materiais no livro de estoque e acesso do centro cirúrgico ficam em ADR da entrega 5b.
-- **Plano em etapas:** `plans/web-v6-exames.md` (entrega 5), proposto; `web-v7-cirurgia.md` (entrega 5b) depois.
+- **Arquitetura:** [ADR-0008](docs/adr/0008-exam-team-record-access.md), aceita (acesso das equipes de laboratório e imagem). Materiais no livro de estoque e acesso do centro cirúrgico ficam em ADR da entrega 5b.
+- **Plano em etapas:** `plans/web-v6-exames.md` (entrega 5), aceito; **implementação autorizada em 24/10/2026**, começando pela 5.1. `web-v7-cirurgia.md` (entrega 5b) depois.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
