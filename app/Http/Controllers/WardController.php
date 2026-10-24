@@ -84,6 +84,8 @@ class WardController extends Controller
             'allergies' => PatientAllergyController::listing($ids, $timezone),
             'allergyForm' => PatientAllergyController::form($patient, $request->user()),
             'prescriptions' => PrescriptionController::panel($request->user(), $admission, null, $timezone),
+            // Step 5.2: the link to the exam orders of this admission.
+            'canOrderExams' => ExamOrderController::orderer($request->user(), $admission->unit_id) !== null,
             'history' => self::history($admission, $timezone),
             // Step 4.5: only the responsible doctor hands the admission over.
             // Not while a transfer between units is open (refused on the server too).

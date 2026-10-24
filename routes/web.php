@@ -13,6 +13,7 @@ use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\ExamController;
+use App\Http\Controllers\ExamOrderController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\InsurerController;
 use App\Http\Controllers\JobFunctionController;
@@ -200,6 +201,12 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::put('shifts/{shift}', [ShiftController::class, 'update'])->name('shifts.update');
     Route::post('shifts/{shift}/publish', [ShiftController::class, 'publish'])->name('shifts.publish');
     Route::post('shifts/{shift}/cancel', [ShiftController::class, 'cancel'])->name('shifts.cancel');
+    // Step 5.2: exam orders of an open visit or an active admission.
+    Route::get('admissions/{admission}/exams', [ExamOrderController::class, 'forAdmission'])->middleware('throttle:120,1')->name('exam-orders.admission');
+    Route::post('admissions/{admission}/exams', [ExamOrderController::class, 'storeForAdmission'])->middleware('throttle:30,1')->name('exam-orders.admission.store');
+    Route::get('visits/{visit}/exams', [ExamOrderController::class, 'forVisit'])->middleware('throttle:120,1')->name('exam-orders.visit');
+    Route::post('visits/{visit}/exams', [ExamOrderController::class, 'storeForVisit'])->middleware('throttle:30,1')->name('exam-orders.visit.store');
+    Route::post('exam-orders/{order}/cancel', [ExamOrderController::class, 'cancel'])->middleware('throttle:30,1')->name('exam-orders.cancel');
     // Step 5.1a: the network exam catalog.
     Route::get('exams', [ExamController::class, 'index'])->name('exams.index');
     Route::post('exams', [ExamController::class, 'store'])->middleware('throttle:60,1')->name('exams.store');

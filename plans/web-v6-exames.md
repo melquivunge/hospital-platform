@@ -26,6 +26,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - Cancelamento por quem pediu, com motivo, antes da coleta.
 - O pedido aparece no prontuário do paciente.
 - **Saída:** pedido só com acesso clínico válido (testes negativos); assinatura conferida; nada clínico na auditoria.
+- **Feito (24/10/2026):** o prontuário do atendimento e da internação ganha o botão "Exames", que abre os pedidos daquele encontro. O pedido trava o atendimento ou a internação, para não nascer num encontro que acabou de fechar. O autor pode cancelar depois do fechamento, mas por ora a tela só abre com o encontro ativo; a 5.3 mostra os pedidos abertos na fila.
 
 ### 5.3 Fila e execução (ADR-0008)
 - Filas de Laboratório e de Imagem por unidade, ordenadas por prioridade e espera, com tempo-alvo em destaque (como a classificação de risco); a fila não grava leitura.

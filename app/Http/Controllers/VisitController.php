@@ -125,6 +125,8 @@ class VisitController extends Controller
             'prescriptions' => $visit->emergency_episode_id === null ? null : PrescriptionController::panel($request->user(), null, $visit, $timezone),
             'record' => self::signedRecord($ids, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
+            // Step 5.2: the link to the exam orders of this visit.
+            'canOrderExams' => ExamOrderController::orderer($request->user(), $visit->unit_id) !== null,
             // Drafts are seen only by their author.
             'drafts' => self::drafts($visit, $ids, $request->user()->id)->orderBy('id')->get(['id', 'body', 'addendum_of_id'])
                 ->map(fn (ClinicalNote $note) => ['id' => $note->id, 'body' => $note->body, 'addendumOf' => $note->addendum_of_id]),

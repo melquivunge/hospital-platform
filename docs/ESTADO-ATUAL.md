@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: entrega 4c concluída (23/10/2026). Entrega 5 (exames e cirurgia): decisões do usuário registradas (23/10/2026: exames na 5, cirurgia na 5b; papéis Laboratório e Imagem; equipe lê o prontuário durante a execução); ADR-0008 e plano `plans/web-v6-exames.md` aceitos e implementação autorizada em 24/10/2026. Próximo passo: revisão e merge da 5.1b (importação CSV do catálogo de exames); depois a 5.2 (pedido de exame).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: entrega 4c concluída (23/10/2026). Entrega 5 (exames e cirurgia): decisões do usuário registradas (23/10/2026: exames na 5, cirurgia na 5b; papéis Laboratório e Imagem; equipe lê o prontuário durante a execução); ADR-0008 e plano `plans/web-v6-exames.md` aceitos e implementação autorizada em 24/10/2026. Próximo passo: revisão e merge da 5.2 (pedido de exame); depois a 5.3 (fila e execução).
 
 ## Onde está cada coisa
 
@@ -103,7 +103,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #77 | Aviso ao gestor no descarte de controlado, opção A | Mesclado |
 | #78 | Entrega 5: contrato, decisões, ADR-0008 e plano | Mesclado |
 | #79 | 5.1a: catálogo de exames e papéis Laboratório e Imagem | Mesclado |
-| — | 5.1b: importação CSV do catálogo de exames e analitos (branch `feat/exam-catalog-import`) | Em revisão |
+| #80 | 5.1b: importação CSV do catálogo de exames e analitos | Mesclado |
+| — | 5.2: pedido de exame com assinatura e cancelamento (branch `feat/exam-orders`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -586,7 +587,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 433 testes passando (5.1b), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 437 testes passando (5.2), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

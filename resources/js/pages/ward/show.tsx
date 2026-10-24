@@ -1,5 +1,6 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
+import ExamOrderController from '@/actions/App/Http/Controllers/ExamOrderController';
 import TransferController from '@/actions/App/Http/Controllers/TransferController';
 import ClinicalDocumentController from '@/actions/App/Http/Controllers/ClinicalDocumentController';
 import WardController from '@/actions/App/Http/Controllers/WardController';
@@ -35,6 +36,7 @@ export default function WardShow({
     allergies,
     allergyForm,
     prescriptions,
+    canOrderExams,
     history,
     handOver,
     transfer,
@@ -55,6 +57,7 @@ export default function WardShow({
     allergies: PatientAllergy[];
     allergyForm: AllergyForm;
     prescriptions: PrescriptionPanelData;
+    canOrderExams: boolean;
     history: { id: number; at: string; text: string; reason: string | null }[];
     handOver: { id: number; name: string }[] | null;
     transfer: {
@@ -89,6 +92,23 @@ export default function WardShow({
                     ]
                         .filter(Boolean)
                         .join(' · ')}
+                    actions={
+                        canOrderExams && (
+                            <Button
+                                asChild
+                                variant="outline"
+                                className="min-h-11"
+                            >
+                                <Link
+                                    href={ExamOrderController.forAdmission(
+                                        admission.id,
+                                    )}
+                                >
+                                    Exames
+                                </Link>
+                            </Button>
+                        )
+                    }
                 />
                 <PatientAllergies allergies={allergies} form={allergyForm} />
                 {transfer && <TransferStatus transfer={transfer} />}
