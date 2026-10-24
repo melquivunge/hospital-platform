@@ -16,6 +16,7 @@ use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamOrderController;
 use App\Http\Controllers\ExamOverdueController;
 use App\Http\Controllers\ExamQueueController;
+use App\Http\Controllers\ExamResultController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\InsurerController;
 use App\Http\Controllers\JobFunctionController;
@@ -215,6 +216,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Step 5.3b: orders without collection for 7 days, for the unit manager.
     Route::get('exam-overdue', [ExamOverdueController::class, 'index'])->middleware('throttle:120,1')->name('exam-overdue.index');
     Route::post('exam-queue/items/{item}/collect', [ExamQueueController::class, 'collect'])->middleware('throttle:120,1')->name('exam-queue.collect');
+    // Step 5.4: results released and rectified by the exam team; the PDF for whoever reads the record.
+    Route::post('exam-queue/items/{item}/result', [ExamResultController::class, 'release'])->middleware('throttle:30,1')->name('exam-results.release');
+    Route::get('exam-results/{result}/attachment', [ExamResultController::class, 'download'])->middleware('throttle:60,1')->name('exam-results.download');
     // Step 5.1a: the network exam catalog.
     Route::get('exams', [ExamController::class, 'index'])->name('exams.index');
     Route::post('exams', [ExamController::class, 'store'])->middleware('throttle:60,1')->name('exams.store');

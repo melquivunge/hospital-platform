@@ -12,7 +12,7 @@ use InvalidArgumentException;
 final class ClinicalSchema
 {
     /** @var list<string> */
-    public const TABLES = ['patients', 'patient_merges', 'appointments', 'visits', 'clinical_notes', 'clinical_reads', 'emergency_accesses', 'clinical_documents', 'emergency_episodes', 'triages', 'admissions', 'admission_movements', 'admission_transfers', 'patient_allergies', 'prescriptions', 'prescription_items', 'prescription_doses', 'prescription_reviews', 'prescription_dispensings', 'medication_administrations', 'prescription_signatures', 'exam_orders', 'exam_order_items'];
+    public const TABLES = ['patients', 'patient_merges', 'appointments', 'visits', 'clinical_notes', 'clinical_reads', 'emergency_accesses', 'clinical_documents', 'emergency_episodes', 'triages', 'admissions', 'admission_movements', 'admission_transfers', 'patient_allergies', 'prescriptions', 'prescription_items', 'prescription_doses', 'prescription_reviews', 'prescription_dispensings', 'medication_administrations', 'prescription_signatures', 'exam_orders', 'exam_order_items', 'exam_results', 'exam_result_values'];
 
     /**
      * Only rows of the client in the session are visible or writable; without a client, none is.

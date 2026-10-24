@@ -62,6 +62,8 @@ class ClinicalRecordController extends Controller
             'expiresAt' => $grant->expires_at->setTimezone($timezone)->format('d/m/Y H:i'),
             'record' => VisitController::signedRecord(ClinicalAccess::recordIds($patient), $timezone),
             'documents' => ClinicalDocumentController::listing(ClinicalAccess::recordIds($patient), $timezone, $request->user()->id),
+            // Step 5.4: the released exam results of the record.
+            'examResults' => ExamResultController::listing(ClinicalAccess::recordIds($patient), $timezone),
         ]);
     }
 

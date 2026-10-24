@@ -135,7 +135,7 @@ final class ClinicalAccess
 
     /**
      * ADR-0008: the orders still open with an item of a type the user executes, in a unit where they execute it.
-     * Open means requested and not cancelled; step 5.4 ends it per item when the result is released.
+     * Open means requested, not cancelled, and an item of that type still without a released result (step 5.4).
      *
      * @return Builder<ExamOrder>
      */
@@ -146,7 +146,7 @@ final class ClinicalAccess
         return ExamOrder::query()->where('status', 'requested')->where(function (Builder $query) use ($scopes) {
             $query->whereRaw('false');
             foreach ($scopes as $type => $units) {
-                $query->orWhere(fn (Builder $scope) => $scope->whereIn('unit_id', $units)->whereHas('items', fn (Builder $items) => $items->where('exam_type', $type)));
+                $query->orWhere(fn (Builder $scope) => $scope->whereIn('unit_id', $units)->whereHas('items', fn (Builder $items) => $items->where('exam_type', $type)->whereDoesntHave('results')));
             }
         });
     }

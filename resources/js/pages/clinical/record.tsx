@@ -4,6 +4,8 @@ import type { RecordNote, RecordPatient } from '@/components/clinical-record';
 import { patientDescription, RecordEntry } from '@/components/clinical-record';
 import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
+import type { ExamResultItem } from '@/components/exam-results';
+import { ExamResults } from '@/components/exam-results';
 import { Page, PageHeader } from '@/components/page';
 import type { PatientAllergy } from '@/components/patient-allergies';
 import { PatientAllergies } from '@/components/patient-allergies';
@@ -15,12 +17,14 @@ export default function ClinicalRecord({
     expiresAt,
     record,
     documents,
+    examResults,
 }: {
     patient: RecordPatient;
     allergies: PatientAllergy[];
     expiresAt: string;
     record: RecordNote[];
     documents: ClinicalDocument[];
+    examResults: ExamResultItem[];
 }) {
     return (
         <>
@@ -59,6 +63,7 @@ export default function ClinicalRecord({
                             </ol>
                         )}
                     </section>
+                    <ExamResults results={examResults} />
                     <ClinicalDocuments documents={documents} />
                 </div>
             </Page>

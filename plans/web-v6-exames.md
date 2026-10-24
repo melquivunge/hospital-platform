@@ -44,6 +44,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - Liberação assinada com senha; retificação como nova versão, com a anterior visível e motivo.
 - Aviso a quem pediu, sem dado clínico no texto.
 - **Saída:** resultado imutável no banco depois de liberado (gatilho); corrida real em liberar o mesmo resultado.
+- **Feito na 5.4:** o resultado é por item: depois da coleta ou realização, a equipe do tipo do item na unidade libera valores por analito (laboratório, com a referência do catálogo gravada e marcação abaixo/acima calculada no servidor), observações ou laudo e um PDF, assinados com a senha. Laudo de imagem só por profissional com CRM. O banco recusa alterar ou apagar resultado e valores, e recusa resultado de item não coletado (gatilho). A retificação é a versão seguinte, com motivo; a anterior continua visível. Quem pediu recebe aviso sem nome do exame, paciente ou valor, com link para o prontuário, onde os resultados aparecem (atendimento, internação, acesso de emergência e execução). Com todos os itens do seu tipo liberados, a equipe perde o prontuário e vê só o pedido e os resultados, para retificar (lista "Liberados nos últimos 30 dias" na fila). Corrida real de duas pessoas liberando ou retificando a mesma versão: uma vence, a outra recebe aviso claro (6 rodadas consistentes).
 
 ### 5.5 Resultado crítico
 - Quem libera marca "crítico"; quem pediu recebe aviso destacado e registra ciência na tela do resultado.
