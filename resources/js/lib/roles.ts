@@ -11,6 +11,7 @@ export const roleLabels: Record<string, string> = {
     pharmacy: 'Farmácia',
     laboratory: 'Laboratório',
     imaging: 'Imagem',
+    surgical_center: 'Centro cirúrgico',
     auditor: 'Auditor',
 };
 
@@ -32,6 +33,8 @@ export const roleDescriptions: Record<string, string> = {
         'Recebe os pedidos de exames de laboratório da unidade, registra a coleta e libera os resultados.',
     imaging:
         'Recebe os pedidos de exames de imagem da unidade, registra a realização e libera os laudos.',
+    surgical_center:
+        'Agenda as salas e a equipe das cirurgias da unidade, conduz o checklist de cirurgia segura e registra os materiais.',
     auditor: 'Consulta trilhas e relatórios, sem alterar registros.',
 };
 

@@ -19,6 +19,7 @@ use App\Models\PatientMerge;
 use App\Models\PolicyVersion;
 use App\Models\Professional;
 use App\Models\Shift;
+use App\Models\SurgicalProcedure;
 use App\Models\UserNotification;
 use App\Policies\ShiftPolicy;
 use App\Policies\UnitPolicy;
@@ -105,6 +106,8 @@ class HandleInertiaRequests extends Middleware
             },
             'canManageExams' => fn () => $request->user() !== null
                 && $request->user()->can('manage', Exam::class),
+            'canManageSurgeryCatalog' => fn () => $request->user() !== null
+                && $request->user()->can('manage', SurgicalProcedure::class),
             'canManageMedications' => fn () => $request->user() !== null
                 && $request->user()->can('manage', Medication::class),
             'canManageInsurers' => fn () => $request->user() !== null
