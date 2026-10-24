@@ -16,7 +16,8 @@ docker compose up --build -d --wait
 - Aplicação: http://localhost:8080
 - Caixa de e-mails local: http://localhost:8025
 - PostgreSQL fica na rede interna, sem porta pública.
-- `init` executa migrations aditivas antes de app e worker. Não executa seed nem cria usuário/senha padrão.
+- `init` executa migrations aditivas antes de app, worker e scheduler. Não executa seed nem cria usuário/senha padrão.
+- `scheduler` roda as tarefas agendadas (`schedule:work`), hoje os avisos diários de estoque.
 - O script preserva `.env` existente; gera chave e senha aleatórias somente na primeira execução. Nunca versionar esse arquivo.
 - `APP_PORT`, `APP_URL` e `MAILPIT_PORT` podem ser ajustados no `.env` caso haja conflito de portas. Geolocalização real exigirá HTTPS fora de localhost.
 - Mailpit captura e-mails localmente; não há entrega externa configurada.
@@ -105,8 +106,25 @@ Pendentes antes de uso com pacientes reais, além dos limites anteriores:
 - **Acesso da farmácia ([ADR-0005](docs/adr/0005-pharmacy-prescription-access.md)):** o papel Farmácia lê as prescrições válidas da unidade; concessão por engano é mitigada pela auditoria e pela trilha de leitura.
 - **Transferência entre unidades:** encerra a prescrição na origem (decisão da 4b.6); o médico do destino prescreve de novo, e a farmácia da origem só recebe devoluções.
 - **Administração:** registro feito por engano não tem correção (decisão de produto pendente). A urgência não registra administração (não tem equipe de setor). Horário de verão não é tratado (hoje não existe no Brasil).
-- **Estoque:** a dispensação não baixa saldo, lote ou validade; isso é a entrega 4c.
+- **Estoque:** a dispensação não baixa saldo, lote ou validade; isso é a entrega 4c (resolvido, ver abaixo).
 - **Limite de requisições:** desde a 4b.6 cada rota limitada tem seu próprio contador por pessoa (antes, todas as rotas da pessoa somavam num só). O volume total por pessoa passa a ser a soma dos limites; um teto geral para rotas de leitura clínica fica para avaliar com uso real.
+
+### Limites conhecidos da entrega 4c (revisão integrada, etapa 4c.5)
+
+Estoque da farmácia por unidade ([ADR-0007](docs/adr/0007-pharmacy-stock-ledger.md)). Pendentes antes de uso real, além dos limites anteriores:
+
+- **Saldo inicial:** o saldo só vale a partir da importação do saldo inicial ou do primeiro inventário aprovado. Uma entrada esquecida trava a dispensação daquele medicamento até ser registrada (há entrada rápida na própria tela da dispensação).
+- **Processos:** o serviço `scheduler` precisa rodar sempre para os avisos diários (validade e mínimo). Nenhum serviço do `compose.yaml` reinicia sozinho: em produção, configurar política de reinício e um alarme se o scheduler ou o worker pararem.
+- **Correções:** movimento de estoque nunca é alterado nem apagado. Entrada ou descarte lançado errado se corrige pelo inventário, com aprovação do gestor da unidade, que precisa ser outra pessoa.
+- **Escrituração de controlados:** continua manual (livro e SNGPC fora do sistema); o relatório de movimentos com controlados em destaque e o CSV só apoiam.
+- **Fora do escopo:** farmácias satélites e estoque por setor, embalagem com fator de conversão, compras, custo.
+- **Texto livre:** a descrição do descarte "outro" e o motivo de recusa do inventário pedem para não conter dado de paciente, mas o sistema não consegue impedir; aparecem no relatório e no CSV (o motivo de recusa não).
+- **Relatórios e indicadores:** o período é lido no fuso da unidade escolhida (redes com unidades em fusos diferentes têm diferença de horas nas bordas); o CSV aceita até 20 mil linhas por exportação; os indicadores calculam em memória os lotes com saldo das unidades visíveis (rever se uma rede chegar a dezenas de milhares de lotes).
+- **Notificações:** pessoa desativada sem acesso revogado ainda recebe notificações internas (vale para todas, não só as de estoque); revogar o acesso ao desativar.
+- **Controles de pessoa única (decisão de produto pendente, revisão de segurança 4c.5):** entrada, descarte e importação do saldo inicial são feitos pela farmácia sozinha, como previsto na ADR-0007; descarte de controlado não avisa o gestor nem pede testemunha, e a importação não se limita a unidade sem movimentos. Só o ajuste de inventário exige duas pessoas. A contagem cega é convenção da tela do inventário: a tela de estoque mostra o saldo.
+- **Endurecimento pendente no banco:** o vínculo do ajuste à unidade do inventário, a imutabilidade de inventário decidido (e da lista de participantes), a soma dos movimentos de uma dispensação contra a quantidade dispensada e o motivo "vencido" só para lote vencido são garantidos pela aplicação, não pelo banco.
+- **Unidade fora do acesso:** pedir relatório, CSV, indicadores ou estoque de uma unidade sem acesso mostra a primeira unidade da pessoa (nunca dados de outra); o nome do CSV traz a unidade.
+- **Garantias no banco:** saldo mantido por gatilho e nunca negativo; movimento só de inserção; dispensação só de lote válido da unidade e do medicamento da prescrição; devolução só ao lote de onde saiu e até o que ele deu; motivo de descarte codificado; um ajuste por lote e inventário; um inventário em andamento por unidade; um aviso por unidade e dia.
 
 ## Verificações
 

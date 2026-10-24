@@ -156,6 +156,19 @@ class StockTest extends TestCase
         $this->assertSame(0, $lot->fresh()->balance);
     }
 
+    public function test_a_lot_on_its_last_day_is_still_valid_in_the_units_time_zone(): void
+    {
+        // 23:00 on 11-13 in São Paulo (02:00 UTC on 11-14): the lot that expires on 11-13 is still valid.
+        $this->travelTo('2026-11-14 02:00:00');
+        $this->entry(['expires_on' => '2026-11-13', 'quantity' => 5]);
+        $this->actingAs($this->pharmacist->user)->put(route('stock.minimums.update'), ['unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'minimum' => 5])->assertSessionHasNoErrors();
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('medications.0.lots.0.state', 'expiring')
+            ->where('medications.0.valid', 5)->where('medications.0.below', false));
+        // From midnight in the unit, expired.
+        $this->travelTo('2026-11-14 03:00:00');
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('medications.0.lots.0.state', 'expired')->where('medications.0.below', true));
+    }
+
     public function test_the_database_keeps_the_balance_and_the_history(): void
     {
         $this->entry();

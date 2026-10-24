@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -81,7 +82,8 @@ class StockReportController extends Controller
             'unit_id' => $unit->id, 'from' => $from->toDateString(), 'to' => $last->toDateString(), 'medication_id' => $medicationId, 'controlled' => $controlled, 'rows' => count($rows),
         ]);
 
-        return ReportController::csv("movimentos-estoque-{$from->toDateString()}-a-{$last->toDateString()}.csv",
+        // The unit in the file name: a CSV asked for another unit falls back to the person's first one (L2, 4c.5).
+        return ReportController::csv('movimentos-estoque-'.Str::slug($unit->name)."-{$from->toDateString()}-a-{$last->toDateString()}.csv",
             ['Data e hora', 'Medicamento', 'Controlado', 'Lote', 'Validade', 'Tipo', 'Entrada', 'Saída', 'Motivo', 'Responsável'], $rows);
     }
 
