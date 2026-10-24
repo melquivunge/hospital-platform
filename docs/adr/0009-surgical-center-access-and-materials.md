@@ -1,7 +1,7 @@
 # ADR-0009: acesso do centro cirúrgico ao prontuário e materiais no livro de estoque
 
 Data: 24/10/2026
-Estado: proposta
+Estado: proposta; decisões do usuário de 24/10/2026 incorporadas (equipe escalada lê o prontuário; centro cirúrgico ou equipe confirma o checklist; farmácia mantém o estoque de materiais)
 
 ## Contexto
 
@@ -13,6 +13,7 @@ A entrega 5b (contrato da entrega 5 no PRODUCT.md, decisões do usuário de 23/1
 - **Base de acesso "cirurgia":** lê o prontuário, com as mesmas telas de quem atende, enquanto o paciente tiver na unidade uma cirurgia **pedida, agendada ou em andamento**:
   - quem tem o papel Centro cirúrgico na unidade;
   - os profissionais escalados na equipe daquela cirurgia (cirurgião, auxiliares, anestesista, instrumentação e circulante), só enquanto estiverem na equipe.
+- **Checklist:** cada etapa é confirmada por quem tem o papel Centro cirúrgico na unidade ou está na equipe escalada daquela cirurgia.
 - Cada abertura entra em `clinical_reads` com o motivo `surgery` e o vínculo com a cirurgia, uma linha por abertura.
 - **Depois de concluída ou cancelada**, a base termina. Por 30 dias, o cirurgião vê só a cirurgia, o checklist e a descrição (para o adendo), e o centro cirúrgico vê só a cirurgia e o consumo de materiais (para corrigir com movimento de estorno). Nada do resto do prontuário.
 - **O centro cirúrgico não abre acesso sozinho:** a cirurgia só nasce do pedido do profissional que atende (função que atende e habilitação na unidade, dentro do atendimento, da urgência ou da internação). A exceção é a cirurgia de urgência, que o médico que atende pede e o centro cirúrgico agenda na hora, com motivo.

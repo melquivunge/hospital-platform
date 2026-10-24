@@ -1,6 +1,6 @@
 # Plano — entrega 5b: cirurgia
 
-Data: 24/10/2026. Estado: **proposta, aguardando aprovação do usuário.** Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
+Data: 24/10/2026. Estado: **proposta; pendências respondidas pelo usuário em 24/10/2026, aguardando autorização para implementar.** Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
 Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário de 23/10/2026, questões 6 a 9). Arquitetura: ../docs/adr/0009-surgical-center-access-and-materials.md, ../docs/adr/0007-pharmacy-stock-ledger.md e ../docs/adr/0008-exam-team-record-access.md. Regras de trabalho: ../AGENTS.md.
 
 ## Princípios herdados
@@ -63,8 +63,8 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - Faturamento, OPME e autorização de convênio (entrega 6).
 - Integração com equipamentos e mapa cirúrgico em painel de TV.
 
-## Pendências para o usuário
+## Pendências resolvidas (24/10/2026, decisões do usuário)
 
-1. **Quem lê o prontuário:** o centro cirúrgico da unidade **e a equipe escalada** (proposta da ADR-0009), ou só o centro cirúrgico.
-2. **Quem confirma o checklist:** quem tem o papel Centro cirúrgico ou é da equipe escalada (proposta), ou só a enfermagem circulante.
-3. **Estoque de materiais:** mantido pela farmácia da unidade, com consumo pelo centro cirúrgico (proposta), ou mantido pelo próprio centro cirúrgico.
+1. **Quem lê o prontuário:** o centro cirúrgico da unidade e a equipe escalada, enquanto a cirurgia estiver pedida, agendada ou em andamento.
+2. **Quem confirma o checklist:** quem tem o papel Centro cirúrgico na unidade ou está na equipe escalada daquela cirurgia.
+3. **Estoque de materiais:** mantido pela farmácia da unidade (entradas, descartes e inventário); o centro cirúrgico registra o consumo e o estorno.
