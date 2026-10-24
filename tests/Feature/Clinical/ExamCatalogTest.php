@@ -40,6 +40,14 @@ class ExamCatalogTest extends TestCase
         ], ...$overrides];
     }
 
+    public function test_a_decimal_comma_is_read_and_a_thousands_separator_refused(): void
+    {
+        $this->actingAs($this->admin->user)->post(route('exams.store'), $this->blood(['analytes' => [['name' => 'Plaquetas', 'reference_min' => '150000', 'reference_max' => '450,000']]]))
+            ->assertSessionHasErrorsIn('newExam', ['analytes.0.reference_max' => '"450,000" é ambíguo (milhar ou decimal?). Escreva sem separador de milhar, por exemplo 4000 ou 1,5.']);
+        $this->post(route('exams.store'), $this->blood(['analytes' => [['name' => 'Potássio', 'reference_min' => '3,5', 'reference_max' => '5,1']]]))->assertSessionHasNoErrors();
+        $this->assertSame(['3.5000', '5.1000'], [DB::table('exam_analytes')->value('reference_min'), DB::table('exam_analytes')->value('reference_max')]);
+    }
+
     public function test_the_admin_keeps_laboratory_exams_with_analytes_and_imaging_exams(): void
     {
         $this->actingAs($this->admin->user)->post(route('exams.store'), $this->blood())->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Exame cadastrado.');

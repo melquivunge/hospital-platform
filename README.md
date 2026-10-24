@@ -126,6 +126,22 @@ Estoque da farmácia por unidade ([ADR-0007](docs/adr/0007-pharmacy-stock-ledger
 - **Unidade fora do acesso:** pedir relatório, CSV, indicadores ou estoque de uma unidade sem acesso mostra a primeira unidade da pessoa (nunca dados de outra); o nome do CSV traz a unidade.
 - **Garantias no banco:** saldo mantido por gatilho e nunca negativo; movimento só de inserção; dispensação só de lote válido da unidade e do medicamento da prescrição; devolução só ao lote de onde saiu e até o que ele deu; motivo de descarte codificado; um ajuste por lote e inventário; um inventário em andamento por unidade; um aviso por unidade e dia.
 
+### Limites conhecidos da entrega 5, exames (revisão integrada, etapa 5.6)
+
+Pedidos, filas, resultados e resultado crítico ([ADR-0008](docs/adr/0008-exam-team-record-access.md)). Pendentes antes de uso com pacientes reais, além dos limites anteriores:
+
+- **Sem integração:** não há LIS, PACS, DICOM, HL7/FHIR nem laboratório externo. O resultado é digitado (valores por analito, texto) ou anexado em PDF, e as imagens ficam fora do sistema.
+- **Acesso da equipe de exames ao prontuário:** dura enquanto houver item do tipo dela, na unidade dela, sem resultado liberado. Um pedido esquecido mantém esse acesso: o pedido sem coleta há 7 dias avisa o gestor (só a contagem), mas o coletado sem resultado não avisa ninguém. Não há expiração automática. Depois do resultado, a equipe reabre só o pedido e os resultados, por 30 dias, para retificar.
+- **Quem libera:** laboratório, qualquer pessoa com o papel Laboratório na unidade. Imagem, profissional com conselho "CRM" no cadastro e habilitação aprovada e vigente na unidade. O conselho é preenchido pelo administrador e não é conferido no CFM.
+- **Assinatura:** senha (assinatura eletrônica simples, como a prescrição antes do ICP-Brasil real, [ADR-0006](docs/adr/0006-icp-brasil-cloud-signature.md)).
+- **Valores:** a referência é única por analito, sem faixa por sexo ou idade. Número com separador de milhar ou com sinal ("1.500", ">200") é guardado como texto, sem marcação abaixo/acima. No catálogo, "3,5" é lido como 3,5 e "450,000" é recusado como ambíguo.
+- **Resultado crítico:** o aviso é interno (sino e barra superior), sem SMS, ligação ou e-mail; depois de 1 hora sem ciência o gestor é avisado e precisa ligar. O serviço `scheduler` precisa rodar (comandos `exams:overdue` de hora em hora e `exams:critical` a cada 5 minutos). Quem pediu e não atende mais o paciente recebe o aviso, mas o link leva ao pedido de acesso de emergência; nesse caso a ciência fica com quem atende, e o gestor é avisado. A ciência de uma versão encerra os alertas abertos das versões anteriores do item; uma retificação não crítica não encerra sozinha o alerta da versão crítica anterior.
+- **Auditoria:** o evento de resultado liberado guarda os ids do paciente e de quem pediu e o marcador de crítico (para o aviso); quem lê a auditoria sabe que aquele paciente teve um resultado crítico, nunca qual exame ou valor.
+- **Fila:** mostra o nome do paciente à equipe sem registrar leitura (identificação, como previsto na ADR-0008); abrir o pedido registra.
+- **Arquivos:** o PDF é gravado antes da transação e apagado se ela falhar; uma queda do processo no meio pode deixar um arquivo sem referência (inacessível). O prontuário lista todos os resultados do paciente, sem paginação.
+- **Exportação:** não há exportação do catálogo nem dos resultados; antes de criar uma, aplicar a proteção contra fórmula das importações também aos campos do formulário.
+- **Garantias no banco:** item coletado uma vez; resultado só de item coletado, com o paciente do pedido; resultado e valores nunca alterados nem apagados, sem valor acrescentado depois; uma liberação por versão; ciência e escalonamento uma vez, nunca desfeitos; um aviso de atraso por unidade e dia.
+
 ## Verificações
 
 O CI executa testes PHP com PostgreSQL descartável, Pint, PHPStan, TypeScript, lint/formatação, build, auditorias de dependências e smoke test dos containers. As credenciais do serviço de teste em CI são descartáveis, sem relação com ambientes reais.

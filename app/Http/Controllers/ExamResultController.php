@@ -13,9 +13,12 @@ use App\Models\ExamResult;
 use App\Models\ExamResultValue;
 use App\Models\Patient;
 use App\Models\Professional;
+use App\Models\Qualification;
+use App\Models\Unit;
 use App\Models\User;
 use App\Models\Visit;
 use App\Policies\UnitPolicy;
+use App\Professionals\QualificationStatus;
 use Carbon\CarbonInterface;
 use finfo;
 use Illuminate\Http\RedirectResponse;
@@ -302,15 +305,27 @@ class ExamResultController extends Controller
 
     /**
      * The professional who signs, if the user may release this item's result: the team of its type in the order's
-     * unit, and for imaging a professional with CRM; otherwise 403.
+     * unit, and for imaging a professional with CRM qualified in the unit; otherwise 403.
      */
     public static function releaser(User $user, ExamOrder $order, ExamOrderItem $item): ?Professional
     {
         abort_unless(in_array($item->exam_type, ExamQueueController::typesIn(ClinicalAccess::examScopes(UnitPolicy::currentMembership($user)), $order->unit_id), true), 403);
         $professional = ClinicalAccess::professional($user);
-        abort_if($item->exam_type === 'imaging' && $professional?->council !== 'CRM', 403);
+        // Security review 5.6: the CRM (set by the admin) and an approved qualification valid today in the unit.
+        abort_if($item->exam_type === 'imaging' && ($professional?->council !== 'CRM' || ! self::qualified($professional, $order->unit_id)), 403);
 
         return $professional;
+    }
+
+    /**
+     * An approved qualification of the professional in the unit, valid today in the unit's time zone.
+     */
+    public static function qualified(Professional $professional, int $unitId): bool
+    {
+        $today = now(Unit::query()->whereKey($unitId)->value('timezone') ?? 'UTC')->toDateString();
+
+        return Qualification::query()->where('professional_id', $professional->id)->where('unit_id', $unitId)->where('status', QualificationStatus::Approved)
+            ->whereDate('valid_from', '<=', $today)->where(fn ($query) => $query->whereNull('valid_until')->orWhereDate('valid_until', '>=', $today))->exists();
     }
 
     /**

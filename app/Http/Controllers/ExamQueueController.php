@@ -94,7 +94,9 @@ class ExamQueueController extends Controller
         // ADR-0008: the record while an item of the user's types waits for its result; after that, only the order
         // and the results, to rectify them (step 5.4).
         $open = $order->status === 'requested' && $items->contains(fn (ExamOrderItem $item) => $item->results->isEmpty());
-        abort_unless($open || $items->contains(fn (ExamOrderItem $item) => $item->results->isNotEmpty()), 403);
+        // Security review 5.6: after the release, only recent results, as the "released" list; never a walk through
+        // old orders by id.
+        abort_unless($open || $items->contains(fn (ExamOrderItem $item) => $item->results->contains(fn ($result) => $result->released_at >= now()->subDays(self::RELEASED_DAYS))), 403);
         $patient = Patient::query()->findOrFail($order->patient_id);
         ClinicalAccess::recordRead($request->user(), $patient, $order);
         Inertia::encryptHistory();
@@ -102,7 +104,8 @@ class ExamQueueController extends Controller
         $ids = ClinicalAccess::recordIds($patient);
         $results = $items->flatMap->results;
         $names = ExamResultController::names($results, array_filter([$order->author_user_id, ...$items->pluck('collected_by_user_id')->all()]));
-        $crm = ClinicalAccess::professional($request->user())?->council === 'CRM';
+        $signer = ClinicalAccess::professional($request->user());
+        $crm = $signer?->council === 'CRM' && ExamResultController::qualified($signer, $order->unit_id);
         $analytes = ExamAnalyte::query()->whereIn('exam_id', $items->where('exam_type', 'laboratory')->pluck('exam_id')->all())->where('active', true)->orderBy('position')->get()->groupBy('exam_id');
 
         return Inertia::render('exam-queue/show', [
