@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da revisão integrada 4c.5; com ela a entrega 4c fica concluída. Depois, a entrega 5 (exames e cirurgia), conforme o roteiro.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge do aviso de descarte de controlado (opção A); a entrega 4c está concluída. Depois, a entrega 5 (exames e cirurgia), conforme o roteiro.
 
 ## Onde está cada coisa
 
@@ -99,7 +99,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #73 | 4c.4a: avisos diários de estoque e serviço `scheduler` | Mesclado |
 | #74 | 4c.4b: relatório de movimentos com CSV | Mesclado |
 | #75 | 4c.4c: indicadores de estoque e visão da rede | Mesclado |
-| — | 4c.5: revisão integrada da entrega 4c (branch `chore/stock-integrated-review`) | Em revisão |
+| #76 | 4c.5: revisão integrada da entrega 4c | Mesclado |
+| — | Aviso ao gestor no descarte de controlado, opção A (branch `feat/controlled-discard-alert`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -260,6 +261,7 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Varredura de telas da entrega (22 combinações de tela, papel e largura) sem problemas.
   - Revisão de segurança independente: sem crítico ou alto. Corrigido o lote no último dia de validade marcado como vencido na tela de estoque (fuso da unidade); contagem cega documentada como convenção de processo; nome do CSV com a unidade. Pendente de decisão: segunda pessoa ou aviso ao gestor no descarte de controlados.
   - Limites de produção da entrega 4c no README.
+- **Depois da 4c.5 (23/10/2026, decisão do usuário: opção A):** cada descarte de controlado avisa os gestores da unidade (sem gestor, os administradores da rede), com medicamento, quantidade e motivo.
 - **4c.4c (indicadores, ADR-0007):**
   - Menu "Indicadores de estoque" para farmácia, gestor e administrador da rede (este vê todas as unidades, só consulta): abaixo do mínimo, a vencer em 30 dias, vencidos com saldo e perdas por motivo no período; detalhe da unidade escolhida.
 - **4c.4b (relatório de movimentos, ADR-0007):**
@@ -581,7 +583,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 426 testes passando (4c.5), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 427 testes passando (aviso de descarte de controlado), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

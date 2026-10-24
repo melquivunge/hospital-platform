@@ -114,6 +114,28 @@ class StockAlertTest extends TestCase
         $this->assertSame([$this->unit->id, $theirs->id], DB::table('stock_alert_days')->orderBy('id')->pluck('unit_id')->map(fn ($id) => (int) $id)->all());
     }
 
+    public function test_a_controlled_discard_reaches_the_unit_managers_or_the_network_admins(): void
+    {
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $morphine = Medication::query()->create(['active_ingredient' => 'Morfina', 'form' => 'Ampola', 'strength' => '10 mg/mL', 'dose_unit' => 'mg', 'routes' => ['iv'], 'stock_unit' => 'ampola', 'controlled' => true]);
+        app(CurrentTenant::class)->set(null);
+        $controlled = $this->stockLot($this->unit->id, $morphine, 10, 'M1', '2027-06-30')->id;
+        $common = $this->stockLot($this->unit->id, $this->medication, 10, 'D1', '2027-06-30')->id;
+        $this->actingAs($this->pharmacist->user)->post(route('stock.discards.store', $common), ['reason' => 'loss', 'quantity' => 1])->assertSessionHasNoErrors();
+        $this->post(route('stock.discards.store', $controlled), ['reason' => 'damage', 'quantity' => 2])->assertSessionHasNoErrors();
+        $title = 'Descarte de controlado: 2 ampola de Morfina 10 mg/mL (Ampola), avaria';
+        $this->assertSame([$this->manager->user_id => [$title]], $this->inbox());
+        $this->assertSame("/stock/movements?unit={$this->unit->id}&controlled=1", DB::table('user_notifications')->value('url'));
+
+        // A unit without a manager: the network admins hear of it.
+        $other = (int) $this->elsewhere->roleAssignments()->value('unit_id');
+        $lot = $this->stockLot($other, $morphine, 5, 'M2', '2027-06-30')->id;
+        $this->actingAs($this->elsewhere->user)->post(route('stock.discards.store', $lot), ['reason' => 'other', 'quantity' => 1, 'note' => 'Frasco aberto.'])->assertSessionHasNoErrors();
+        $admin = (int) Membership::query()->where('tenant_id', $this->unit->tenant_id)->whereHas('roleAssignments', fn ($query) => $query->where('role', Role::NetworkAdmin->value))->value('user_id');
+        $this->assertSame([$this->manager->user_id => [$title], $admin => ['Descarte de controlado: 1 ampola de Morfina 10 mg/mL (Ampola), outro motivo']], $this->inbox());
+        $this->assertSame("/stock/indicators?unit={$other}", DB::table('user_notifications')->where('user_id', $admin)->value('url'));
+    }
+
     public function test_nothing_to_warn_sends_nothing(): void
     {
         $this->stockLot($this->unit->id, $this->medication, 50, 'LONGE', '2027-06-30');

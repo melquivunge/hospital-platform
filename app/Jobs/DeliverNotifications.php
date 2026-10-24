@@ -34,7 +34,7 @@ class DeliverNotifications implements ShouldQueue
         'clinical.emergency_access',
         'transfer.requested', 'transfer.accepted', 'transfer.refused', 'transfer.cancelled', 'transfer.departed', 'transfer.completed',
         'prescription_item.reviewed',
-        'stock.daily_alert', 'stock.inventory_submitted',
+        'stock.daily_alert', 'stock.inventory_submitted', 'stock.discard',
     ];
 
     /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
@@ -46,6 +46,8 @@ class DeliverNotifications implements ShouldQueue
         'transfer.departed' => 'Paciente saiu para outra unidade',
         'transfer.completed' => 'Transferência entre unidades concluída',
     ];
+
+    private const DISCARD_REASONS = ['expired' => 'vencido', 'damage' => 'avaria', 'loss' => 'perda', 'other' => 'outro motivo'];
 
     public function handle(): void
     {
@@ -126,6 +128,22 @@ class DeliverNotifications implements ShouldQueue
             ]);
 
             return [[[...$this->usersWithRole($tenant, Role::Pharmacy, $unit), ...$this->usersWithRole($tenant, Role::UnitManager, $unit)], 'Estoque: '.implode(', ', $parts), "/stock?unit={$unit}"]];
+        }
+        // Decision of 23/10/2026 (option A of the 4c.5 security review): every discard of a controlled medication
+        // reaches the unit's managers (without one, the network admins), with the medication, quantity and reason.
+        if ($event->action === 'stock.discard') {
+            $medication = DB::table('medications')->where('tenant_id', $tenant)->where('id', (int) ($context['medication_id'] ?? 0))->where('controlled', true)->first();
+            if ($medication === null) {
+                return [];
+            }
+            $unit = (int) ($context['unit_id'] ?? 0);
+            $reason = self::DISCARD_REASONS[$context['reason'] ?? ''] ?? 'outro motivo';
+            $title = "Descarte de controlado: {$context['quantity']} {$medication->stock_unit} de {$medication->active_ingredient} {$medication->strength} ({$medication->form}), {$reason}";
+            $managers = $this->usersWithRole($tenant, Role::UnitManager, $unit);
+
+            return $managers !== []
+                ? [[$managers, $title, "/stock/movements?unit={$unit}&controlled=1"]]
+                : [[$this->usersWithRole($tenant, Role::NetworkAdmin), $title, "/stock/indicators?unit={$unit}"]];
         }
         if ($event->action === 'stock.inventory_submitted') {
             return [[$this->usersWithRole($tenant, Role::UnitManager, (int) ($context['unit_id'] ?? 0)), 'Inventário de estoque aguardando aprovação', "/stock/inventories/{$event->subject_id}"]];
