@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Imports\CsvValues;
 use App\Models\AuditEvent;
 use App\Models\Exam;
 use App\Models\ExamAnalyte;
@@ -166,6 +167,21 @@ class ExamController extends Controller
     private static function validated(Request $request, string $bag, ?Exam $exam = null): array
     {
         $type = $exam === null ? $request->input('type') : $exam->type;
+        // The decimal keyboard types "3,5": read as 3.5, as the CSV import does (step 5.6); "450,000" or "1.500"
+        // (a thousand, or a decimal?) is refused, as there.
+        if (is_array($request->input('analytes'))) {
+            foreach ($request->input('analytes') as $position => $row) {
+                foreach (['reference_min', 'reference_max'] as $field) {
+                    if (is_array($row) && is_string($row[$field] ?? null) && CsvValues::ambiguous($row[$field])) {
+                        throw ValidationException::withMessages(["analytes.{$position}.{$field}" => "\"{$row[$field]}\" é ambíguo (milhar ou decimal?). Escreva sem separador de milhar, por exemplo 4000 ou 1,5."])->errorBag($bag);
+                    }
+                }
+            }
+            $request->merge(['analytes' => array_map(fn ($row) => is_array($row) ? [...$row,
+                'reference_min' => is_string($row['reference_min'] ?? null) ? CsvValues::decimal($row['reference_min']) : ($row['reference_min'] ?? null),
+                'reference_max' => is_string($row['reference_max'] ?? null) ? CsvValues::decimal($row['reference_max']) : ($row['reference_max'] ?? null),
+            ] : $row, $request->input('analytes'))]);
+        }
         $data = $request->validateWithBag($bag, [
             ...($exam === null ? ['type' => ['required', Rule::in(array_keys(Exam::TYPES))]] : []),
             'name' => ['required', 'string', 'max:255'],

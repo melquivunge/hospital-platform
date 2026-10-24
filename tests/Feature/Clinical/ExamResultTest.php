@@ -11,10 +11,13 @@ use App\Models\ExamAnalyte;
 use App\Models\ExamOrder;
 use App\Models\ExamOrderItem;
 use App\Models\ExamResult;
+use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\Patient;
 use App\Models\Professional;
+use App\Models\Qualification;
 use App\Models\Visit;
+use App\Professionals\QualificationStatus;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
 use Illuminate\Database\QueryException;
@@ -194,6 +197,13 @@ class ExamResultTest extends ClinicalTestCase
         $this->actingAs($this->lab->user)->post(route('exam-results.release', $item), $this->payload(['version' => 3, 'reason' => 'PDF de outro exame.', 'remove_attachment' => '1']))->assertSessionHasNoErrors();
         $this->assertNull(ExamResult::withoutGlobalScopes()->where('version', 3)->sole()->attachment_path);
         $this->assertNotNull(ExamResult::withoutGlobalScopes()->where('version', 1)->sole()->attachment_path);
+        // The team reopens it while recent, as the "released" list; never an old order by id (security review 5.6).
+        $this->travel(29)->days();
+        $this->actingAs($this->lab->user)->get(route('exam-queue.show', $this->order))->assertOk();
+        $this->travel(2)->days();
+        $this->get(route('exam-queue.show', $this->order))->assertForbidden();
+        $this->get(route('exam-queue.index'))->assertInertia(fn (Assert $page) => $page->has('released', 0));
+
         (new DeliverNotifications)->handle();
         $this->assertSame(['Um resultado de exame que você pediu foi liberado', 'Um resultado de exame que você pediu foi retificado', 'Um resultado de exame que você pediu foi retificado'], DB::table('user_notifications')->orderBy('id')->pluck('title')->all());
     }
@@ -220,7 +230,13 @@ class ExamResultTest extends ClinicalTestCase
         $professional->forceFill(['membership_id' => $this->imaging->id])->save();
         $this->post(route('exam-results.release', $item), ['version' => 1, 'report' => 'Normal.', 'password' => 'password'])->assertForbidden();
 
+        // A CRM without an approved qualification valid in the unit is not enough either (security review 5.6).
         $professional->forceFill(['council' => 'CRM'])->save();
+        $this->post(route('exam-results.release', $item), ['version' => 1, 'report' => 'Normal.', 'password' => 'password'])->assertForbidden();
+        app(CurrentTenant::class)->set($this->patient->tenant);
+        Qualification::request($professional, $this->unit, ['job_function_id' => JobFunction::factory()->for($this->unit->tenant)->create()->id, 'valid_from' => '2026-01-01', 'valid_until' => null], [])
+            ->transitionTo(QualificationStatus::Approved, null);
+        app(CurrentTenant::class)->set(null);
         $this->get(route('exam-queue.show', $this->order))->assertInertia(fn (Assert $page) => $page->where('items.0.canSign', true));
         $this->post(route('exam-results.release', $item), ['version' => 1, 'password' => 'password'])
             ->assertSessionHasErrorsIn("result{$item->id}", ['report' => 'Escreva o laudo ou anexe o PDF.']);

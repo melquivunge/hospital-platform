@@ -55,6 +55,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 ### 5.6 Revisão integrada
 - **Jornada num cliente novo:** pedido urgente na urgência → fila do laboratório → coleta → resultado crítico → aviso e ciência; pedido de imagem na internação → laudo → retificação; acesso da equipe encerrado depois do resultado.
 - Verificação das telas, revisão de segurança independente e limites de produção no README.
+- **Feito na 5.6:** jornada num cliente novo, só pelas rotas (`ExamJourneyTest`): pedido urgente na urgência, fila do laboratório fora do tempo-alvo, coleta, resultado crítico, aviso urgente, escalonamento ao gestor e ciência; internação, tomografia pedida pelo leito, laudo com PDF pela radiologista com CRM e retificação; acesso da equipe encerrado a cada resultado; trilha, auditoria e avisos conferidos sem dado clínico. A jornada achou o catálogo recusando "3,5" (corrigido). Revisão de segurança independente, sem achado crítico ou alto: a tela restrita depois do resultado vale por 30 dias; o laudo de imagem exige também habilitação vigente na unidade; referência ambígua ("450,000") recusada no formulário. Limites de produção no README.
 
 ## Fora deste plano
 
