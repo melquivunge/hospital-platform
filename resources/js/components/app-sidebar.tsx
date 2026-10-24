@@ -4,6 +4,7 @@ import {
     BedDouble,
     BedSingle,
     Boxes,
+    TestTube,
     BriefcaseMedical,
     CalendarCheck,
     CalendarPlus,
@@ -54,6 +55,7 @@ import { index as appointments, queue } from '@/routes/appointments';
 import { index as admissions } from '@/routes/admissions';
 import { index as beds } from '@/routes/beds';
 import { index as pharmacy } from '@/routes/pharmacy';
+import { index as examQueue } from '@/routes/exam-queue';
 import { index as exams } from '@/routes/exams';
 import { index as stock } from '@/routes/stock';
 import { index as inventories } from '@/routes/stock/inventories';
@@ -116,6 +118,7 @@ export function AppSidebar() {
         canViewBeds,
         canViewCensus,
         canUsePharmacy,
+        canUseExamQueue,
         canUseInventory,
         canViewStockIndicators,
         canViewEmergency,
@@ -223,6 +226,9 @@ export function AppSidebar() {
             : []),
         ...(canUsePharmacy
             ? [{ title: 'Farmácia', href: pharmacy(), icon: FlaskConical }]
+            : []),
+        ...(canUseExamQueue
+            ? [{ title: 'Fila de exames', href: examQueue(), icon: TestTube }]
             : []),
         ...(canUseInventory
             ? [

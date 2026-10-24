@@ -63,6 +63,10 @@ class ExamOrderController extends Controller
             if ($locked->status !== 'requested') {
                 throw ValidationException::withMessages(['reason' => 'Este pedido não pode mais ser cancelado.'])->errorBag($bag);
             }
+            // Step 5.3: only before anything is collected; the collection locks the order first too.
+            if ($locked->items()->whereNotNull('collected_at')->exists()) {
+                throw ValidationException::withMessages(['reason' => 'Este pedido já tem exame coletado ou realizado e não pode mais ser cancelado.'])->errorBag($bag);
+            }
             $locked->update(['status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by_user_id' => $request->user()->id, 'cancellation_reason' => trim($data['reason'])]);
             AuditEvent::record('exam_order.cancelled', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id]);
         });

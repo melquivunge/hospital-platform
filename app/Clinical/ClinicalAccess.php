@@ -4,20 +4,26 @@ namespace App\Clinical;
 
 use App\Models\Admission;
 use App\Models\EmergencyAccess;
+use App\Models\ExamOrder;
+use App\Models\Membership;
 use App\Models\Patient;
 use App\Models\Prescription;
 use App\Models\Professional;
+use App\Models\RoleAssignment;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Visit;
 use App\Policies\UnitPolicy;
 use App\Professionals\QualificationStatus;
+use App\Tenancy\Role;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
  * The single place that decides who reads a patient's record (ADR-0003): a professional with an open visit
  * of the patient in any unit of the network, the responsible doctor or the ward team of an active admission
- * (ADR-0004, step 4.4b), or a valid emergency grant (read-only, step 3.6b). Managers, admins
+ * (ADR-0004, step 4.4b), the exam team while an order of its type is open in its unit (ADR-0008, step 5.3),
+ * or a valid emergency grant (read-only, step 3.6b). Managers, admins
  * and the reception never read it for their role. Every read is written to the insert-only trail.
  */
 final class ClinicalAccess
@@ -101,7 +107,59 @@ final class ClinicalAccess
             ->pluck('qualification_sector.sector_id')->all())));
     }
 
-    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission|Prescription $basis): void
+    /**
+     * ADR-0008: the units where the membership holds the Laboratory or the Imaging role, by exam type.
+     *
+     * @return array<string, list<int>>
+     */
+    public static function examScopes(?Membership $membership): array
+    {
+        if ($membership === null || $membership->revoked_at !== null) {
+            return [];
+        }
+        $scopes = [];
+        foreach ($membership->roleAssignments as $assignment) {
+            /** @var RoleAssignment $assignment */
+            $type = match ($assignment->role) {
+                Role::Laboratory => 'laboratory',
+                Role::Imaging => 'imaging',
+                default => null,
+            };
+            if ($type !== null && $assignment->unit_id !== null) {
+                $scopes[$type][] = (int) $assignment->unit_id;
+            }
+        }
+
+        return array_map(fn (array $units) => array_values(array_unique($units)), $scopes);
+    }
+
+    /**
+     * ADR-0008: the orders still open with an item of a type the user executes, in a unit where they execute it.
+     * Open means requested and not cancelled; step 5.4 ends it per item when the result is released.
+     *
+     * @return Builder<ExamOrder>
+     */
+    public static function openExamOrders(User $user): Builder
+    {
+        $scopes = self::examScopes(UnitPolicy::currentMembership($user));
+
+        return ExamOrder::query()->where('status', 'requested')->where(function (Builder $query) use ($scopes) {
+            $query->whereRaw('false');
+            foreach ($scopes as $type => $units) {
+                $query->orWhere(fn (Builder $scope) => $scope->whereIn('unit_id', $units)->whereHas('items', fn (Builder $items) => $items->where('exam_type', $type)));
+            }
+        });
+    }
+
+    /**
+     * The open order that lets this exam team member read the patient's record, if any (ADR-0008).
+     */
+    public static function activeExamOrder(User $user, Patient $patient): ?ExamOrder
+    {
+        return self::openExamOrders($user)->whereIn('patient_id', self::recordIds($patient))->orderBy('id')->first();
+    }
+
+    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission|Prescription|ExamOrder $basis): void
     {
         DB::table('clinical_reads')->insert([
             'tenant_id' => $patient->tenant_id, 'user_id' => $user->id, 'patient_id' => $patient->merged_into_id ?? $patient->id,
@@ -110,12 +168,15 @@ final class ClinicalAccess
                 $basis instanceof Admission => 'admission',
                 // ADR-0005: the pharmacy reads one prescription.
                 $basis instanceof Prescription => 'pharmacy',
+                // ADR-0008: the exam team, while the order is open.
+                $basis instanceof ExamOrder => 'exam',
                 default => 'emergency',
             },
             'visit_id' => $basis instanceof Visit ? $basis->id : null,
             'emergency_access_id' => $basis instanceof EmergencyAccess ? $basis->id : null,
             'admission_id' => $basis instanceof Admission ? $basis->id : null,
             'prescription_id' => $basis instanceof Prescription ? $basis->id : null,
+            'exam_order_id' => $basis instanceof ExamOrder ? $basis->id : null,
             'read_at' => now(),
         ]);
     }

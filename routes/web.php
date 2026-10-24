@@ -14,6 +14,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamOrderController;
+use App\Http\Controllers\ExamQueueController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\InsurerController;
 use App\Http\Controllers\JobFunctionController;
@@ -207,6 +208,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('visits/{visit}/exams', [ExamOrderController::class, 'forVisit'])->middleware('throttle:120,1')->name('exam-orders.visit');
     Route::post('visits/{visit}/exams', [ExamOrderController::class, 'storeForVisit'])->middleware('throttle:30,1')->name('exam-orders.visit.store');
     Route::post('exam-orders/{order}/cancel', [ExamOrderController::class, 'cancel'])->middleware('throttle:30,1')->name('exam-orders.cancel');
+    // Step 5.3 (ADR-0008): the queues of the Laboratory and the Imaging, and the collection or performance.
+    Route::get('exam-queue', [ExamQueueController::class, 'index'])->middleware('throttle:120,1')->name('exam-queue.index');
+    Route::get('exam-queue/orders/{order}', [ExamQueueController::class, 'show'])->middleware('throttle:120,1')->name('exam-queue.show');
+    Route::post('exam-queue/items/{item}/collect', [ExamQueueController::class, 'collect'])->middleware('throttle:120,1')->name('exam-queue.collect');
     // Step 5.1a: the network exam catalog.
     Route::get('exams', [ExamController::class, 'index'])->name('exams.index');
     Route::post('exams', [ExamController::class, 'store'])->middleware('throttle:60,1')->name('exams.store');

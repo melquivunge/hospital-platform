@@ -87,6 +87,9 @@ class HandleInertiaRequests extends Middleware
                 && BedController::censusUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canUsePharmacy' => fn () => $request->user() !== null
                 && PharmacyController::unitIds(UnitPolicy::currentMembership($request->user())) !== [],
+            // Step 5.3 (ADR-0008): the Laboratory or the Imaging role in some unit.
+            'canUseExamQueue' => fn () => $request->user() !== null
+                && ClinicalAccess::examScopes(UnitPolicy::currentMembership($request->user())) !== [],
             // Pharmacy or unit manager: stock (read-only for the manager) and inventories.
             'canUseInventory' => fn () => $request->user() !== null
                 && (PharmacyController::unitIds(UnitPolicy::currentMembership($request->user())) !== [] || StockInventoryController::managerUnitIds($request->user()) !== []),
