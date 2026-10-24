@@ -8,6 +8,7 @@ use App\Http\Controllers\BedController;
 use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\StockInventoryController;
+use App\Models\Exam;
 use App\Models\ImportBatch;
 use App\Models\Insurer;
 use App\Models\JobFunction;
@@ -97,6 +98,8 @@ class HandleInertiaRequests extends Middleware
 
                 return ($membership?->hasRole(Role::NetworkAdmin) ?? false) || PharmacyController::unitIds($membership) !== [] || StockInventoryController::managerUnitIds($request->user()) !== [];
             },
+            'canManageExams' => fn () => $request->user() !== null
+                && $request->user()->can('manage', Exam::class),
             'canManageMedications' => fn () => $request->user() !== null
                 && $request->user()->can('manage', Medication::class),
             'canManageInsurers' => fn () => $request->user() !== null

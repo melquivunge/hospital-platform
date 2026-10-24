@@ -12,6 +12,7 @@ use App\Http\Controllers\ClinicalRecordController;
 use App\Http\Controllers\CurrentTenantController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmergencyController;
+use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\InsurerController;
 use App\Http\Controllers\JobFunctionController;
@@ -199,6 +200,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::put('shifts/{shift}', [ShiftController::class, 'update'])->name('shifts.update');
     Route::post('shifts/{shift}/publish', [ShiftController::class, 'publish'])->name('shifts.publish');
     Route::post('shifts/{shift}/cancel', [ShiftController::class, 'cancel'])->name('shifts.cancel');
+    // Step 5.1a: the network exam catalog.
+    Route::get('exams', [ExamController::class, 'index'])->name('exams.index');
+    Route::post('exams', [ExamController::class, 'store'])->middleware('throttle:60,1')->name('exams.store');
+    Route::put('exams/{exam}', [ExamController::class, 'update'])->middleware('throttle:60,1')->name('exams.update');
     Route::get('medications', [MedicationController::class, 'index'])->name('medications.index');
     Route::post('medications', [MedicationController::class, 'store'])->middleware('throttle:60,1')->name('medications.store');
     Route::put('medications/{medication}', [MedicationController::class, 'update'])->middleware('throttle:60,1')->name('medications.update');

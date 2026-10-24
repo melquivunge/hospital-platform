@@ -19,6 +19,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - Importação CSV do catálogo pelo mecanismo existente.
 - **Papéis novos Laboratório e Imagem**, por unidade, concedidos na tela de pessoas.
 - **Saída:** catálogo com testes de unicidade e de validação; papéis com escopo de unidade (CHECK existente).
+- Divisão (24/10/2026): 5.1a catálogo, analitos e papéis; 5.1b importação CSV do catálogo.
 
 ### 5.2 Pedido de exame
 - O profissional que atende (função que atende e habilitação na unidade) pede exames no atendimento ambulatorial, na urgência ou na internação: itens do catálogo, indicação clínica, prioridade (rotina ou urgente) e assinatura com senha.
