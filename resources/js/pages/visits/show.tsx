@@ -1,5 +1,6 @@
-import { Form, Head, usePage } from '@inertiajs/react';
+import { Form, Head, Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
+import ExamOrderController from '@/actions/App/Http/Controllers/ExamOrderController';
 import ClinicalDocumentController from '@/actions/App/Http/Controllers/ClinicalDocumentController';
 import VisitController from '@/actions/App/Http/Controllers/VisitController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
@@ -34,6 +35,7 @@ export default function VisitShow({
     drafts,
     documents,
     admissionOptions,
+    canOrderExams,
 }: {
     visit: { id: number; openedAt: string | null; emergency: boolean };
     patient: RecordPatient;
@@ -44,6 +46,7 @@ export default function VisitShow({
     drafts: Draft[];
     documents: ClinicalDocument[];
     admissionOptions: AdmissionOptions | null;
+    canOrderExams: boolean;
 }) {
     const { errors } = usePage().props;
 
@@ -56,20 +59,37 @@ export default function VisitShow({
                     title={patient.name}
                     description={patientDescription(patient)}
                     actions={
-                        !visit.emergency && (
-                            <Form {...VisitController.close.form(visit.id)}>
-                                {({ processing }) => (
-                                    <Button
-                                        type="submit"
-                                        variant="outline"
-                                        disabled={processing}
-                                        className="min-h-11"
+                        <div className="flex flex-wrap gap-2">
+                            {canOrderExams && (
+                                <Button
+                                    asChild
+                                    variant="outline"
+                                    className="min-h-11"
+                                >
+                                    <Link
+                                        href={ExamOrderController.forVisit(
+                                            visit.id,
+                                        )}
                                     >
-                                        Encerrar atendimento
-                                    </Button>
-                                )}
-                            </Form>
-                        )
+                                        Exames
+                                    </Link>
+                                </Button>
+                            )}
+                            {!visit.emergency && (
+                                <Form {...VisitController.close.form(visit.id)}>
+                                    {({ processing }) => (
+                                        <Button
+                                            type="submit"
+                                            variant="outline"
+                                            disabled={processing}
+                                            className="min-h-11"
+                                        >
+                                            Encerrar atendimento
+                                        </Button>
+                                    )}
+                                </Form>
+                            )}
+                        </div>
                     }
                 />
                 <PatientAllergies allergies={allergies} form={allergyForm} />
