@@ -14,6 +14,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamOrderController;
+use App\Http\Controllers\ExamOverdueController;
 use App\Http\Controllers\ExamQueueController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\InsurerController;
@@ -211,6 +212,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Step 5.3 (ADR-0008): the queues of the Laboratory and the Imaging, and the collection or performance.
     Route::get('exam-queue', [ExamQueueController::class, 'index'])->middleware('throttle:120,1')->name('exam-queue.index');
     Route::get('exam-queue/orders/{order}', [ExamQueueController::class, 'show'])->middleware('throttle:120,1')->name('exam-queue.show');
+    // Step 5.3b: orders without collection for 7 days, for the unit manager.
+    Route::get('exam-overdue', [ExamOverdueController::class, 'index'])->middleware('throttle:120,1')->name('exam-overdue.index');
     Route::post('exam-queue/items/{item}/collect', [ExamQueueController::class, 'collect'])->middleware('throttle:120,1')->name('exam-queue.collect');
     // Step 5.1a: the network exam catalog.
     Route::get('exams', [ExamController::class, 'index'])->name('exams.index');

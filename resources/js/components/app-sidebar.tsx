@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
+    AlarmClock,
     ArrowLeftRight,
     BedDouble,
     BedSingle,
@@ -56,6 +57,7 @@ import { index as admissions } from '@/routes/admissions';
 import { index as beds } from '@/routes/beds';
 import { index as pharmacy } from '@/routes/pharmacy';
 import { index as examQueue } from '@/routes/exam-queue';
+import { index as examOverdue } from '@/routes/exam-overdue';
 import { index as exams } from '@/routes/exams';
 import { index as stock } from '@/routes/stock';
 import { index as inventories } from '@/routes/stock/inventories';
@@ -119,6 +121,7 @@ export function AppSidebar() {
         canViewCensus,
         canUsePharmacy,
         canUseExamQueue,
+        canViewExamOverdue,
         canUseInventory,
         canViewStockIndicators,
         canViewEmergency,
@@ -229,6 +232,15 @@ export function AppSidebar() {
             : []),
         ...(canUseExamQueue
             ? [{ title: 'Fila de exames', href: examQueue(), icon: TestTube }]
+            : []),
+        ...(canViewExamOverdue
+            ? [
+                  {
+                      title: 'Exames atrasados',
+                      href: examOverdue(),
+                      icon: AlarmClock,
+                  },
+              ]
             : []),
         ...(canUseInventory
             ? [

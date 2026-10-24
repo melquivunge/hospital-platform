@@ -90,6 +90,8 @@ class HandleInertiaRequests extends Middleware
             // Step 5.3 (ADR-0008): the Laboratory or the Imaging role in some unit.
             'canUseExamQueue' => fn () => $request->user() !== null
                 && ClinicalAccess::examScopes(UnitPolicy::currentMembership($request->user())) !== [],
+            'canViewExamOverdue' => fn () => $request->user() !== null
+                && ((UnitPolicy::currentMembership($request->user())?->hasRole(Role::NetworkAdmin) ?? false) || StockInventoryController::managerUnitIds($request->user()) !== []),
             // Pharmacy or unit manager: stock (read-only for the manager) and inventories.
             'canUseInventory' => fn () => $request->user() !== null
                 && (PharmacyController::unitIds(UnitPolicy::currentMembership($request->user())) !== [] || StockInventoryController::managerUnitIds($request->user()) !== []),
