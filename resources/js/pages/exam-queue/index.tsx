@@ -12,7 +12,13 @@ type QueueOrder = {
     priority: string;
     waitingMinutes: number;
     late: boolean;
-    items: { id: number; name: string; type: string; collected: boolean }[];
+    items: {
+        id: number;
+        name: string;
+        type: string;
+        collected: boolean;
+        released: boolean;
+    }[];
 };
 
 function waiting(minutes: number): string {
@@ -28,7 +34,8 @@ function waiting(minutes: number): string {
 
 /**
  * The exam queue (step 5.3, ADR-0008): the open orders of the user's types in the unit, urgent first and then
- * by waiting time. Only identification; opening an order reads the record and is logged.
+ * by waiting time, until every item has its result (step 5.4); below, the recently released ones, to rectify.
+ * Only identification; opening an order is logged.
  */
 export default function ExamQueue({
     units,
@@ -36,12 +43,21 @@ export default function ExamQueue({
     types,
     priorities,
     orders,
+    released,
+    releasedDays,
 }: {
     units: { id: number; name: string }[];
     unitId: number;
     types: Record<string, string>;
     priorities: Record<string, string>;
     orders: QueueOrder[];
+    released: {
+        id: number;
+        patient: string | null;
+        place: string;
+        items: string[];
+    }[];
+    releasedDays: number;
 }) {
     const unit = units.find((option) => option.id === unitId);
 
@@ -128,7 +144,7 @@ export default function ExamQueue({
                                             <span className="text-muted-foreground">
                                                 {pending > 0
                                                     ? `${pending} a executar`
-                                                    : 'Aguardando resultado'}
+                                                    : `${order.items.filter((item) => !item.released).length} aguardando resultado`}
                                             </span>
                                         </span>
                                     </Link>
@@ -136,6 +152,33 @@ export default function ExamQueue({
                             );
                         })}
                     </ul>
+                )}
+                {released.length > 0 && (
+                    <section className="mt-8 grid gap-3">
+                        <h2 className="font-semibold">
+                            Liberados nos últimos {releasedDays} dias
+                        </h2>
+                        <ul className="divide-y rounded-xl border bg-card">
+                            {released.map((order) => (
+                                <li key={order.id}>
+                                    <Link
+                                        href={ExamQueueController.show.url(
+                                            order.id,
+                                        )}
+                                        className="grid min-h-11 gap-0.5 px-5 py-3 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                                    >
+                                        <span className="font-medium">
+                                            {order.patient}
+                                        </span>
+                                        <span className="text-sm text-muted-foreground">
+                                            {order.place} ·{' '}
+                                            {order.items.join(', ')}
+                                        </span>
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
                 )}
             </Page>
         </>

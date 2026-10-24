@@ -197,7 +197,7 @@ class ClinicalDocumentController extends Controller
     /**
      * The name shown and offered on download: no paths, no control characters, at most 255 characters.
      */
-    private static function cleanName(string $name): string
+    public static function cleanName(string $name): string
     {
         $clean = trim((string) preg_replace('/[\x00-\x1F\x7F\/\\\\]+/u', '', basename($name)));
 

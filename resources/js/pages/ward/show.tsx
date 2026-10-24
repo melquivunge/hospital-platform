@@ -6,6 +6,8 @@ import ClinicalDocumentController from '@/actions/App/Http/Controllers/ClinicalD
 import WardController from '@/actions/App/Http/Controllers/WardController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
+import type { ExamResultItem } from '@/components/exam-results';
+import { ExamResults } from '@/components/exam-results';
 import type { Draft } from '@/components/clinical-notes';
 import { NotesWorkspace, textareaClassName } from '@/components/clinical-notes';
 import type { RecordNote, RecordPatient } from '@/components/clinical-record';
@@ -45,6 +47,7 @@ export default function WardShow({
     record,
     drafts,
     documents,
+    examResults,
 }: {
     admission: {
         id: number;
@@ -71,6 +74,7 @@ export default function WardShow({
     record: RecordNote[];
     drafts: Draft[];
     documents: ClinicalDocument[];
+    examResults: ExamResultItem[];
 }) {
     return (
         <>
@@ -220,6 +224,7 @@ export default function WardShow({
                             </ol>
                         )}
                     </section>
+                    <ExamResults results={examResults} />
                     <ClinicalDocuments
                         documents={documents}
                         attach={ClinicalDocumentController.storeForAdmission.form(

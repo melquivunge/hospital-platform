@@ -5,6 +5,8 @@ import ClinicalDocumentController from '@/actions/App/Http/Controllers/ClinicalD
 import VisitController from '@/actions/App/Http/Controllers/VisitController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
+import type { ExamResultItem } from '@/components/exam-results';
+import { ExamResults } from '@/components/exam-results';
 import type { Draft } from '@/components/clinical-notes';
 import { NotesWorkspace } from '@/components/clinical-notes';
 import type { RecordNote, RecordPatient } from '@/components/clinical-record';
@@ -34,6 +36,7 @@ export default function VisitShow({
     record,
     drafts,
     documents,
+    examResults,
     admissionOptions,
     canOrderExams,
 }: {
@@ -45,6 +48,7 @@ export default function VisitShow({
     record: RecordNote[];
     drafts: Draft[];
     documents: ClinicalDocument[];
+    examResults: ExamResultItem[];
     admissionOptions: AdmissionOptions | null;
     canOrderExams: boolean;
 }) {
@@ -117,6 +121,7 @@ export default function VisitShow({
                     drafts={drafts}
                     record={record}
                 >
+                    <ExamResults results={examResults} />
                     <ClinicalDocuments
                         documents={documents}
                         attach={ClinicalDocumentController.store.form(visit.id)}

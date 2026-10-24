@@ -76,7 +76,7 @@ class ExamQueueTest extends ClinicalTestCase
         $this->actingAs($this->lab->user)->get(route('exam-queue.index'))->assertInertia(fn (Assert $page) => $page->component('exam-queue/index')
             ->where('types', ['laboratory' => 'Laboratório'])->has('orders', 2)
             ->where('orders.0.id', $urgent->id)->where('orders.0.late', true)->where('orders.0.patient', 'Joana Prado')->where('orders.0.place', 'Urgência')
-            ->where('orders.1.id', $this->order->id)->where('orders.1.late', false)->where('orders.1.items', [['id' => $this->item('laboratory')->id, 'name' => 'Hemograma', 'type' => 'laboratory', 'collected' => false]]));
+            ->where('orders.1.id', $this->order->id)->where('orders.1.late', false)->where('orders.1.items', [['id' => $this->item('laboratory')->id, 'name' => 'Hemograma', 'type' => 'laboratory', 'collected' => false, 'released' => false]]));
         $this->actingAs($this->imaging->user)->get(route('exam-queue.index'))->assertInertia(fn (Assert $page) => $page->has('orders', 1)->where('orders.0.items.0.name', 'Raio X de tórax'));
         $this->actingAs($this->otherLab->user)->get(route('exam-queue.index'))->assertInertia(fn (Assert $page) => $page->has('orders', 0));
         $this->actingAs($this->nurseAccount->user)->get(route('exam-queue.index'))->assertForbidden();

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -32,5 +33,15 @@ class ExamOrderItem extends Model
     protected function casts(): array
     {
         return ['collected_at' => 'datetime'];
+    }
+
+    /**
+     * The released versions, oldest first (step 5.4).
+     *
+     * @return HasMany<ExamResult, $this>
+     */
+    public function results(): HasMany
+    {
+        return $this->hasMany(ExamResult::class)->orderBy('version');
     }
 }

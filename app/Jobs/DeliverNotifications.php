@@ -36,7 +36,7 @@ class DeliverNotifications implements ShouldQueue
         'transfer.requested', 'transfer.accepted', 'transfer.refused', 'transfer.cancelled', 'transfer.departed', 'transfer.completed',
         'prescription_item.reviewed',
         'stock.daily_alert', 'stock.inventory_submitted', 'stock.discard',
-        'exam.overdue_orders',
+        'exam.overdue_orders', 'exam_result.released',
     ];
 
     /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
@@ -138,6 +138,12 @@ class DeliverNotifications implements ShouldQueue
             $title = "Exames: {$context['orders']} pedido(s) sem coleta há mais de ".ExamOrder::OVERDUE_DAYS.' dias';
 
             return [[$managers !== [] ? $managers : $this->usersWithRole($tenant, Role::NetworkAdmin), $title, "/exam-overdue?unit={$unit}"]];
+        }
+        // Step 5.4: the orderer hears of a released or rectified result, with no exam, patient or value in the text.
+        if ($event->action === 'exam_result.released') {
+            $title = ($context['version'] ?? 1) > 1 ? 'Um resultado de exame que você pediu foi retificado' : 'Um resultado de exame que você pediu foi liberado';
+
+            return [[array_filter([(int) ($context['author_user_id'] ?? 0)]), $title, '/patients/'.((int) ($context['patient_id'] ?? 0)).'/record']];
         }
         // Decision of 23/10/2026 (option A of the 4c.5 security review): every discard of a controlled medication
         // reaches the unit's managers (without one, the network admins), with the medication, quantity and reason.
