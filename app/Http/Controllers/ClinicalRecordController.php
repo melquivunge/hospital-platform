@@ -63,7 +63,7 @@ class ClinicalRecordController extends Controller
             'record' => VisitController::signedRecord(ClinicalAccess::recordIds($patient), $timezone),
             'documents' => ClinicalDocumentController::listing(ClinicalAccess::recordIds($patient), $timezone, $request->user()->id),
             // Step 5.4: the released exam results of the record.
-            'examResults' => ExamResultController::listing(ClinicalAccess::recordIds($patient), $timezone),
+            'examResults' => ExamResultController::listing(ClinicalAccess::recordIds($patient), $timezone, $request->user()),
         ]);
     }
 

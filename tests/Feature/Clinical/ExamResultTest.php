@@ -125,7 +125,7 @@ class ExamResultTest extends ClinicalTestCase
         $this->assertSame([['13.5000', null], ['15200.0000', 'high'], ['Não reagente', null]],
             $result->values()->withoutGlobalScopes()->get()->map(fn ($value) => [$value->value_numeric ?? $value->value_text, $value->flag])->all());
         // Ids and the version only: no exam, value or patient name.
-        $this->assertEquals(['unit_id' => $this->unit->id, 'exam_order_id' => $this->order->id, 'version' => 1, 'author_user_id' => $this->doctorAccount->user_id, 'patient_id' => $this->patient->id],
+        $this->assertEquals(['unit_id' => $this->unit->id, 'exam_order_id' => $this->order->id, 'version' => 1, 'critical' => false, 'author_user_id' => $this->doctorAccount->user_id, 'patient_id' => $this->patient->id],
             AuditEvent::where('action', 'exam_result.released')->sole()->context);
 
         (new DeliverNotifications)->handle();

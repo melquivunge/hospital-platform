@@ -218,6 +218,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('exam-queue/items/{item}/collect', [ExamQueueController::class, 'collect'])->middleware('throttle:120,1')->name('exam-queue.collect');
     // Step 5.4: results released and rectified by the exam team; the PDF for whoever reads the record.
     Route::post('exam-queue/items/{item}/result', [ExamResultController::class, 'release'])->middleware('throttle:30,1')->name('exam-results.release');
+    Route::post('exam-results/{result}/acknowledge', [ExamResultController::class, 'acknowledge'])->middleware('throttle:60,1')->name('exam-results.acknowledge');
     Route::get('exam-results/{result}/attachment', [ExamResultController::class, 'download'])->middleware('throttle:60,1')->name('exam-results.download');
     // Step 5.1a: the network exam catalog.
     Route::get('exams', [ExamController::class, 'index'])->name('exams.index');

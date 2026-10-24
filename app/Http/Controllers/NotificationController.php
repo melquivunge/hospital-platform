@@ -25,6 +25,7 @@ class NotificationController extends Controller
                 'title' => $notification->title,
                 'url' => $notification->url,
                 'read' => $notification->read_at !== null,
+                'urgent' => (bool) $notification->getAttribute('urgent'),
                 // Items span units with different time zones: the browser shows them in the reader's own.
                 'at' => $notification->created_at->toIso8601String(),
             ]);

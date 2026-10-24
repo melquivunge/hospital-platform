@@ -10,6 +10,7 @@ type Notification = {
     title: string;
     url: string | null;
     read: boolean;
+    urgent: boolean;
     at: string;
 };
 
@@ -60,9 +61,14 @@ export default function Notifications({
                         {notifications.map((notification) => (
                             <li
                                 key={notification.id}
-                                className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+                                className={`flex flex-wrap items-center justify-between gap-2 px-4 py-3 ${notification.urgent && !notification.read ? 'border-l-4 border-l-destructive bg-destructive/5' : ''}`}
                             >
                                 <span className="grid gap-0.5">
+                                    {notification.urgent && (
+                                        <span className="w-fit rounded-full bg-destructive px-2 py-0.5 text-xs font-medium text-white">
+                                            Urgente
+                                        </span>
+                                    )}
                                     <span
                                         className={
                                             notification.read

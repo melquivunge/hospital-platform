@@ -50,6 +50,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - Quem libera marca "crítico"; quem pediu recebe aviso destacado e registra ciência na tela do resultado.
 - Sem ciência em 1 hora, o gestor da unidade é avisado (comando no serviço `scheduler`, idempotente).
 - **Saída:** escalonamento uma vez por resultado (teste); ciência só por quem pediu ou quem atende o paciente.
+- **Feito na 5.5:** quem libera (ou retifica) marca o resultado como crítico. Quem pediu recebe aviso urgente, sem dado clínico, destacado em vermelho na lista e na barra superior até ser lido. A ciência é registrada na tela do resultado, uma vez, só por quem pediu ou por quem atende o paciente (atendimento aberto ou internação), e apaga os avisos urgentes daquele resultado. O comando `exams:critical`, a cada 5 minutos, avisa o gestor da unidade (sem gestor, o administrador da rede) quando passa 1 hora sem ciência, uma vez por resultado; a tela "Exames atrasados" lista os críticos sem ciência (local, quando, quem pediu), sem exame nem valor. O banco impede desfazer a ciência ou o escalonamento. Corrida real: três escalonamentos simultâneos geraram um aviso; duas ciências simultâneas, uma; ciência contra escalonamento, sempre consistente.
 
 ### 5.6 Revisão integrada
 - **Jornada num cliente novo:** pedido urgente na urgência → fila do laboratório → coleta → resultado crítico → aviso e ciência; pedido de imagem na internação → laudo → retificação; acesso da equipe encerrado depois do resultado.

@@ -1,5 +1,7 @@
+import { Form } from '@inertiajs/react';
 import { FileText } from 'lucide-react';
 import ExamResultController from '@/actions/App/Http/Controllers/ExamResultController';
+import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 
 export type ExamResultVersion = {
@@ -9,6 +11,10 @@ export type ExamResultVersion = {
     releasedBy: string | null;
     reason: string | null;
     report: string | null;
+    critical: boolean;
+    acknowledgedAt: string | null;
+    acknowledgedBy: string | null;
+    canAcknowledge: boolean;
     attachment: { name: string; sizeKb: number } | null;
     values: {
         analyteId: number;
@@ -46,6 +52,7 @@ export function ResultVersion({
         <div
             className={`grid gap-3 text-sm ${current ? '' : 'rounded-lg border border-dashed p-3 text-muted-foreground'}`}
         >
+            {result.critical && <Critical result={result} />}
             <p className="text-xs text-muted-foreground">
                 {current ? 'Liberado' : `Versão ${result.version}, substituída`}{' '}
                 em {result.releasedAt} por {result.releasedBy}
@@ -101,6 +108,50 @@ export function ResultVersion({
                         </a>
                     </Button>
                 </div>
+            )}
+        </div>
+    );
+}
+
+/**
+ * A critical result (step 5.5): who acknowledged it and when, or the button for whoever ordered it or attends the
+ * patient.
+ */
+function Critical({ result }: { result: ExamResultVersion }) {
+    return (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive bg-destructive/5 px-3 py-2">
+            <span className="grid gap-0.5">
+                <span className="font-semibold text-destructive">
+                    Resultado crítico
+                </span>
+                <span className="text-xs text-muted-foreground">
+                    {result.acknowledgedAt
+                        ? `Ciência de ${result.acknowledgedBy} em ${result.acknowledgedAt}`
+                        : 'Aguardando a ciência de quem pediu ou de quem atende o paciente'}
+                </span>
+            </span>
+            {result.canAcknowledge && (
+                <Form
+                    action={ExamResultController.acknowledge.url(result.id)}
+                    method="post"
+                    options={{ preserveScroll: true }}
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <Button
+                                type="submit"
+                                variant="destructive"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Registrar ciência
+                            </Button>
+                            <InputError
+                                message={errors[`acknowledge${result.id}`]}
+                            />
+                        </>
+                    )}
+                </Form>
             )}
         </div>
     );

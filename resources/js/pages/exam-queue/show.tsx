@@ -363,6 +363,17 @@ function ResultForm({ item }: { item: ExecutionItem }) {
                             <InputError message={errors.password} />
                         </div>
                     </div>
+                    <label className="flex min-h-11 items-center gap-2 text-sm font-medium">
+                        <input
+                            type="checkbox"
+                            name="critical"
+                            value="1"
+                            defaultChecked={current?.critical ?? false}
+                            className="size-4"
+                        />
+                        Resultado crítico: avisa quem pediu com destaque e
+                        espera a ciência
+                    </label>
                     <InputError
                         message={
                             errors.version ??

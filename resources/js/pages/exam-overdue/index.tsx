@@ -6,7 +6,8 @@ import { index } from '@/routes/exam-overdue';
 
 /**
  * Orders without collection for 7 days (step 5.3b, ADR-0008), for the unit manager: when, priority, where, who
- * ordered and how many items are missing. Never the exams or the record.
+ * ordered and how many items are missing; and, first, the critical results nobody acknowledged (step 5.5). Never
+ * the exams, the values or the record.
  */
 export default function ExamOverdue({
     units,
@@ -14,6 +15,7 @@ export default function ExamOverdue({
     days,
     priorities,
     orders,
+    critical,
 }: {
     units: { id: number; name: string }[];
     unitId: number;
@@ -27,6 +29,14 @@ export default function ExamOverdue({
         place: string;
         author: string | null;
         pending: number;
+    }[];
+    critical: {
+        id: number;
+        releasedAt: string;
+        minutes: number;
+        escalated: boolean;
+        place: string;
+        author: string | null;
     }[];
 }) {
     const unit = units.find((option) => option.id === unitId);
@@ -62,6 +72,44 @@ export default function ExamOverdue({
                             ))}
                         </select>
                     </div>
+                )}
+                {critical.length > 0 && (
+                    <section className="mb-8 grid gap-3">
+                        <h2 className="font-semibold text-destructive">
+                            Resultados críticos sem ciência
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                            Ligue para quem pediu ou para a equipe que atende o
+                            paciente: a ciência é registrada na tela do
+                            resultado.
+                        </p>
+                        <ul className="divide-y rounded-xl border border-destructive bg-card">
+                            {critical.map((alert) => (
+                                <li
+                                    key={alert.id}
+                                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+                                >
+                                    <span className="grid gap-0.5">
+                                        <span className="font-medium">
+                                            {alert.place}
+                                        </span>
+                                        <span className="text-sm text-muted-foreground">
+                                            Liberado em {alert.releasedAt} ·
+                                            pedido por{' '}
+                                            {alert.author ??
+                                                'autor desconhecido'}
+                                        </span>
+                                    </span>
+                                    <span className="font-semibold text-destructive tabular-nums">
+                                        {alert.minutes < 60
+                                            ? `${alert.minutes} min`
+                                            : `${Math.floor(alert.minutes / 60)} h ${alert.minutes % 60} min`}{' '}
+                                        sem ciência
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
                 )}
                 {orders.length === 0 ? (
                     <p className="rounded-xl border bg-card px-5 py-12 text-center text-muted-foreground">

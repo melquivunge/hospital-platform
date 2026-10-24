@@ -6,6 +6,7 @@ use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
 use App\Models\AuditEvent;
 use App\Models\ExamAnalyte;
+use App\Models\ExamCriticalAlert;
 use App\Models\ExamOrder;
 use App\Models\ExamOrderItem;
 use App\Models\ExamResult;
@@ -51,6 +52,7 @@ class ExamResultController extends Controller
             'values.*' => ['nullable', 'string', 'max:100'],
             'file' => ['nullable', 'file', 'max:'.ExamResult::MAX_KILOBYTES, 'extensions:pdf'],
             'remove_attachment' => ['nullable', 'boolean'],
+            'critical' => ['nullable', 'boolean'],
             'password' => ['required', 'string'],
         ], [
             'reason.required_unless' => 'Informe o motivo da retificação.',
@@ -112,12 +114,17 @@ class ExamResultController extends Controller
                     'attachment_sha256' => $file === null ? $kept?->attachment_sha256 : hash_file('sha256', $file->getRealPath()),
                     'released_by_user_id' => $request->user()->id, 'professional_id' => $professional?->id,
                     'signature_method' => 'password', 'released_at' => now(), 'value_count' => count($values),
+                    'critical' => (bool) ($data['critical'] ?? false),
                 ]);
+                // Step 5.5: a critical result waits for the orderer's acknowledgement.
+                if ($result->critical) {
+                    $result->criticalAlert()->create(['tenant_id' => $result->tenant_id, 'unit_id' => $order->unit_id, 'created_at' => now()]);
+                }
                 foreach ($values as $value) {
                     $result->values()->create(['tenant_id' => $result->tenant_id, ...$value]);
                 }
                 AuditEvent::record('exam_result.released', $order->tenant_id, $result, [
-                    'unit_id' => $order->unit_id, 'exam_order_id' => $order->id, 'version' => $next,
+                    'unit_id' => $order->unit_id, 'exam_order_id' => $order->id, 'version' => $next, 'critical' => $result->critical,
                     'author_user_id' => $order->author_user_id, 'patient_id' => $order->patient_id,
                 ]);
 
@@ -133,6 +140,57 @@ class ExamResultController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => $version > 1 ? 'Resultado retificado.' : 'Resultado liberado.']);
 
         return back();
+    }
+
+    /**
+     * Step 5.5: the acknowledgement of a critical result, once, by whoever ordered it or attends the patient (an
+     * open visit or the admission's team).
+     */
+    public function acknowledge(Request $request, ExamResult $result): RedirectResponse
+    {
+        $order = ExamOrder::query()->findOrFail($result->exam_order_id);
+        abort_unless(self::acknowledger($request->user(), $order), 403);
+        abort_unless($result->critical, 404);
+        DB::transaction(function () use ($request, $result, $order) {
+            // This version's alert and the open ones of earlier versions of the same item: whoever acknowledges the
+            // current result has seen the item's history, so a rectified critical never escalates on its own.
+            $alerts = ExamCriticalAlert::query()->whereIn('exam_result_id', ExamResult::query()->where('exam_order_item_id', $result->exam_order_item_id)
+                ->where('version', '<=', $result->version)->select('id'))->orderBy('id')->lockForUpdate()->get();
+            $own = $alerts->firstWhere('exam_result_id', $result->id) ?? abort(404);
+            if ($own->acknowledged_at !== null) {
+                throw ValidationException::withMessages(["acknowledge{$result->id}" => 'A ciência deste resultado já foi registrada.']);
+            }
+            $events = collect();
+            foreach ($alerts->whereNull('acknowledged_at') as $alert) {
+                /** @var ExamCriticalAlert $alert */
+                $alert->update(['acknowledged_at' => now(), 'acknowledged_by_user_id' => $request->user()->id]);
+                $subject = $alert->exam_result_id === $result->id ? $result : ExamResult::query()->findOrFail($alert->exam_result_id);
+                // One event per result: the inbox delivery reads it to send late notices already read.
+                AuditEvent::record('exam_result.critical_acknowledged', $result->tenant_id, $subject, ['unit_id' => $order->unit_id, 'escalated' => $alert->escalated_at !== null]);
+                $events = $events->concat(AuditEvent::query()->where(fn ($query) => $query
+                    ->where(fn ($release) => $release->where('action', 'exam_result.released')->where('subject_type', $subject->getMorphClass())->where('subject_id', $subject->id))
+                    ->orWhere(fn ($escalation) => $escalation->where('action', 'exam_result.critical_unacknowledged')->where('subject_type', $alert->getMorphClass())->where('subject_id', $alert->id)))
+                    ->pluck('id'));
+            }
+            // Resolved: the urgent notices of these results (the orderer's and the managers') stop calling.
+            DB::table('user_notifications')->whereIn('audit_event_id', $events->all())->where('urgent', true)->whereNull('read_at')->update(['read_at' => now()]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Ciência registrada.']);
+
+        return back();
+    }
+
+    /**
+     * Whoever ordered the exam, or attends the patient now (step 5.5).
+     */
+    public static function acknowledger(User $user, ExamOrder $order): bool
+    {
+        if ($order->author_user_id === $user->id) {
+            return true;
+        }
+        $patient = Patient::query()->findOrFail($order->patient_id);
+
+        return ClinicalAccess::activeVisit($user, $patient) !== null || ClinicalAccess::activeAdmission($user, $patient) !== null;
     }
 
     public function download(Request $request, ExamResult $result): StreamedResponse
@@ -166,39 +224,56 @@ class ExamResultController extends Controller
 
     /**
      * The released results of a record, the latest version of each item first, newest first, with the previous
-     * versions. Callers must have checked ClinicalAccess.
+     * versions. Callers must have checked ClinicalAccess; `$attends` says the user attends the patient now, so they
+     * may acknowledge a critical result (step 5.5), as the orderer always may.
      *
      * @param  list<int>  $patientIds
      * @return list<array<string, mixed>>
      */
-    public static function listing(array $patientIds, string $timezone): array
+    public static function listing(array $patientIds, string $timezone, ?User $user = null, bool $attends = false): array
     {
-        $results = ExamResult::query()->whereIn('patient_id', $patientIds)->with('values')->get();
+        $results = ExamResult::query()->whereIn('patient_id', $patientIds)->with(['values', 'criticalAlert'])->get();
         $items = ExamOrderItem::query()->whereKey($results->pluck('exam_order_item_id')->unique()->all())->get()->keyBy('id');
         $orders = ExamOrder::query()->whereKey($results->pluck('exam_order_id')->unique()->all())->get()->keyBy('id');
-        $names = User::query()->whereKey([...$results->pluck('released_by_user_id')->all(), ...$orders->pluck('author_user_id')->all()])->pluck('name', 'id');
+        $names = self::names($results, $orders->pluck('author_user_id')->all());
 
         return array_values($results->groupBy('exam_order_item_id')
-            ->map(fn (Collection $versions, int $itemId) => [
-                'id' => $itemId,
-                'name' => $items[$itemId]->exam_name,
-                'type' => $items[$itemId]->exam_type,
-                'orderedAt' => $orders[$items[$itemId]->exam_order_id]->created_at->setTimezone($timezone)->format('d/m/Y H:i'),
-                'orderedBy' => $names->get($orders[$items[$itemId]->exam_order_id]->author_user_id),
-                'versions' => self::versions($versions, $names, $timezone),
-                'releasedAt' => $versions->max('released_at'),
-            ])
+            ->map(function (Collection $versions, int $itemId) use ($items, $orders, $names, $timezone, $user, $attends) {
+                $order = $orders[$items[$itemId]->exam_order_id];
+
+                return [
+                    'id' => $itemId,
+                    'name' => $items[$itemId]->exam_name,
+                    'type' => $items[$itemId]->exam_type,
+                    'orderedAt' => $order->created_at->setTimezone($timezone)->format('d/m/Y H:i'),
+                    'orderedBy' => $names->get($order->author_user_id),
+                    'versions' => self::versions($versions, $names, $timezone, $attends || ($user !== null && $order->author_user_id === $user->id)),
+                    'releasedAt' => $versions->max('released_at'),
+                ];
+            })
             ->sortByDesc('releasedAt')->map(fn (array $row) => array_diff_key($row, ['releasedAt' => true]))->all());
+    }
+
+    /**
+     * Names of who released, acknowledged and ordered.
+     *
+     * @param  Collection<int, ExamResult>  $results  with criticalAlert loaded
+     * @param  array<int, mixed>  $more  more user ids
+     * @return Collection<int, string>
+     */
+    public static function names(Collection $results, array $more = []): Collection
+    {
+        return User::query()->whereKey([...$results->pluck('released_by_user_id')->all(), ...$results->pluck('criticalAlert.acknowledged_by_user_id')->filter()->all(), ...$more])->pluck('name', 'id');
     }
 
     /**
      * The versions of one item's result, newest first.
      *
-     * @param  Collection<int, ExamResult>  $versions
+     * @param  Collection<int, ExamResult>  $versions  with values and criticalAlert loaded
      * @param  Collection<int, string>  $names  user id => name
      * @return list<array<string, mixed>>
      */
-    public static function versions(Collection $versions, Collection $names, string $timezone): array
+    public static function versions(Collection $versions, Collection $names, string $timezone, bool $canAcknowledge = false): array
     {
         $when = fn (?CarbonInterface $at) => $at?->setTimezone($timezone)->format('d/m/Y H:i');
 
@@ -209,6 +284,10 @@ class ExamResultController extends Controller
             'releasedBy' => $names->get($result->released_by_user_id),
             'reason' => $result->rectification_reason,
             'report' => $result->report,
+            'critical' => $result->critical,
+            'acknowledgedAt' => $when($result->criticalAlert?->acknowledged_at),
+            'acknowledgedBy' => $names->get($result->criticalAlert->acknowledged_by_user_id ?? 0),
+            'canAcknowledge' => $canAcknowledge && $result->criticalAlert !== null && $result->criticalAlert->acknowledged_at === null,
             'attachment' => $result->attachment_path === null ? null : ['name' => $result->attachment_name, 'sizeKb' => (int) ceil((int) $result->attachment_size / 1024)],
             'values' => $result->values->map(fn (ExamResultValue $value) => [
                 'analyteId' => $value->exam_analyte_id,

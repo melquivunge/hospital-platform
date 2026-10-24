@@ -116,6 +116,9 @@ class HandleInertiaRequests extends Middleware
                 && (ShiftPolicy::managedUnitIds($membership) !== [] || Professional::query()->where('membership_id', $membership->id)->exists()),
             'unreadNotifications' => fn () => $request->user() === null || app(CurrentTenant::class)->id() === null ? 0
                 : UserNotification::query()->where('user_id', $request->user()->id)->whereNull('read_at')->count(),
+            // Step 5.5: unread urgent ones (a critical result) are highlighted in the top bar.
+            'urgentNotifications' => fn () => $request->user() === null || app(CurrentTenant::class)->id() === null ? 0
+                : UserNotification::query()->where('user_id', $request->user()->id)->whereNull('read_at')->where('urgent', true)->count(),
             'canViewPatients' => fn () => $request->user() !== null
                 && $request->user()->can('viewAny', Patient::class),
             'canMergePatients' => fn () => $request->user() !== null
