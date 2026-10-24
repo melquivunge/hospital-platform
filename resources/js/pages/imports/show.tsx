@@ -40,6 +40,8 @@ const createdLabels = {
     medications: 'apresentações no catálogo',
     medication_interactions: 'interações',
     stock: 'entradas de lote no estoque',
+    exams: 'exames no catálogo',
+    exam_analytes: 'analitos nos exames',
 };
 
 export default function ImportShow({
