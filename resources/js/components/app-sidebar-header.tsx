@@ -19,7 +19,7 @@ export function AppSidebarHeader({
 }: {
     breadcrumbs?: BreadcrumbItemType[];
 }) {
-    const { auth, unreadNotifications } = usePage().props;
+    const { auth, unreadNotifications, urgentNotifications } = usePage().props;
     const getInitials = useInitials();
 
     return (
@@ -30,6 +30,17 @@ export function AppSidebarHeader({
             </div>
             {auth.user && (
                 <div className="flex shrink-0 items-center gap-1">
+                    {urgentNotifications > 0 && (
+                        // Step 5.5: a critical result waits, on every page until read.
+                        <Link
+                            href={notifications()}
+                            className="flex min-h-11 items-center rounded-full bg-destructive px-3 text-sm font-semibold text-white focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        >
+                            {urgentNotifications === 1
+                                ? '1 urgente'
+                                : `${urgentNotifications} urgentes`}
+                        </Link>
+                    )}
                     <Link
                         href={notifications()}
                         aria-label={

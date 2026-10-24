@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Models\ExamCriticalAlert;
 use App\Models\ExamOrder;
+use App\Models\ExamResult;
 use App\Tenancy\Role;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -36,7 +38,7 @@ class DeliverNotifications implements ShouldQueue
         'transfer.requested', 'transfer.accepted', 'transfer.refused', 'transfer.cancelled', 'transfer.departed', 'transfer.completed',
         'prescription_item.reviewed',
         'stock.daily_alert', 'stock.inventory_submitted', 'stock.discard',
-        'exam.overdue_orders', 'exam_result.released',
+        'exam.overdue_orders', 'exam_result.released', 'exam_result.critical_unacknowledged',
     ];
 
     /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
@@ -84,20 +86,34 @@ class DeliverNotifications implements ShouldQueue
         }
     }
 
+    /**
+     * Step 5.5: a critical result already acknowledged when its notice is delivered (from the audit trail, which
+     * is not clinical, so no client is needed in the session).
+     */
+    private function acknowledged(int $tenant, int $resultId): bool
+    {
+        return DB::table('audit_events')->where('tenant_id', $tenant)->where('action', 'exam_result.critical_acknowledged')
+            ->where('subject_type', (new ExamResult)->getMorphClass())->where('subject_id', $resultId)->exists();
+    }
+
     private function deliver(\stdClass $event): void
     {
-        foreach ($this->notifications($event) as [$userIds, $title, $url]) {
+        foreach ($this->notifications($event) as $notification) {
+            [$userIds, $title, $url] = $notification;
             foreach (array_unique($userIds) as $userId) {
                 DB::table('user_notifications')->insertOrIgnore([
                     'tenant_id' => $event->tenant_id, 'user_id' => $userId, 'audit_event_id' => $event->id,
                     'title' => $title, 'url' => $url, 'created_at' => $event->occurred_at,
+                    // Step 5.5: shown highlighted until read; already read when resolved before this delivery.
+                    'urgent' => $notification[3] ?? false,
+                    'read_at' => ($notification[4] ?? false) ? now() : null,
                 ]);
             }
         }
     }
 
     /**
-     * @return list<array{list<int>, string, string}>
+     * @return list<array{0: list<int>, 1: string, 2: string, 3?: bool, 4?: bool}>
      */
     private function notifications(\stdClass $event): array
     {
@@ -141,9 +157,22 @@ class DeliverNotifications implements ShouldQueue
         }
         // Step 5.4: the orderer hears of a released or rectified result, with no exam, patient or value in the text.
         if ($event->action === 'exam_result.released') {
+            $url = '/patients/'.((int) ($context['patient_id'] ?? 0)).'/record';
+            // Step 5.5: a critical one is urgent and asks for the acknowledgement.
+            if ($context['critical'] ?? false) {
+                return [[array_filter([(int) ($context['author_user_id'] ?? 0)]), 'Resultado crítico de um exame que você pediu: registre a ciência', $url, true, $this->acknowledged($tenant, (int) $event->subject_id)]];
+            }
             $title = ($context['version'] ?? 1) > 1 ? 'Um resultado de exame que você pediu foi retificado' : 'Um resultado de exame que você pediu foi liberado';
 
-            return [[array_filter([(int) ($context['author_user_id'] ?? 0)]), $title, '/patients/'.((int) ($context['patient_id'] ?? 0)).'/record']];
+            return [[array_filter([(int) ($context['author_user_id'] ?? 0)]), $title, $url]];
+        }
+        // Step 5.5: the unit's managers (without one, the network admins) hear of a critical result nobody acknowledged.
+        if ($event->action === 'exam_result.critical_unacknowledged') {
+            $unit = (int) ($context['unit_id'] ?? 0);
+            $managers = $this->usersWithRole($tenant, Role::UnitManager, $unit);
+            $title = 'Resultado crítico de exame sem ciência há mais de '.ExamCriticalAlert::ESCALATE_MINUTES.' minutos';
+
+            return [[$managers !== [] ? $managers : $this->usersWithRole($tenant, Role::NetworkAdmin), $title, "/exam-overdue?unit={$unit}", true, $this->acknowledged($tenant, (int) ($context['exam_result_id'] ?? 0))]];
         }
         // Decision of 23/10/2026 (option A of the 4c.5 security review): every discard of a controlled medication
         // reaches the unit's managers (without one, the network admins), with the medication, quantity and reason.

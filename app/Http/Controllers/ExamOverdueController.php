@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExamCriticalAlert;
 use App\Models\ExamOrder;
+use App\Models\ExamResult;
 use App\Models\Unit;
 use App\Models\User;
 use App\Policies\UnitPolicy;
@@ -13,8 +15,9 @@ use Inertia\Response;
 
 /**
  * Step 5.3b (ADR-0008): the unit manager (and the network admin, who hears when a unit has no manager) sees the
- * orders open with an item not collected for more than 7 days, to chase the team or the doctor who ordered. Not
- * clinical: when, priority, where, who ordered and how many items are missing; never the exams or the record.
+ * orders open with an item not collected for more than 7 days, to chase the team or the doctor who ordered; since
+ * step 5.5, also the critical results nobody acknowledged, to call the doctor. Not clinical: when, priority, where,
+ * who ordered and how many items are missing; never the exams, the values or the record.
  */
 class ExamOverdueController extends Controller
 {
@@ -34,6 +37,12 @@ class ExamOverdueController extends Controller
         $places = ExamQueueController::places($orders);
         $authors = User::query()->whereKey($orders->pluck('author_user_id')->unique()->all())->pluck('name', 'id');
 
+        $alerts = ExamCriticalAlert::query()->where('unit_id', $unit->id)->whereNull('acknowledged_at')->orderBy('created_at')->limit(self::LIMIT)->get();
+        $orderOf = ExamResult::query()->whereKey($alerts->pluck('exam_result_id')->all())->pluck('exam_order_id', 'id');
+        $critical = ExamOrder::query()->whereKey($orderOf->unique()->all())->get()->keyBy('id');
+        $criticalPlaces = ExamQueueController::places($critical);
+        $authors = $authors->union(User::query()->whereKey($critical->pluck('author_user_id')->unique()->all())->pluck('name', 'id'));
+
         return Inertia::render('exam-overdue/index', [
             'units' => $units->map->only('id', 'name')->values(),
             'unitId' => $unit->id,
@@ -48,6 +57,18 @@ class ExamOverdueController extends Controller
                 'author' => $authors->get($order->author_user_id),
                 'pending' => (int) $order->getAttribute('pending'),
             ])->values(),
+            'critical' => $alerts->map(function (ExamCriticalAlert $alert) use ($critical, $orderOf, $criticalPlaces, $authors, $timezone) {
+                $order = $critical[$orderOf[$alert->exam_result_id]];
+
+                return [
+                    'id' => $alert->id,
+                    'releasedAt' => $alert->created_at->setTimezone($timezone)->format('d/m/Y H:i'),
+                    'minutes' => (int) $alert->created_at->diffInMinutes(now()),
+                    'escalated' => $alert->escalated_at !== null,
+                    'place' => $criticalPlaces[$order->id],
+                    'author' => $authors->get($order->author_user_id),
+                ];
+            })->values(),
         ]);
     }
 

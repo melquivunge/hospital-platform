@@ -6,6 +6,7 @@ use App\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -29,8 +30,9 @@ use Illuminate\Support\Carbon;
  * @property string $signature_method
  * @property Carbon $released_at
  * @property int $value_count the database refuses more values than this
+ * @property bool $critical marked by whoever released it (step 5.5)
  */
-#[Fillable(['patient_id', 'exam_order_id', 'exam_order_item_id', 'version', 'rectification_reason', 'report', 'attachment_name', 'attachment_path', 'attachment_size', 'attachment_sha256', 'released_by_user_id', 'professional_id', 'signature_method', 'released_at', 'value_count'])]
+#[Fillable(['patient_id', 'exam_order_id', 'exam_order_item_id', 'version', 'rectification_reason', 'report', 'attachment_name', 'attachment_path', 'attachment_size', 'attachment_sha256', 'released_by_user_id', 'professional_id', 'signature_method', 'released_at', 'value_count', 'critical'])]
 class ExamResult extends Model
 {
     use BelongsToTenant;
@@ -44,7 +46,7 @@ class ExamResult extends Model
      */
     protected function casts(): array
     {
-        return ['released_at' => 'datetime', 'version' => 'integer', 'attachment_size' => 'integer', 'value_count' => 'integer'];
+        return ['released_at' => 'datetime', 'version' => 'integer', 'attachment_size' => 'integer', 'value_count' => 'integer', 'critical' => 'boolean'];
     }
 
     /**
@@ -53,5 +55,13 @@ class ExamResult extends Model
     public function values(): HasMany
     {
         return $this->hasMany(ExamResultValue::class)->orderBy('id');
+    }
+
+    /**
+     * @return HasOne<ExamCriticalAlert, $this>
+     */
+    public function criticalAlert(): HasOne
+    {
+        return $this->hasOne(ExamCriticalAlert::class);
     }
 }

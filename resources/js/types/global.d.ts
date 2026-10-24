@@ -23,6 +23,7 @@ declare module '@inertiajs/core' {
             canViewMyShifts: boolean;
             canViewRequests: boolean;
             unreadNotifications: number;
+            urgentNotifications: number;
             canViewPatients: boolean;
             canMergePatients: boolean;
             canManageSchedules: boolean;

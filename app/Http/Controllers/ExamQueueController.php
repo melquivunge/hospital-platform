@@ -90,7 +90,7 @@ class ExamQueueController extends Controller
     public function show(Request $request, ExamOrder $order): Response
     {
         $types = self::access($request->user(), $order);
-        $items = $order->items()->whereIn('exam_type', $types)->with('results.values')->get();
+        $items = $order->items()->whereIn('exam_type', $types)->with(['results.values', 'results.criticalAlert'])->get();
         // ADR-0008: the record while an item of the user's types waits for its result; after that, only the order
         // and the results, to rectify them (step 5.4).
         $open = $order->status === 'requested' && $items->contains(fn (ExamOrderItem $item) => $item->results->isEmpty());
@@ -101,7 +101,7 @@ class ExamQueueController extends Controller
         $timezone = Unit::query()->whereKey($order->unit_id)->value('timezone') ?? 'UTC';
         $ids = ClinicalAccess::recordIds($patient);
         $results = $items->flatMap->results;
-        $names = User::query()->whereKey(array_filter([$order->author_user_id, ...$items->pluck('collected_by_user_id')->all(), ...$results->pluck('released_by_user_id')->all()]))->pluck('name', 'id');
+        $names = ExamResultController::names($results, array_filter([$order->author_user_id, ...$items->pluck('collected_by_user_id')->all()]));
         $crm = ClinicalAccess::professional($request->user())?->council === 'CRM';
         $analytes = ExamAnalyte::query()->whereIn('exam_id', $items->where('exam_type', 'laboratory')->pluck('exam_id')->all())->where('active', true)->orderBy('position')->get()->groupBy('exam_id');
 
@@ -121,7 +121,7 @@ class ExamQueueController extends Controller
                 'type' => $item->exam_type,
                 'collectedAt' => $item->collected_at?->setTimezone($timezone)->format('d/m/Y H:i'),
                 'collectedBy' => $names->get($item->collected_by_user_id),
-                'results' => ExamResultController::versions($item->results, $names, $timezone),
+                'results' => ExamResultController::versions($item->results, $names, $timezone, $order->author_user_id === $request->user()->id),
                 'nextVersion' => $item->results->count() + 1,
                 // Imaging reports only by a professional with CRM (decision of 24/10/2026).
                 'canSign' => $order->status === 'requested' && $item->collected_at !== null && ($item->exam_type === 'laboratory' || $crm),
@@ -138,7 +138,7 @@ class ExamQueueController extends Controller
             // ADR-0008: the prescriptions of the order's encounter, read-only for the exam team.
             'prescriptions' => $open ? self::readOnlyPrescriptions($request->user(), $order, $timezone) : null,
             'documents' => $open ? ClinicalDocumentController::listing($ids, $timezone, $request->user()->id) : [],
-            'examResults' => $open ? ExamResultController::listing($ids, $timezone) : [],
+            'examResults' => $open ? ExamResultController::listing($ids, $timezone, $request->user()) : [],
         ]);
     }
 

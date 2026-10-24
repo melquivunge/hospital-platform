@@ -13,3 +13,5 @@ Artisan::command('inspire', function () {
 Schedule::command('stock:alerts')->hourly()->withoutOverlapping(10);
 // Step 5.3b (ADR-0008): orders without collection for 7 days, to the unit managers.
 Schedule::command('exams:overdue')->hourly()->withoutOverlapping(10);
+// Step 5.5: critical results without an acknowledgement for 1 hour reach the unit manager.
+Schedule::command('exams:critical')->everyFiveMinutes()->withoutOverlapping(10);
