@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: entrega 4c concluída (23/10/2026). Entrega 5 (exames e cirurgia): decisões do usuário registradas (23/10/2026: exames na 5, cirurgia na 5b; papéis Laboratório e Imagem; equipe lê o prontuário durante a execução); ADR-0008 e plano `plans/web-v6-exames.md` aceitos e implementação autorizada em 24/10/2026. Entrega 5 (exames) concluída e mesclada (5.6, PR #87, 24/10/2026). Próximo passo: aprovação da ADR-0009 e do plano `plans/web-v7-cirurgia.md` (entrega 5b, cirurgia) (pendências respondidas em 24/10/2026: equipe escalada lê o prontuário; centro cirúrgico ou equipe confirma o checklist; farmácia mantém os materiais); implementação só depois da autorização.
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: entrega 4c concluída (23/10/2026). Entrega 5 (exames e cirurgia): decisões do usuário registradas (23/10/2026: exames na 5, cirurgia na 5b; papéis Laboratório e Imagem; equipe lê o prontuário durante a execução); ADR-0008 e plano `plans/web-v6-exames.md` aceitos e implementação autorizada em 24/10/2026. Entrega 5 (exames) concluída e mesclada (5.6, PR #87, 24/10/2026). Entrega 5b (cirurgia): ADR-0009 e plano `plans/web-v7-cirurgia.md` aceitos e implementação autorizada em 24/10/2026 (equipe escalada lê o prontuário; centro cirúrgico ou equipe confirma o checklist; farmácia mantém os materiais). Próximo passo: revisão e merge da 5b.1a (procedimentos, salas e papel Centro cirúrgico); depois a 5b.1b (importação CSV dos procedimentos).
 
 ## Onde está cada coisa
 
@@ -111,6 +111,7 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #85 | 5.4: resultado e laudo, retificação por versão | Mesclado |
 | #86 | 5.5: resultado crítico, ciência e escalonamento ao gestor | Mesclado |
 | #87 | 5.6: revisão integrada dos exames | Mesclado |
+| — | 5b.1a: procedimentos, salas e papel Centro cirúrgico (branch `feat/surgery-catalog`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -593,7 +594,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 456 testes passando (5.6), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 460 testes passando (5b.1a), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

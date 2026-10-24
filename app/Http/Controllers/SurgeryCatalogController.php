@@ -42,11 +42,23 @@ class SurgeryCatalogController extends Controller
                 ->orderByDesc('active')->orderBy('name_key')->limit(self::LIMIT)
                 ->get(['id', 'name', 'code', 'duration_minutes', 'size', 'active']),
             'sizes' => SurgicalProcedure::SIZES,
-            'units' => Unit::query()->orderBy('name')->get(['id', 'name'])->map(fn (Unit $unit) => [
-                ...$unit->only('id', 'name'),
-                'rooms' => OperatingRoom::query()->where('unit_id', $unit->id)->orderByDesc('active')->orderBy('name_key')->get(['id', 'name', 'active']),
-            ]),
+            'units' => self::units(),
         ]);
+    }
+
+    /**
+     * The units of the network with their rooms, in two queries.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function units(): array
+    {
+        $rooms = OperatingRoom::query()->orderByDesc('active')->orderBy('name_key')->get(['id', 'unit_id', 'name', 'active'])->groupBy('unit_id');
+
+        return Unit::query()->orderBy('name')->get(['id', 'name'])->map(fn (Unit $unit) => [
+            ...$unit->only('id', 'name'),
+            'rooms' => ($rooms->get($unit->id) ?? collect())->map->only('id', 'name', 'active')->values(),
+        ])->values()->all();
     }
 
     public function storeProcedure(Request $request): RedirectResponse

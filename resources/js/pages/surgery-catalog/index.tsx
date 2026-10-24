@@ -159,7 +159,10 @@ export default function SurgeryCatalogIndex({
                                     </span>
                                 </div>
                                 <details className="mt-2">
-                                    <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary">
+                                    <summary
+                                        aria-label={`Alterar ${procedure.name}`}
+                                        className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary"
+                                    >
                                         Alterar
                                     </summary>
                                     <ProcedureForm
@@ -340,7 +343,10 @@ function RoomItem({ room }: { room: Room }) {
                 )}
             </span>
             <details>
-                <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary">
+                <summary
+                    aria-label={`Alterar ${room.name}`}
+                    className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary"
+                >
                     Alterar
                 </summary>
                 <Form

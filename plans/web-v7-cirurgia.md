@@ -1,6 +1,6 @@
 # Plano — entrega 5b: cirurgia
 
-Data: 24/10/2026. Estado: **proposta; pendências respondidas pelo usuário em 24/10/2026, aguardando autorização para implementar.** Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
+Data: 24/10/2026. Estado: **aceito; implementação autorizada pelo usuário em 24/10/2026, uma etapa por vez.** Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
 Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário de 23/10/2026, questões 6 a 9). Arquitetura: ../docs/adr/0009-surgical-center-access-and-materials.md, ../docs/adr/0007-pharmacy-stock-ledger.md e ../docs/adr/0008-exam-team-record-access.md. Regras de trabalho: ../AGENTS.md.
 
 ## Princípios herdados
@@ -19,6 +19,8 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - **Salas por unidade** (administrador): nome e ativa ou inativa.
 - **Papel Centro cirúrgico**, por unidade, na tela de pessoas.
 - **Saída:** unicidade e validação; papel com escopo de unidade.
+- Divisão (24/10/2026): 5b.1a procedimentos, salas e papel; 5b.1b importação CSV dos procedimentos.
+- **Feito na 5b.1a:** tela "Procedimentos e salas" do administrador da rede: procedimentos (nome único na rede, duração prevista de 5 a 1440 minutos, porte pequeno, médio ou grande, código TUSS/SIGTAP opcional) e salas por unidade (nome único na unidade; a sala nunca muda de unidade). Desativados, nunca apagados; o banco confere os valores. Papel Centro cirúrgico por unidade, concedido na tela de pessoas. Auditoria só com ids e campos alterados.
 
 ### 5b.2 Pedido de cirurgia
 - O profissional que atende pede no atendimento, na urgência ou na internação: procedimento, lateralidade quando houver, indicação, caráter (eletiva ou urgência), data desejada e assinatura com senha.
