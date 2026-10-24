@@ -89,6 +89,14 @@ class HandleInertiaRequests extends Middleware
             // Pharmacy or unit manager: stock (read-only for the manager) and inventories.
             'canUseInventory' => fn () => $request->user() !== null
                 && (PharmacyController::unitIds(UnitPolicy::currentMembership($request->user())) !== [] || StockInventoryController::managerUnitIds($request->user()) !== []),
+            'canViewStockIndicators' => function () use ($request): bool {
+                if ($request->user() === null) {
+                    return false;
+                }
+                $membership = UnitPolicy::currentMembership($request->user());
+
+                return ($membership?->hasRole(Role::NetworkAdmin) ?? false) || PharmacyController::unitIds($membership) !== [] || StockInventoryController::managerUnitIds($request->user()) !== [];
+            },
             'canManageMedications' => fn () => $request->user() !== null
                 && $request->user()->can('manage', Medication::class),
             'canManageInsurers' => fn () => $request->user() !== null

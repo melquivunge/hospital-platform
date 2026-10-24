@@ -34,6 +34,7 @@ use App\Http\Controllers\SectorController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\ShiftRequestController;
 use App\Http\Controllers\StockController;
+use App\Http\Controllers\StockIndicatorController;
 use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\TransferController;
@@ -118,6 +119,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('stock', [StockController::class, 'index'])->middleware('throttle:120,1')->name('stock.index');
     Route::post('stock/entries', [StockController::class, 'storeEntry'])->middleware('throttle:60,1')->name('stock.entries.store');
     Route::post('stock/lots/{lot}/discards', [StockController::class, 'discard'])->middleware('throttle:60,1')->name('stock.discards.store');
+    // Step 4c.4c (ADR-0007): the stock indicators; the network admin sees every unit.
+    Route::get('stock/indicators', [StockIndicatorController::class, 'index'])->middleware('throttle:120,1')->name('stock.indicators.index');
     // Step 4c.4b (ADR-0007): the movements report and its CSV, for the pharmacy and the unit manager.
     Route::get('stock/movements', [StockReportController::class, 'index'])->middleware('throttle:120,1')->name('stock.movements.index');
     Route::get('stock/movements.csv', [StockReportController::class, 'csv'])->middleware('throttle:20,1')->name('stock.movements.csv');
