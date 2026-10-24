@@ -623,3 +623,72 @@ Propostas aceitas nas questões 1, 2, 3, 5, 6, 7, 8 e 9. Na questão 4, o usuár
 - **Arquitetura:** [ADR-0007](docs/adr/0007-pharmacy-stock-ledger.md), aceita.
 - **Plano em etapas:** `plans/web-v5-estoque.md`, aceito. **Implementação autorizada pelo usuário em 22/10/2026**, começando pela 4c.1.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
+
+## Contrato da entrega 5 — exames e cirurgia
+
+Método: ECC Product Capability. Data: 23/10/2026. Estado: **proposto; aguardando as decisões do usuário nas questões abaixo. Nenhuma implementação autorizada.** Origem: roteiro ("Diagnóstico e cirurgia: solicitações e agendas → resultados e procedimentos", mapa de capacidades) e as entregas 3, 4, 4b e 4c, que deixaram exames, cirurgia e materiais para esta entrega.
+
+### Capacidade
+
+O médico que atende o paciente (ambulatório, urgência ou internação) pede exames de laboratório e de imagem a partir do catálogo de exames da rede. A equipe de exames da unidade recebe o pedido, registra a coleta ou a realização e libera o resultado com laudo assinado; quem pediu é avisado, e um resultado crítico chega com destaque. Para cirurgia, o médico pede o procedimento, o centro cirúrgico agenda sala e equipe, a equipe percorre o checklist de cirurgia segura e o cirurgião registra a descrição cirúrgica assinada. Resultado esperado: pedido → realização → resultado, e pedido de cirurgia → agenda → checklist → descrição, rastreáveis de ponta a ponta no prontuário do paciente, base para o faturamento (entrega 6).
+
+### Restrições e invariantes (fixas, herdadas das entregas 3 a 4c)
+
+- **Dado clínico protegido:** pedidos, resultados, laudos, agenda cirúrgica com paciente e descrições são clínicos, com RLS forçado (ADR-0003) e leitura gravada na trilha. Notificações, logs e auditoria levam só ids e marcadores, nunca nome de paciente, exame ligado a paciente ou resultado.
+- **Quem lê:** quem atende o paciente (ADR-0003 e ADR-0004). Quem executa o exame ou a cirurgia lê só o necessário para executar, por papel e unidade, com trilha (como a farmácia na ADR-0005). Isso exige uma ADR nova.
+- **Assinatura:** pedido, laudo e descrição cirúrgica com a assinatura eletrônica simples (senha), como a prescrição até o ICP-Brasil real (ADR-0006).
+- **Histórico preservado:** resultado liberado e descrição assinada não mudam; correção por adendo ou por resultado retificado, com o anterior visível.
+- **Por unidade e por rede:** a equipe de exames e o centro cirúrgico de uma unidade só trabalham os pedidos da própria unidade; o catálogo é da rede.
+- **Concorrência:** duas pessoas liberando o mesmo resultado ou agendando a mesma sala no mesmo horário resultam num só registro (verificado com corrida real).
+
+### Atores e superfícies (proposta)
+
+| Ator | Superfície | Limite |
+|---|---|---|
+| Médico que atende | Pedir exames e cirurgia no atendimento ou na internação; ver resultados; assinar a descrição cirúrgica | Só pacientes que atende |
+| Equipe de exames (papel novo, por unidade) | Fila de pedidos, coleta ou realização, resultado e laudo | Só a própria unidade; lê o pedido, não o prontuário inteiro |
+| Centro cirúrgico (papel novo, por unidade) | Agenda de salas, equipe, checklist de cirurgia segura | Só a própria unidade |
+| Enfermagem do setor | Ver pedidos e resultados dos internados do setor; checklist no centro cirúrgico | Como na ADR-0004 |
+| Administrador de rede | Catálogo de exames e procedimentos; salas do centro cirúrgico por unidade | Sem dado clínico |
+
+### Estados e transições (proposta)
+
+- **Pedido de exame:** pedido → coletado ou realizado → resultado liberado; ou cancelado (com motivo, antes do resultado). Resultado liberado pode ser retificado, nunca apagado.
+- **Pedido de cirurgia:** pedido → agendado (sala, data e equipe) → em andamento (checklist de entrada) → concluído (descrição assinada); ou cancelado ou reagendado, com motivo.
+- **Checklist de cirurgia segura (OMS):** antes da anestesia, antes da incisão e antes da saída da sala; cada etapa com quem confirmou e quando.
+
+### Interface e dados (proposta)
+
+- **Catálogo da rede:** exames (nome, tipo laboratório ou imagem, material, preparo, valores de referência opcionais) e procedimentos cirúrgicos; código TUSS/SIGTAP opcional, sem faturar.
+- **Entidades clínicas novas:** pedido de exame e seus itens, resultado e laudo, pedido de cirurgia, agenda de sala, equipe cirúrgica, checklist, descrição cirúrgica.
+- **Resultado:** texto e valores com referência, e anexo em PDF pelo mecanismo de documentos existente (sem visualizador de imagem médica).
+- **Avisos:** resultado liberado e resultado crítico para quem pediu, pelas notificações existentes, sem dado clínico no texto.
+
+### Não objetivos desta entrega (proposta)
+
+- Integração com equipamentos e sistemas de laboratório ou imagem (LIS, PACS, DICOM, HL7/FHIR) e visualizador de imagens.
+- Laboratório externo ou de apoio com envio eletrônico.
+- Ficha anestésica completa e controle intraoperatório de sinais vitais.
+- Faturamento, autorização de convênio e AIH (entrega 6).
+- Portal do paciente com resultados (entrega 7).
+- Hemoterapia e banco de sangue.
+
+### Questões abertas (para decisão do usuário)
+
+1. **Recorte.** Proposta: dividir como nas entregas 4 e 4b: **entrega 5 = exames** (laboratório e imagem) e **entrega 5b = cirurgia** (agenda, checklist, descrição e materiais). Alternativa: tudo numa entrega só (maior, mais demorada até o primeiro uso).
+2. **Quem pede.** Proposta: só profissional com função que atende e habilitação na unidade, dentro do atendimento ou da internação (como a prescrição). Alternativa: também enfermagem, por protocolo.
+3. **Equipe de exames.** Proposta: um papel novo "Exames" por unidade, que recebe a fila, registra coleta e libera o resultado; laudo de imagem liberado por profissional com conselho (CRM). Alternativa: papéis separados para laboratório e imagem.
+4. **Formato do resultado.** Proposta: texto livre e valores com referência quando o catálogo os tiver, mais anexo PDF. Alternativa: só anexo PDF (mais simples, sem valores pesquisáveis).
+5. **Resultado crítico.** Proposta: quem libera marca "crítico"; o médico que pediu recebe aviso destacado e precisa registrar ciência; sem ciência em 1 hora, o gestor da unidade é avisado. Alternativa: só aviso, sem ciência obrigatória.
+6. **Acesso de quem executa (ADR nova).** Proposta: a equipe de exames lê só o pedido (exames, indicação clínica, alergias relevantes ao exame, como contraste) e o que ela mesma registrou; o centro cirúrgico lê o pedido de cirurgia, alergias e o checklist. Nada do resto do prontuário. Alternativa: acesso ao prontuário durante a execução, com trilha.
+7. **Agenda cirúrgica (se a cirurgia entrar).** Proposta: salas por unidade com horários; o centro cirúrgico agenda; cirurgia de urgência entra sem agendamento prévio, com registro do motivo. Alternativa: só lista de espera, sem salas.
+8. **Materiais na cirurgia.** Proposta: na entrega 5b, um catálogo de materiais usando o mesmo livro de estoque da 4c (lote, validade, movimento só de inserção), com consumo registrado na cirurgia. Alternativa: materiais só como texto na descrição, estoque de materiais depois.
+9. **Termo de consentimento.** Proposta: anexo obrigatório do termo assinado antes de concluir o checklist de entrada (exceto urgência, com motivo). Alternativa: opcional.
+10. **Exames de urgência.** Proposta: marcador de prioridade (rotina, urgente) no pedido, com a fila da equipe de exames ordenada por ele e tempo-alvo com destaque visual (como a classificação de risco). Alternativa: sem prioridade.
+
+### Encaminhamento ECC
+
+- **Esclarecimento de produto:** pendente (questões acima).
+- **Arquitetura:** depois das decisões, uma ADR nova para o acesso de quem executa (questão 6) e, se a cirurgia entrar, para materiais no livro de estoque (questão 8).
+- **Plano em etapas:** depois da ADR, `plans/web-v6-exames.md` (e `web-v7-cirurgia.md`, se dividido).
+- **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
