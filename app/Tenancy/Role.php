@@ -16,10 +16,12 @@ enum Role: string
     case BedManagement = 'bed_management';
     case Housekeeping = 'housekeeping';
     case Pharmacy = 'pharmacy';
+    case Laboratory = 'laboratory';
+    case Imaging = 'imaging';
     case Auditor = 'auditor';
 
     public function requiresUnit(): bool
     {
-        return in_array($this, [self::UnitManager, self::ShiftCoordinator, self::Professional, self::Importer, self::Reception, self::BedManagement, self::Housekeeping, self::Pharmacy], true);
+        return in_array($this, [self::UnitManager, self::ShiftCoordinator, self::Professional, self::Importer, self::Reception, self::BedManagement, self::Housekeeping, self::Pharmacy, self::Laboratory, self::Imaging], true);
     }
 }

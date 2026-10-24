@@ -32,6 +32,7 @@ import {
     SlidersHorizontal,
     Stethoscope,
     UsersRound,
+    TestTubeDiagonal,
     Users,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -53,6 +54,7 @@ import { index as appointments, queue } from '@/routes/appointments';
 import { index as admissions } from '@/routes/admissions';
 import { index as beds } from '@/routes/beds';
 import { index as pharmacy } from '@/routes/pharmacy';
+import { index as exams } from '@/routes/exams';
 import { index as stock } from '@/routes/stock';
 import { index as inventories } from '@/routes/stock/inventories';
 import { index as stockIndicators } from '@/routes/stock/indicators';
@@ -108,6 +110,7 @@ export function AppSidebar() {
         canBookAppointments,
         canManageInsurers,
         canManageMedications,
+        canManageExams,
         canAttend,
         canViewClinicalAccess,
         canViewBeds,
@@ -259,6 +262,9 @@ export function AppSidebar() {
             : []),
         ...(canManageMedications
             ? [{ title: 'Medicamentos', href: medications(), icon: Pill }]
+            : []),
+        ...(canManageExams
+            ? [{ title: 'Exames', href: exams(), icon: TestTubeDiagonal }]
             : []),
         ...(canManagePeople
             ? [{ title: 'Pessoas', href: people(), icon: Users }]
