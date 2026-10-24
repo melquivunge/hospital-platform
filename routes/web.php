@@ -42,6 +42,7 @@ use App\Http\Controllers\StockController;
 use App\Http\Controllers\StockIndicatorController;
 use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\StockReportController;
+use App\Http\Controllers\SurgeryCatalogController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\TriageLevelController;
 use App\Http\Controllers\UnitController;
@@ -225,6 +226,12 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('exams', [ExamController::class, 'store'])->middleware('throttle:60,1')->name('exams.store');
     Route::put('exams/{exam}', [ExamController::class, 'update'])->middleware('throttle:60,1')->name('exams.update');
     Route::put('exam-targets', [ExamController::class, 'targets'])->middleware('throttle:60,1')->name('exams.targets');
+    // Step 5b.1a: the network surgical procedures and the operating rooms of each unit.
+    Route::get('surgery-catalog', [SurgeryCatalogController::class, 'index'])->name('surgery-catalog.index');
+    Route::post('surgical-procedures', [SurgeryCatalogController::class, 'storeProcedure'])->middleware('throttle:60,1')->name('surgical-procedures.store');
+    Route::put('surgical-procedures/{procedure}', [SurgeryCatalogController::class, 'updateProcedure'])->middleware('throttle:60,1')->name('surgical-procedures.update');
+    Route::post('operating-rooms', [SurgeryCatalogController::class, 'storeRoom'])->middleware('throttle:60,1')->name('operating-rooms.store');
+    Route::put('operating-rooms/{room}', [SurgeryCatalogController::class, 'updateRoom'])->middleware('throttle:60,1')->name('operating-rooms.update');
     Route::get('medications', [MedicationController::class, 'index'])->name('medications.index');
     Route::post('medications', [MedicationController::class, 'store'])->middleware('throttle:60,1')->name('medications.store');
     Route::put('medications/{medication}', [MedicationController::class, 'update'])->middleware('throttle:60,1')->name('medications.update');

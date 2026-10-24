@@ -1,7 +1,7 @@
 # ADR-0009: acesso do centro cirúrgico ao prontuário e materiais no livro de estoque
 
 Data: 24/10/2026
-Estado: proposta; decisões do usuário de 24/10/2026 incorporadas (equipe escalada lê o prontuário; centro cirúrgico ou equipe confirma o checklist; farmácia mantém o estoque de materiais)
+Estado: aceita pelo usuário (24/10/2026); decisões do usuário de 24/10/2026 incorporadas (equipe escalada lê o prontuário; centro cirúrgico ou equipe confirma o checklist; farmácia mantém o estoque de materiais)
 
 ## Contexto
 

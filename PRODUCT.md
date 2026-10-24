@@ -699,5 +699,5 @@ Consequência para o recorte (questão 1): **entrega 5 = exames** (laboratório 
 
 - **Esclarecimento de produto:** concluído (decisões acima).
 - **Arquitetura:** [ADR-0008](docs/adr/0008-exam-team-record-access.md), aceita (acesso das equipes de laboratório e imagem). Materiais no livro de estoque e acesso do centro cirúrgico ficam em ADR da entrega 5b.
-- **Plano em etapas:** `plans/web-v6-exames.md` (entrega 5), aceito, implementado e mesclado (5.1 a 5.6, 24/10/2026). `plans/web-v7-cirurgia.md` (entrega 5b) e [ADR-0009](docs/adr/0009-surgical-center-access-and-materials.md): propostas de 24/10/2026, aguardando aprovação do usuário.
+- **Plano em etapas:** `plans/web-v6-exames.md` (entrega 5), aceito, implementado e mesclado (5.1 a 5.6, 24/10/2026). `plans/web-v7-cirurgia.md` (entrega 5b) e [ADR-0009](docs/adr/0009-surgical-center-access-and-materials.md): aceitos e implementação autorizada em 24/10/2026, uma etapa por vez.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.

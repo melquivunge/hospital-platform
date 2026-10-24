@@ -40,6 +40,7 @@ declare module '@inertiajs/core' {
             canViewStockIndicators: boolean;
             canManageMedications: boolean;
             canManageExams: boolean;
+            canManageSurgeryCatalog: boolean;
             canManageAdmissions: boolean;
             canViewEmergency: boolean;
             canManageTriageLevels: boolean;
