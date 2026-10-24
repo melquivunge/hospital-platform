@@ -44,6 +44,17 @@ const columnHelp: Record<string, string> = {
     expires_on: 'validade, 2027-05-31 ou 31/05/2027 (obrigatório)',
     quantity: 'quantidade na unidade de estoque do medicamento (obrigatório)',
     manufacturer: 'fabricante (opcional)',
+    exam_type: 'laboratório ou imagem (obrigatório)',
+    exam_name: 'nome do exame, por exemplo Hemograma completo (obrigatório)',
+    specimen:
+        'material (laboratório) ou região (imagem), por exemplo Sangue (obrigatório)',
+    preparation: 'preparo do paciente (opcional)',
+    code: 'código TUSS ou SIGTAP (opcional)',
+    analyte: 'nome do analito, por exemplo Hemoglobina (obrigatório)',
+    analyte_unit: 'unidade do analito, por exemplo g/dL (opcional)',
+    reference_min: 'mínimo da faixa de referência (opcional)',
+    reference_max: 'máximo da faixa de referência (opcional)',
+    reference_text: 'referência em texto, por exemplo Adultos (opcional)',
     professional_source_id:
         'source_id do profissional importado pela mesma origem; vazio = vaga aberta',
 };
@@ -53,7 +64,9 @@ type ImportType =
     | 'shifts'
     | 'medications'
     | 'medication_interactions'
-    | 'stock';
+    | 'stock'
+    | 'exams'
+    | 'exam_analytes';
 
 const typeLabels: Record<ImportType, string> = {
     professionals: 'Profissionais',
@@ -62,6 +75,8 @@ const typeLabels: Record<ImportType, string> = {
     medication_interactions:
         'Interações entre princípios ativos (depois do catálogo)',
     stock: 'Saldo inicial do estoque da farmácia',
+    exams: 'Catálogo de exames',
+    exam_analytes: 'Analitos dos exames de laboratório (depois do catálogo)',
 };
 
 export default function ImportCreate({
