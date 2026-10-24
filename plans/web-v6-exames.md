@@ -34,6 +34,8 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - Registro da coleta (laboratório) ou da realização (imagem), com horário e quem fez.
 - Pedido sem coleta há 7 dias aparece para o gestor da unidade (risco da ADR-0008, decisão de 24/10/2026).
 - **Saída:** acesso termina com o resultado ou o cancelamento (teste); corrida real em coletar o mesmo pedido.
+- Divisão (24/10/2026): 5.3a filas, execução e leitura do prontuário; 5.3b pedido sem coleta há 7 dias ao gestor.
+- **Feito na 5.3a:** um pedido pode misturar laboratório e imagem, então a coleta ou realização é por item, e cada item entra na fila do seu tipo. A coleta impede o cancelamento. A trilha ganha o motivo `exam`, com o pedido. Corrida real de coleta contra coleta e de coleta contra cancelamento: todas as rodadas consistentes. Tempos-alvo provisórios: urgente 1 hora, rotina 24 horas (a confirmar com o usuário). Limite até a 5.4: o acesso dura enquanto o pedido estiver aberto, mesmo com todos os itens já coletados.
 
 ### 5.4 Resultado e laudo
 - Laboratório: valores por analito, com a faixa de referência e marcação fora da faixa; texto livre; anexo PDF.

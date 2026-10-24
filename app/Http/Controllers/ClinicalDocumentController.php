@@ -6,6 +6,7 @@ use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
 use App\Models\AuditEvent;
 use App\Models\ClinicalDocument;
+use App\Models\ExamOrder;
 use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\Visit;
@@ -113,13 +114,15 @@ class ClinicalDocumentController extends Controller
 
     public function download(Request $request, ClinicalDocument $document): StreamedResponse
     {
-        self::professional($request);
+        $patient = Patient::query()->findOrFail($document->patient_id);
+        // Authorization first, so nobody without access learns whether a document was withdrawn or is missing.
+        $basis = ClinicalAccess::activeVisit($request->user(), $patient) ?? ClinicalAccess::activeAdmission($request->user(), $patient)
+            ?? ClinicalAccess::activeEmergency($request->user(), $patient)
+            // ADR-0008: the exam team while an order of its type is open; members without a linked professional too.
+            ?? ClinicalAccess::activeExamOrder($request->user(), $patient) ?? abort(403);
         abort_if($document->withdrawn_at !== null, 410);
         // Never trust a stored path blindly: it must sit under this client's own prefix.
         abort_unless(str_starts_with($document->path, "clinical/{$document->tenant_id}/") && ! str_contains($document->path, '..'), 404);
-        $patient = Patient::query()->findOrFail($document->patient_id);
-        $basis = ClinicalAccess::activeVisit($request->user(), $patient) ?? ClinicalAccess::activeAdmission($request->user(), $patient)
-            ?? ClinicalAccess::activeEmergency($request->user(), $patient) ?? abort(403);
         // A file missing on disk is a clear 404, and no read is logged for it.
         abort_unless(Storage::disk('local')->exists($document->path), 404);
 
@@ -127,6 +130,7 @@ class ClinicalDocumentController extends Controller
         AuditEvent::record('clinical_document.downloaded', $document->tenant_id, $document, ['reason' => match (true) {
             $basis instanceof Visit => 'visit',
             $basis instanceof Admission => 'admission',
+            $basis instanceof ExamOrder => 'exam',
             default => 'emergency',
         }]);
 
