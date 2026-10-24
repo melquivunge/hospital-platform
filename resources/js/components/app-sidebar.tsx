@@ -14,6 +14,7 @@ import {
     GitMerge,
     History,
     ChartColumn,
+    ChartLine,
     ChartPie,
     FileUp,
     Gauge,
@@ -54,6 +55,7 @@ import { index as beds } from '@/routes/beds';
 import { index as pharmacy } from '@/routes/pharmacy';
 import { index as stock } from '@/routes/stock';
 import { index as inventories } from '@/routes/stock/inventories';
+import { index as stockIndicators } from '@/routes/stock/indicators';
 import { index as stockMovements } from '@/routes/stock/movements';
 import { index as census } from '@/routes/census';
 import { index as emergency } from '@/routes/emergency';
@@ -112,6 +114,7 @@ export function AppSidebar() {
         canViewCensus,
         canUsePharmacy,
         canUseInventory,
+        canViewStockIndicators,
         canViewEmergency,
         canManageAdmissions,
         canManageTriageLevels,
@@ -230,6 +233,15 @@ export function AppSidebar() {
                       title: 'Inventários',
                       href: inventories(),
                       icon: ClipboardCheck,
+                  },
+              ]
+            : []),
+        ...(canViewStockIndicators
+            ? [
+                  {
+                      title: 'Indicadores de estoque',
+                      href: stockIndicators(),
+                      icon: ChartLine,
                   },
               ]
             : []),

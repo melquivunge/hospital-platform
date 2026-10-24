@@ -133,6 +133,29 @@ class StockReportController extends Controller
     }
 
     /**
+     * The period asked for (from/to, days in the time zone, the end day included) as [start, end): an invalid or
+     * too long one falls back to the last 30 days. Also the stock indicators (step 4c.4c).
+     *
+     * @return array{CarbonImmutable, CarbonImmutable}
+     */
+    public static function period(Request $request, string $timezone): array
+    {
+        $date = function (string $key) use ($request, $timezone): ?CarbonImmutable {
+            $value = $request->string($key)->value();
+
+            return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? (CarbonImmutable::createFromFormat('!Y-m-d', $value, $timezone) ?: null) : null;
+        };
+        $from = $date('from');
+        $to = $date('to')?->addDay();
+        if ($from === null || $to === null || $to <= $from || $from->addDays(self::MAX_DAYS) < $to) {
+            $to = CarbonImmutable::now($timezone)->startOfDay()->addDay();
+            $from = $to->subDays(30);
+        }
+
+        return [$from, $to];
+    }
+
+    /**
      * The person's units (pharmacy or manager), the chosen one, and the period in the unit's time zone: an invalid
      * or too long period falls back to the last 30 days.
      *
@@ -145,18 +168,7 @@ class StockReportController extends Controller
             ->orderBy('name')->get(['id', 'tenant_id', 'name', 'timezone']);
         abort_if($units->isEmpty(), 403);
         $unit = $units->firstWhere('id', $request->integer('unit')) ?? $units->first();
-        $timezone = $unit->timezone ?? 'UTC';
-        $date = function (string $key) use ($request, $timezone): ?CarbonImmutable {
-            $value = $request->string($key)->value();
-
-            return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? (CarbonImmutable::createFromFormat('!Y-m-d', $value, $timezone) ?: null) : null;
-        };
-        $from = $date('from');
-        $to = $date('to')?->addDay();
-        if ($from === null || $to === null || $to <= $from || $from->addDays(self::MAX_DAYS) < $to) {
-            $to = CarbonImmutable::now($timezone)->startOfDay()->addDay();
-            $from = $to->subDays(30);
-        }
+        [$from, $to] = self::period($request, $unit->timezone ?? 'UTC');
         $medication = $request->integer('medication');
 
         return [$units, $unit, $from, $to, $medication > 0 ? $medication : null, $request->boolean('controlled')];
