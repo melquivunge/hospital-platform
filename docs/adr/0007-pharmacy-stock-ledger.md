@@ -37,7 +37,7 @@ A dispensação é uma tabela clínica (RLS, ADR-0003). O estoque não tem dado 
 - **Inventário:**
   - a contagem de cada lote grava o horário;
   - o ajuste é a diferença entre o contado e o saldo calculado pelos movimentos até aquele horário, para que o que saiu depois não seja ajustado de novo. Na 4c.3b esse saldo é lido com o lote travado no momento da contagem e guardado na linha (a precisão de segundos dos movimentos deixaria ambíguo o mesmo segundo);
-  - contagem cega: ninguém vê o saldo do sistema enquanto conta; o gestor vê saldo e diferença depois do envio;
+  - contagem cega na tela do inventário: ela não mostra o saldo do sistema enquanto se conta, e o gestor vê saldo e diferença depois do envio. É uma convenção de processo, não uma garantia: a tela de estoque e a dispensação continuam mostrando o saldo, porque a dispensação precisa dele (revisão de segurança da 4c.5);
   - lote encontrado sem cadastro entra com código e validade e o lote é criado na aprovação; se ele foi cadastrado nesse meio-tempo, a aprovação é recusada e pede nova contagem;
   - um inventário em andamento por unidade; um ajuste por lote e inventário (índice único); a aprovação recusa ajuste que deixaria lote negativo (saiu mais depois da contagem);
   - o vínculo do ajuste à unidade do inventário é garantido pela aplicação, não pelo banco;

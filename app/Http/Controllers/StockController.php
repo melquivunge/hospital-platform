@@ -31,7 +31,10 @@ class StockController extends Controller
         $units = Unit::query()->whereKey([...self::unitIds($request), ...StockInventoryController::managerUnitIds($request->user())])->orderBy('name')->get(['id', 'name', 'timezone']);
         abort_if($units->isEmpty(), 403);
         $unit = $units->firstWhere('id', (int) $request->query('unit')) ?? $units->first();
-        $today = now($unit->timezone ?? 'UTC')->startOfDay();
+        // Dates of the unit compared as dates: a lot is valid through its last day in the unit's time zone (as the
+        // dispensing, the database guard, the alert and the indicators).
+        $today = now($unit->timezone ?? 'UTC')->toDateString();
+        $expiringLimit = now($unit->timezone ?? 'UTC')->addDays(StockLot::EXPIRING_DAYS)->toDateString();
 
         $lots = StockLot::query()->where('unit_id', $unit->id)->where('balance', '>', 0)->orderBy('expires_on')->orderBy('id')->get()->groupBy('medication_id');
         $minimums = StockMinimum::query()->where('unit_id', $unit->id)->pluck('minimum', 'medication_id');
@@ -48,12 +51,12 @@ class StockController extends Controller
             'units' => $units->map->only('id', 'name')->values(),
             'unitId' => $unit->id,
             'canMove' => in_array($unit->id, self::unitIds($request), true),
-            'today' => $today->toDateString(),
-            'medications' => $medications->map(function (Medication $medication) use ($lots, $minimums, $today) {
+            'today' => $today,
+            'medications' => $medications->map(function (Medication $medication) use ($lots, $minimums, $today, $expiringLimit) {
                 $own = $lots->get($medication->id, collect());
                 $total = (int) $own->sum('balance');
                 // Expired lots do not serve: the minimum is checked against the valid ones (as the daily alert).
-                $valid = (int) $own->filter(fn (StockLot $lot) => ! $lot->expires_on->lt($today))->sum('balance');
+                $valid = (int) $own->filter(fn (StockLot $lot) => $lot->expires_on->toDateString() >= $today)->sum('balance');
                 $minimum = $minimums->get($medication->id);
 
                 return [
@@ -71,8 +74,8 @@ class StockController extends Controller
                         'manufacturer' => $lot->manufacturer,
                         'balance' => $lot->balance,
                         'state' => match (true) {
-                            $lot->expires_on->lt($today) => 'expired',
-                            $lot->expires_on->lte($today->copy()->addDays(StockLot::EXPIRING_DAYS)) => 'expiring',
+                            $lot->expires_on->toDateString() < $today => 'expired',
+                            $lot->expires_on->toDateString() <= $expiringLimit => 'expiring',
                             default => 'valid',
                         },
                     ])->values(),

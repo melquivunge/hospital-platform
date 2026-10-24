@@ -3,10 +3,13 @@
 namespace Tests\Feature\Clinical;
 
 use App\Clinical\TestPrescriptionSigner;
+use App\Jobs\ApplyImportBatch;
+use App\Jobs\DeliverNotifications;
 use App\Models\Admission;
 use App\Models\AuditEvent;
 use App\Models\Bed;
 use App\Models\EmergencyEpisode;
+use App\Models\ImportBatch;
 use App\Models\JobFunction;
 use App\Models\MedicationAdministration;
 use App\Models\Patient;
@@ -17,11 +20,15 @@ use App\Models\PrescriptionSignature;
 use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Sector;
+use App\Models\StockInventory;
+use App\Models\StockLot;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Visit;
+use App\Tenancy\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
@@ -34,6 +41,10 @@ use Tests\TestCase;
  * admission → prescription with a justified allergy, signed with the (test) certificate → pharmacy review →
  * dispensing → administration with double check → renewal the next day → discharge closing the prescription.
  * Then the read trail and the audit reconciled against what happened.
+ *
+ * Step 4c.5 (ADR-0007): the pharmacy stock along the same journey: the initial balance imported by CSV, a lot entry
+ * (an expired one refused), the dispensing split between two lots, no balance → quick entry → dispensing, the
+ * return into its lots, a discard, an inventory approved by another person, the daily alert and the movements CSV.
  */
 class PrescriptionJourneyTest extends TestCase
 {
@@ -94,9 +105,9 @@ class PrescriptionJourneyTest extends TestCase
             ])->assertSessionHasNoErrors();
         }
 
-        // 3. People by invitation: reception, bed management, pharmacy (unit role), auditor.
+        // 3. People by invitation: reception, bed management, pharmacy (unit role), the unit manager, auditor.
         $users = [];
-        foreach (['recepcao' => ['reception', $unit], 'leitos' => ['bed_management', $unit], 'farmacia' => ['pharmacy', $unit], 'auditoria' => ['auditor', null]] as $key => [$role, $roleUnit]) {
+        foreach (['recepcao' => ['reception', $unit], 'leitos' => ['bed_management', $unit], 'farmacia' => ['pharmacy', $unit], 'gestor' => ['unit_manager', $unit], 'auditoria' => ['auditor', null]] as $key => [$role, $roleUnit]) {
             $this->actingAs($admin)->post(route('people.store'), array_filter(['name' => ucfirst($key), 'email' => "{$key}@rx.example", 'role' => $role, 'unit_id' => $roleUnit?->id]))->assertSessionHasNoErrors();
             $users[$key] = $this->confirmed("{$key}@rx.example");
         }
@@ -149,15 +160,31 @@ class PrescriptionJourneyTest extends TestCase
         // 7. Pharmacy: the queue, the review (read logged) and the dispensing for 24 hours.
         $this->actingAs($users['farmacia'])->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page->has('prescriptions', 1)->where('prescriptions.0.pending', 2));
         $this->get(route('pharmacy.show', $first))->assertOk();
-        // Step 4c.2: the dispensing takes from the stock, so the pharmacy enters the lots first.
-        foreach (['Dipirona', 'Morfina'] as $ingredient) {
-            $this->post(route('stock.entries.store'), ['unit_id' => $unit->id, 'medication_id' => $medications[$ingredient], 'lot_code' => 'J1', 'expires_on' => '2027-06-30', 'quantity' => 100])->assertSessionHasNoErrors();
-        }
-        foreach (PrescriptionItem::withoutTenantScope()->where('prescription_id', $first->id)->get() as $item) {
+        // Step 4c: the initial balance of dipyrone imported by CSV (2 left of a lot that expires first), then a lot
+        // entry; an expired lot never enters.
+        $this->post(route('imports.store'), ['type' => 'stock', 'source_system' => 'Sistema antigo', 'file' => UploadedFile::fake()->createWithContent('saldo.csv',
+            "source_id;unit;active_ingredient;form;strength;lot_code;expires_on;quantity;manufacturer\r\n1;Hospital Centro;Dipirona;Comprimido;500 mg;IMP1;31/01/2027;2;")])->assertRedirect();
+        $batch = ImportBatch::withoutTenantScope()->sole();
+        $this->post(route('imports.confirm', $batch))->assertSessionHasNoErrors();
+        // The queued apply, run here; it applies as the batch's creator and then signs out, so the pharmacy signs in again.
+        (new ApplyImportBatch($batch->tenant_id, $batch->id))->handle(app(CurrentTenant::class));
+        $this->actingAs($users['farmacia']);
+        $entry = ['unit_id' => $unit->id, 'medication_id' => $medications['Dipirona'], 'lot_code' => 'J1', 'quantity' => 100];
+        $this->post(route('stock.entries.store'), [...$entry, 'expires_on' => '2026-11-19'])->assertSessionHasErrorsIn('entry', ['expires_on' => 'Lote vencido não entra no estoque.']);
+        $this->post(route('stock.entries.store'), [...$entry, 'expires_on' => '2027-06-30'])->assertSessionHasNoErrors();
+        [$dipyroneItem, $morphineItem] = PrescriptionItem::withoutTenantScope()->where('prescription_id', $first->id)->orderBy('id')->get()->all();
+        foreach ([$dipyroneItem, $morphineItem] as $item) {
             $this->post(route('pharmacy.review', $item), ['decision' => 'approved'])->assertSessionHasNoErrors();
-            $this->post(route('pharmacy.dispense', $item), ['quantity' => 4])->assertSessionHasNoErrors();
         }
-        $this->assertSame([96, 96], DB::table('stock_lots')->orderBy('id')->pluck('balance')->all());
+        // Dipyrone splits between the two lots, the one that expires first first.
+        $this->post(route('pharmacy.dispense', $dipyroneItem), ['quantity' => 4])->assertSessionHasNoErrors();
+        // Morphine has no balance: refused, the quick lot entry on the same screen, then dispensed.
+        $this->post(route('pharmacy.dispense', $morphineItem), ['quantity' => 4])->assertSessionHasErrors(['quantity' => 'Sem saldo deste medicamento no estoque da unidade. Registre a entrada do lote.'], null, "dispense{$morphineItem->id}");
+        $this->post(route('stock.entries.store'), [...$entry, 'medication_id' => $medications['Morfina'], 'expires_on' => '2027-06-30'])->assertSessionHasNoErrors();
+        $this->post(route('pharmacy.dispense', $morphineItem), ['quantity' => 4])->assertSessionHasNoErrors();
+        $balances = fn () => DB::table('stock_lots')->join('medications', 'medications.id', '=', 'stock_lots.medication_id')->orderBy('stock_lots.id')
+            ->get(['medications.active_ingredient', 'stock_lots.lot_code', 'stock_lots.balance'])->map(fn ($lot) => "{$lot->active_ingredient} {$lot->lot_code} {$lot->balance}")->all();
+        $this->assertSame(['Dipirona IMP1 0', 'Dipirona J1 98', 'Morfina J1 96'], $balances());
         $this->get(route('ward.show', $admission))->assertForbidden();
 
         // 8. Administration: dipyrone by one nurse; morphine needs the second nurse's password.
@@ -181,9 +208,37 @@ class PrescriptionJourneyTest extends TestCase
         $this->actingAs($users['farmacia'])->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page
             ->has('prescriptions', 1)->where('prescriptions.0.id', $renewal->id)->has('returns', 1)->where('returns.0.id', $first->id));
         $this->post(route('pharmacy.dispense', PrescriptionItem::withoutTenantScope()->where('prescription_id', $first->id)->firstOrFail()), ['quantity' => 1])->assertForbidden();
-        // What came back returns to the lot it left.
+        // What came back returns to the lots it left, up to what each gave, the longest expiry first.
         $this->post(route('pharmacy.return', PrescriptionDispensing::withoutTenantScope()->orderBy('id')->firstOrFail()), ['quantity' => 3, 'reason' => 'Doses não administradas.'])->assertSessionHasNoErrors();
-        $this->assertSame(195, (int) DB::table('stock_lots')->sum('balance'));
+        $this->assertSame(['Dipirona IMP1 1', 'Dipirona J1 100', 'Morfina J1 96'], $balances());
+
+        // Step 4c.3: a broken ampoule discarded; an inventory counted by the pharmacy finds one dipyrone missing and
+        // is approved by another person, the unit manager.
+        $lot = fn (string $ingredient, string $code) => StockLot::withoutTenantScope()->where(['medication_id' => $medications[$ingredient], 'lot_code' => $code])->sole();
+        $this->post(route('stock.discards.store', $lot('Morfina', 'J1')), ['reason' => 'damage', 'quantity' => 1])->assertSessionHasNoErrors();
+        $this->post(route('stock.inventories.store'), ['unit_id' => $unit->id])->assertSessionHasNoErrors();
+        $inventory = StockInventory::withoutTenantScope()->sole();
+        foreach ($inventory->lines as $line) {
+            $balance = StockLot::withoutTenantScope()->findOrFail($line->stock_lot_id)->balance;
+            $this->put(route('stock.inventories.count', [$inventory, $line]), ['counted' => $line->stock_lot_id === $lot('Dipirona', 'J1')->id ? $balance - 1 : $balance])->assertSessionHasNoErrors();
+        }
+        $this->post(route('stock.inventories.submit', $inventory))->assertSessionHasNoErrors();
+        $this->post(route('stock.inventories.approve', $inventory))->assertForbidden();
+        $this->actingAs($users['gestor'])->post(route('stock.inventories.approve', $inventory))->assertSessionHasNoErrors();
+        $this->assertSame(['Dipirona IMP1 1', 'Dipirona J1 99', 'Morfina J1 95'], $balances());
+
+        // Step 4c.4: below the minimum, the pharmacy and the manager hear of it once today (8 h in the unit); the
+        // movements CSV matches the ledger and carries no patient.
+        $this->actingAs($users['farmacia'])->put(route('stock.minimums.update'), ['unit_id' => $unit->id, 'medication_id' => $medications['Morfina'], 'minimum' => 200])->assertSessionHasNoErrors();
+        $this->artisan('stock:alerts')->expectsOutput('Avisos enviados: 1.');
+        $this->artisan('stock:alerts')->expectsOutput('Avisos enviados: 0.');
+        (new DeliverNotifications)->handle();
+        $this->assertEqualsCanonicalizing([$users['farmacia']->id, $users['gestor']->id],
+            DB::table('user_notifications')->where('title', 'Estoque: 1 medicamento(s) abaixo do mínimo')->pluck('user_id')->map(fn ($id) => (int) $id)->all());
+        $csv = $this->actingAs($users['gestor'])->get(route('stock.movements.csv', ['unit' => $unit->id, 'from' => '2026-11-20', 'to' => '2026-11-21']))->streamedContent();
+        $this->assertCount(1 + DB::table('stock_movements')->count(), explode("\n", trim($csv)));
+        $this->assertStringNotContainsString('Benedita', $csv);
+        $this->actingAs($users['gestor'])->get(route('stock.indicators.index'))->assertInertia(fn (Assert $page) => $page->where('units.0.below', 1)->where('units.0.losses', ['damage' => 1, 'inventory' => 1]));
 
         // 10. Discharge closes the prescription: out of the queue, nothing more to administer or download.
         $this->at('2026-11-21 15:00');
@@ -199,7 +254,8 @@ class PrescriptionJourneyTest extends TestCase
         foreach (['Benedita', '11144477735', '52998224725', 'Dipirona', 'Morfina', 'Reação leve', 'Fratura', 'Doses não', 'password'] as $sensitive) {
             $this->assertStringNotContainsString($sensitive, $audit, "Audit carries \"{$sensitive}\"");
         }
-        foreach (['prescription.signed', 'prescription.certified', 'prescription_item.reviewed', 'prescription_item.dispensed', 'medication.recorded', 'admission.discharged'] as $action) {
+        foreach (['prescription.signed', 'prescription.certified', 'prescription_item.reviewed', 'prescription_item.dispensed', 'medication.recorded', 'admission.discharged',
+            'stock.entry', 'stock.discard', 'stock.inventory_approved', 'stock.daily_alert', 'stock.movements_exported'] as $action) {
             $this->assertTrue(AuditEvent::where('tenant_id', $unit->tenant_id)->where('action', $action)->exists(), "Missing audit event {$action}");
         }
     }

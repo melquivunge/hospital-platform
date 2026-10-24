@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da 4c.4c (indicadores); depois a 4c.5 (revisão integrada da entrega 4c).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: revisão e merge da revisão integrada 4c.5; com ela a entrega 4c fica concluída. Depois, a entrega 5 (exames e cirurgia), conforme o roteiro.
 
 ## Onde está cada coisa
 
@@ -98,7 +98,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #72 | 4c.3b: inventário com ajuste aprovado pelo gestor | Mesclado |
 | #73 | 4c.4a: avisos diários de estoque e serviço `scheduler` | Mesclado |
 | #74 | 4c.4b: relatório de movimentos com CSV | Mesclado |
-| — | 4c.4c: indicadores de estoque e visão da rede (branch `feat/stock-indicators`) | Em revisão |
+| #75 | 4c.4c: indicadores de estoque e visão da rede | Mesclado |
+| — | 4c.5: revisão integrada da entrega 4c (branch `chore/stock-integrated-review`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -254,6 +255,11 @@ Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde
   - Telas da entrega 4 em seis perfis (médico, recepção, gestão de leitos, higienização, gestão, administração) em 360, 768 e 1440 px: 39 visualizações sem erro de JavaScript ou 5xx, sem rolagem horizontal, com um `h1` e todos os controles com nome. O verificador foi validado antes numa página com esses defeitos plantados.
   - Limites de produção da entrega 4 no README.
   - Revisão de segurança independente da entrega inteira: sem crítico ou alto, sem leitura fora do `ClinicalAccess`, tabelas clínicas completas no RLS, sem vazamento em props, auditoria ou notificações, ordem de locks sem ciclo. Corrigido: primeira leitura simultânea da escala de risco dava 500 (`createOrFirst`); limite de 120 leituras por minuto na internação e no atendimento (a trilha não pode ser inundada). **Decisões de produto pendentes** (no README): saída para pedido de internação sem leito e para paciente em trânsito; transferência já saída cujo responsável no destino perdeu a habilitação; quem pode chamar paciente da fila da urgência; leitura da classificação fora da trilha.
+- **4c.5 (revisão integrada da entrega 4c):**
+  - Jornada num cliente novo, só por HTTP, na jornada de prescrição: importação do saldo inicial, entrada (vencido recusado), dispensação dividida entre dois lotes, sem saldo → entrada rápida → dispensação, devolução aos lotes, descarte, inventário aprovado pelo gestor, aviso diário e CSV de movimentos conferido com o livro.
+  - Varredura de telas da entrega (22 combinações de tela, papel e largura) sem problemas.
+  - Revisão de segurança independente: sem crítico ou alto. Corrigido o lote no último dia de validade marcado como vencido na tela de estoque (fuso da unidade); contagem cega documentada como convenção de processo; nome do CSV com a unidade. Pendente de decisão: segunda pessoa ou aviso ao gestor no descarte de controlados.
+  - Limites de produção da entrega 4c no README.
 - **4c.4c (indicadores, ADR-0007):**
   - Menu "Indicadores de estoque" para farmácia, gestor e administrador da rede (este vê todas as unidades, só consulta): abaixo do mínimo, a vencer em 30 dias, vencidos com saldo e perdas por motivo no período; detalhe da unidade escolhida.
 - **4c.4b (relatório de movimentos, ADR-0007):**
@@ -575,7 +581,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 425 testes passando (4c.4c), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 426 testes passando (4c.5), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 
