@@ -5,6 +5,8 @@ import { ClinicalDocuments } from '@/components/clinical-documents';
 import type { RecordNote, RecordPatient } from '@/components/clinical-record';
 import { patientDescription, RecordEntry } from '@/components/clinical-record';
 import InputError from '@/components/input-error';
+import type { PrescriptionPanelData } from '@/components/prescription-panel';
+import { PrescriptionPanel } from '@/components/prescription-panel';
 import { Page, PageHeader } from '@/components/page';
 import type { PatientAllergy } from '@/components/patient-allergies';
 import { PatientAllergies } from '@/components/patient-allergies';
@@ -23,6 +25,7 @@ export default function ExamExecution({
     patient,
     allergies,
     record,
+    prescriptions,
     documents,
 }: {
     order: {
@@ -46,6 +49,7 @@ export default function ExamExecution({
     patient: RecordPatient;
     allergies: PatientAllergy[];
     record: RecordNote[];
+    prescriptions: PrescriptionPanelData;
     documents: ClinicalDocument[];
 }) {
     const { errors } = usePage().props;
@@ -128,6 +132,7 @@ export default function ExamExecution({
                 </section>
 
                 <div className="grid gap-8">
+                    <PrescriptionPanel data={prescriptions} />
                     <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
                         <h2 className="font-semibold">Evoluções assinadas</h2>
                         {record.length === 0 ? (

@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $id
  * @property string $name
  * @property string $slug
+ * @property int $exam_target_urgent_minutes target time of the exam queues (step 5.3)
+ * @property int $exam_target_routine_minutes
  */
 #[Fillable(['name', 'slug'])]
 class Tenant extends Model

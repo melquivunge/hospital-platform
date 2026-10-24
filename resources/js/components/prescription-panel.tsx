@@ -150,7 +150,8 @@ export function PrescriptionPanel({
     start,
 }: {
     data: PrescriptionPanelData;
-    start: { action: string; method: 'post' };
+    /** Absent where nobody prescribes, as on the exam execution (step 5.3). */
+    start?: { action: string; method: 'post' };
 }) {
     return (
         <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
@@ -160,6 +161,7 @@ export function PrescriptionPanel({
                     Prescrição
                 </h2>
                 {data.canPrescribe &&
+                    start &&
                     (data.draftId !== null ? (
                         <Button asChild className="min-h-11">
                             <Link

@@ -54,12 +54,17 @@ export default function ExamsIndex({
     limit,
     exams,
     types,
+    targets,
 }: {
     q: string;
     total: number;
     limit: number;
     exams: Exam[];
     types: Record<string, string>;
+    targets: {
+        exam_target_urgent_minutes: number;
+        exam_target_routine_minutes: number;
+    };
 }) {
     const search = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -81,6 +86,78 @@ export default function ExamsIndex({
                     title="Exames"
                     description="Catálogo de exames da rede. Laboratório com analitos e faixa de referência; imagem com laudo em texto. Exame é desativado, nunca apagado."
                 />
+
+                <section className="mb-8 grid gap-3">
+                    <h2 className="text-lg font-semibold">
+                        Tempo-alvo das filas de exames
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                        Espera, em minutos, a partir da qual o pedido aparece
+                        fora do prazo nas filas de Laboratório e Imagem.
+                    </p>
+                    <Form
+                        {...ExamController.targets.form()}
+                        errorBag="targets"
+                        options={{ preserveScroll: true }}
+                        className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="exam_target_urgent_minutes">
+                                        Urgente (minutos)
+                                    </Label>
+                                    <Input
+                                        id="exam_target_urgent_minutes"
+                                        name="exam_target_urgent_minutes"
+                                        type="number"
+                                        min={1}
+                                        max={10080}
+                                        required
+                                        defaultValue={
+                                            targets.exam_target_urgent_minutes
+                                        }
+                                        className="h-11"
+                                    />
+                                    <InputError
+                                        message={
+                                            errors.exam_target_urgent_minutes
+                                        }
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="exam_target_routine_minutes">
+                                        Rotina (minutos)
+                                    </Label>
+                                    <Input
+                                        id="exam_target_routine_minutes"
+                                        name="exam_target_routine_minutes"
+                                        type="number"
+                                        min={1}
+                                        max={10080}
+                                        required
+                                        defaultValue={
+                                            targets.exam_target_routine_minutes
+                                        }
+                                        className="h-11"
+                                    />
+                                    <InputError
+                                        message={
+                                            errors.exam_target_routine_minutes
+                                        }
+                                    />
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={processing}
+                                    className="min-h-11"
+                                >
+                                    Salvar
+                                </Button>
+                            </>
+                        )}
+                    </Form>
+                </section>
 
                 <section className="mb-8 grid gap-3">
                     <h2 className="text-lg font-semibold">Novo exame</h2>

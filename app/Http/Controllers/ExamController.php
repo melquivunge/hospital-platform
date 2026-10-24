@@ -6,6 +6,7 @@ use App\Models\AuditEvent;
 use App\Models\Exam;
 use App\Models\ExamAnalyte;
 use App\Models\Medication;
+use App\Tenancy\CurrentTenant;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -45,7 +46,28 @@ class ExamController extends Controller
                     'analytes' => $exam->analytes->map->only('id', 'name', 'unit', 'reference_min', 'reference_max', 'reference_text')->values(),
                 ])->values(),
             'types' => Exam::TYPES,
+            'targets' => app(CurrentTenant::class)->require()->only('exam_target_urgent_minutes', 'exam_target_routine_minutes'),
         ]);
+    }
+
+    /**
+     * Step 5.3: the target time of the exam queues per priority, for the whole network.
+     */
+    public function targets(Request $request): RedirectResponse
+    {
+        Gate::authorize('manage', Exam::class);
+        $data = $request->validateWithBag('targets', [
+            'exam_target_urgent_minutes' => ['required', 'integer', 'between:1,10080'],
+            'exam_target_routine_minutes' => ['required', 'integer', 'between:1,10080'],
+        ], [], ['exam_target_urgent_minutes' => 'tempo-alvo urgente', 'exam_target_routine_minutes' => 'tempo-alvo de rotina']);
+        $tenant = app(CurrentTenant::class)->require()->forceFill($data);
+        if (($changed = array_keys($tenant->getDirty())) !== []) {
+            $tenant->save();
+            AuditEvent::record('exam_targets.updated', $tenant->id, $tenant, ['fields' => $changed]);
+        }
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Tempos-alvo atualizados.']);
+
+        return back();
     }
 
     public function store(Request $request): RedirectResponse
