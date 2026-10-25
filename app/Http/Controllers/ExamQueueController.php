@@ -10,6 +10,7 @@ use App\Models\ExamAnalyte;
 use App\Models\ExamOrder;
 use App\Models\ExamOrderItem;
 use App\Models\Patient;
+use App\Models\Surgery;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Visit;
@@ -205,7 +206,9 @@ class ExamQueueController extends Controller
     /**
      * Where each order's patient is: the bed of the admission, or the kind of visit.
      *
-     * @param  iterable<ExamOrder>  $orders
+     * Also the surgeries of the agenda (step 5b.3a).
+     *
+     * @param  iterable<ExamOrder|Surgery>  $orders
      * @return array<int, string>
      */
     public static function places(iterable $orders): array
@@ -214,7 +217,7 @@ class ExamQueueController extends Controller
         $admissions = Admission::query()->whereKey($orders->pluck('admission_id')->filter()->all())->with(['bed:id,code,room,sector_id', 'bed.sector:id,name'])->get()->keyBy('id');
         $visits = Visit::query()->whereKey($orders->pluck('visit_id')->filter()->all())->get(['id', 'emergency_episode_id'])->keyBy('id');
 
-        return $orders->mapWithKeys(fn (ExamOrder $order) => [$order->id => $order->admission_id !== null
+        return $orders->mapWithKeys(fn (ExamOrder|Surgery $order) => [$order->id => $order->admission_id !== null
             ? (WardController::bedLabel($admissions[$order->admission_id]) ?? 'Internação')
             : ($visits->get($order->visit_id)?->emergency_episode_id !== null ? 'Urgência' : 'Ambulatório')])->all();
     }

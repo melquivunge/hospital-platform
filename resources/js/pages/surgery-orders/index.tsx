@@ -14,7 +14,8 @@ type Surgery = {
     urgency: string;
     desiredDate: string;
     indication: string;
-    status: 'requested' | 'cancelled';
+    status: 'requested' | 'scheduled' | 'cancelled';
+    scheduledStart: string | null;
     author: string | null;
     createdAt: string;
     cancellationReason: string | null;
@@ -267,6 +268,8 @@ export default function SurgeryOrders({
                                         Desejada para {surgery.desiredDate} ·
                                         pedido em {surgery.createdAt} ·{' '}
                                         {surgery.author}
+                                        {surgery.status === 'scheduled' &&
+                                            ` · agendada para ${surgery.scheduledStart}`}
                                         {surgery.status === 'cancelled' &&
                                             ` · cancelado: ${surgery.cancellationReason}`}
                                     </p>

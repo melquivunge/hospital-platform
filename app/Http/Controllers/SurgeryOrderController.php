@@ -54,8 +54,8 @@ class SurgeryOrderController extends Controller
         $data = $request->validateWithBag($bag, ['reason' => ['required', 'string', 'max:500']], [], ['reason' => 'motivo']);
         DB::transaction(function () use ($request, $surgery, $data, $bag) {
             $locked = Surgery::query()->lockForUpdate()->findOrFail($surgery->id);
-            // ponytail: only "requested" exists until step 5b.3 adds scheduling; it widens this to before the start.
-            if ($locked->status !== 'requested') {
+            // Before the start: requested or scheduled (step 5b.3a); the checklist starts it (step 5b.4).
+            if (! in_array($locked->status, Surgery::OPEN, true)) {
                 throw ValidationException::withMessages(['reason' => 'Esta cirurgia não pode mais ser cancelada.'])->errorBag($bag);
             }
             $locked->update(['status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by_user_id' => $request->user()->id, 'cancellation_reason' => trim($data['reason'])]);
@@ -88,7 +88,8 @@ class SurgeryOrderController extends Controller
                 'author' => $names->get($surgery->author_user_id),
                 'createdAt' => $surgery->created_at->timezone($timezone)->format('d/m/Y H:i'),
                 'cancellationReason' => $surgery->cancellation_reason,
-                'canCancel' => $surgery->status === 'requested' && $surgery->author_user_id === $request->user()->id,
+                'scheduledStart' => $surgery->scheduled_start?->timezone($timezone)->format('d/m/Y H:i'),
+                'canCancel' => in_array($surgery->status, Surgery::OPEN, true) && $surgery->author_user_id === $request->user()->id,
             ])->values(),
             'catalog' => SurgicalProcedure::query()->where('active', true)->orderBy('name_key')->get(['id', 'name', 'duration_minutes'])->values(),
             'lateralities' => Surgery::LATERALITIES,

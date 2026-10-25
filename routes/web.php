@@ -44,6 +44,7 @@ use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\SurgeryCatalogController;
 use App\Http\Controllers\SurgeryOrderController;
+use App\Http\Controllers\SurgeryScheduleController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\TriageLevelController;
 use App\Http\Controllers\UnitController;
@@ -228,6 +229,14 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('visits/{visit}/surgeries', [SurgeryOrderController::class, 'forVisit'])->middleware('throttle:120,1')->name('surgery-orders.visit');
     Route::post('visits/{visit}/surgeries', [SurgeryOrderController::class, 'storeForVisit'])->middleware('throttle:30,1')->name('surgery-orders.visit.store');
     Route::post('surgeries/{surgery}/cancel', [SurgeryOrderController::class, 'cancel'])->middleware('throttle:30,1')->name('surgery-orders.cancel');
+    // Step 5b.3a: the surgical agenda of the Surgical center role.
+    Route::get('surgery-schedule', [SurgeryScheduleController::class, 'index'])->middleware('throttle:120,1')->name('surgery-schedule.index');
+    Route::get('surgery-schedule/{surgery}', [SurgeryScheduleController::class, 'show'])->middleware('throttle:120,1')->name('surgery-schedule.show');
+    Route::post('surgery-schedule/{surgery}/schedule', [SurgeryScheduleController::class, 'schedule'])->middleware('throttle:30,1')->name('surgery-schedule.schedule');
+    Route::post('surgery-schedule/{surgery}/reschedule', [SurgeryScheduleController::class, 'reschedule'])->middleware('throttle:30,1')->name('surgery-schedule.reschedule');
+    Route::post('surgery-schedule/{surgery}/team', [SurgeryScheduleController::class, 'addMember'])->middleware('throttle:60,1')->name('surgery-schedule.team.store');
+    Route::post('surgery-team/{member}/remove', [SurgeryScheduleController::class, 'removeMember'])->middleware('throttle:60,1')->name('surgery-schedule.team.remove');
+    Route::post('surgery-schedule/{surgery}/cancel', [SurgeryScheduleController::class, 'cancel'])->middleware('throttle:30,1')->name('surgery-schedule.cancel');
     // Step 5.1a: the network exam catalog.
     Route::get('exams', [ExamController::class, 'index'])->name('exams.index');
     Route::post('exams', [ExamController::class, 'store'])->middleware('throttle:60,1')->name('exams.store');
