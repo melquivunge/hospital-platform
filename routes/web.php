@@ -44,6 +44,7 @@ use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\SurgeryCatalogController;
 use App\Http\Controllers\SurgeryOrderController;
+use App\Http\Controllers\SurgeryOverdueController;
 use App\Http\Controllers\SurgeryRecordController;
 use App\Http\Controllers\SurgeryScheduleController;
 use App\Http\Controllers\TransferController;
@@ -219,6 +220,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('exam-queue/orders/{order}', [ExamQueueController::class, 'show'])->middleware('throttle:120,1')->name('exam-queue.show');
     // Step 5.3b: orders without collection for 7 days, for the unit manager.
     Route::get('exam-overdue', [ExamOverdueController::class, 'index'])->middleware('throttle:120,1')->name('exam-overdue.index');
+    // Step 5b.3c: stalled surgeries for the unit manager.
+    Route::get('surgery-overdue', [SurgeryOverdueController::class, 'index'])->middleware('throttle:120,1')->name('surgery-overdue.index');
     Route::post('exam-queue/items/{item}/collect', [ExamQueueController::class, 'collect'])->middleware('throttle:120,1')->name('exam-queue.collect');
     // Step 5.4: results released and rectified by the exam team; the PDF for whoever reads the record.
     Route::post('exam-queue/items/{item}/result', [ExamResultController::class, 'release'])->middleware('throttle:30,1')->name('exam-results.release');

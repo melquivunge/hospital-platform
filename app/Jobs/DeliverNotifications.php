@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\ExamCriticalAlert;
 use App\Models\ExamOrder;
 use App\Models\ExamResult;
+use App\Models\Surgery;
 use App\Tenancy\Role;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -39,6 +40,7 @@ class DeliverNotifications implements ShouldQueue
         'prescription_item.reviewed',
         'stock.daily_alert', 'stock.inventory_submitted', 'stock.discard',
         'exam.overdue_orders', 'exam_result.released', 'exam_result.critical_unacknowledged',
+        'surgery.overdue',
     ];
 
     /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
@@ -154,6 +156,17 @@ class DeliverNotifications implements ShouldQueue
             $title = "Exames: {$context['orders']} pedido(s) sem coleta há mais de ".ExamOrder::OVERDUE_DAYS.' dias';
 
             return [[$managers !== [] ? $managers : $this->usersWithRole($tenant, Role::NetworkAdmin), $title, "/exam-overdue?unit={$unit}"]];
+        }
+        // Step 5b.3c (ADR-0009): the unit's managers (without one, the network admins) hear of stalled surgeries, counts only.
+        if ($event->action === 'surgery.overdue') {
+            $unit = (int) ($context['unit_id'] ?? 0);
+            $managers = $this->usersWithRole($tenant, Role::UnitManager, $unit);
+            $title = 'Cirurgias: '.implode(' e ', array_filter([
+                ($context['scheduled'] ?? 0) > 0 ? "{$context['scheduled']} agendada(s) com fim previsto há mais de ".Surgery::OVERDUE_HOURS.' horas' : null,
+                ($context['requested'] ?? 0) > 0 ? "{$context['requested']} pedido(s) sem agendamento" : null,
+            ]));
+
+            return [[$managers !== [] ? $managers : $this->usersWithRole($tenant, Role::NetworkAdmin), $title, "/surgery-overdue?unit={$unit}"]];
         }
         // Step 5.4: the orderer hears of a released or rectified result, with no exam, patient or value in the text.
         if ($event->action === 'exam_result.released') {
