@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditEvent;
+use App\Models\Material;
 use App\Models\Medication;
 use App\Models\StockLot;
 use App\Models\StockMinimum;
@@ -10,6 +11,7 @@ use App\Models\StockMovement;
 use App\Models\Unit;
 use App\Models\User;
 use App\Policies\UnitPolicy;
+use App\Stock\StockItem;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,7 +23,8 @@ use Inertia\Response;
 
 /**
  * The pharmacy stock of each unit (step 4c.1a, ADR-0007): the unit's Pharmacy role records lot entries and
- * keeps the minimum of each medication; the balance of each lot comes from its movements. No patient data.
+ * keeps the minimum of each medication, and of each material since step 5b.6b (ADR-0009); the balance of each
+ * lot comes from its movements. No patient data.
  */
 class StockController extends Controller
 {
@@ -36,63 +39,66 @@ class StockController extends Controller
         $today = now($unit->timezone ?? 'UTC')->toDateString();
         $expiringLimit = now($unit->timezone ?? 'UTC')->addDays(StockLot::EXPIRING_DAYS)->toDateString();
 
-        $lots = StockLot::query()->where('unit_id', $unit->id)->where('balance', '>', 0)->orderBy('expires_on')->orderBy('id')->get()->groupBy('medication_id');
-        $minimums = StockMinimum::query()->where('unit_id', $unit->id)->pluck('minimum', 'medication_id');
-        $medications = Medication::query()->whereKey([...$lots->keys(), ...$minimums->keys()])
-            ->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->get();
+        $lots = StockLot::query()->where('unit_id', $unit->id)->where('balance', '>', 0)->orderBy('expires_on')->orderBy('id')->get();
+        $minimumRows = StockMinimum::query()->where('unit_id', $unit->id)->get();
+        $minimums = $minimumRows->mapWithKeys(fn (StockMinimum $minimum) => [StockItem::key($minimum) => $minimum->minimum]);
+        $items = StockItem::describe($lots->concat($minimumRows));
+        $lots = $lots->groupBy(fn (StockLot $lot) => StockItem::key($lot));
         // Every discard of the unit, newest first, 20 per page; the full movement report comes in step 4c.4.
         $discards = StockMovement::query()->join('stock_lots', 'stock_lots.id', '=', 'stock_movements.stock_lot_id')
             ->where('stock_lots.unit_id', $unit->id)->where('stock_movements.type', 'discard')
             ->orderByDesc('stock_movements.id')
-            ->simplePaginate(20, ['stock_movements.id', 'stock_movements.quantity', 'stock_movements.reason', 'stock_movements.note', 'stock_movements.created_at', 'stock_lots.lot_code', 'stock_lots.medication_id'], 'discards')->withQueryString();
-        $discarded = Medication::query()->whereKey($discards->getCollection()->pluck('medication_id')->unique()->all())->get()->keyBy('id');
+            ->simplePaginate(20, ['stock_movements.id', 'stock_movements.quantity', 'stock_movements.reason', 'stock_movements.note', 'stock_movements.created_at', 'stock_lots.lot_code', 'stock_lots.medication_id', 'stock_lots.material_id'], 'discards')->withQueryString();
+        $discarded = StockItem::describe($discards->getCollection());
 
         return Inertia::render('stock/index', [
             'units' => $units->map->only('id', 'name')->values(),
             'unitId' => $unit->id,
             'canMove' => in_array($unit->id, self::unitIds($request), true),
             'today' => $today,
-            'medications' => $medications->map(function (Medication $medication) use ($lots, $minimums, $today, $expiringLimit) {
-                $own = $lots->get($medication->id, collect());
-                $total = (int) $own->sum('balance');
-                // Expired lots do not serve: the minimum is checked against the valid ones (as the daily alert).
-                $valid = (int) $own->filter(fn (StockLot $lot) => $lot->expires_on->toDateString() >= $today)->sum('balance');
-                $minimum = $minimums->get($medication->id);
+            // Medications first, then materials, each by name.
+            'items' => $items->sortBy([['material', 'asc'], ['name', 'asc']])
+                ->map(function (array $item, string $key) use ($lots, $minimums, $today, $expiringLimit) {
+                    $own = $lots->get($key, collect());
+                    $total = (int) $own->sum('balance');
+                    // Expired lots do not serve: the minimum is checked against the valid ones (as the daily alert).
+                    $valid = (int) $own->filter(fn (StockLot $lot) => $lot->expires_on->toDateString() >= $today)->sum('balance');
+                    $minimum = $minimums->get($key);
 
-                return [
-                    'id' => $medication->id,
-                    'name' => self::label($medication),
-                    'stockUnit' => $medication->stock_unit,
-                    'total' => $total,
-                    'valid' => $valid,
-                    'minimum' => $minimum,
-                    'below' => $minimum !== null && $valid < $minimum,
-                    'lots' => $own->map(fn (StockLot $lot) => [
-                        'id' => $lot->id,
-                        'code' => $lot->lot_code,
-                        'expiresOn' => $lot->expires_on->format('d/m/Y'),
-                        'manufacturer' => $lot->manufacturer,
-                        'balance' => $lot->balance,
-                        'state' => match (true) {
-                            $lot->expires_on->toDateString() < $today => 'expired',
-                            $lot->expires_on->toDateString() <= $expiringLimit => 'expiring',
-                            default => 'valid',
-                        },
-                    ])->values(),
-                ];
-            })->values(),
+                    return [
+                        'key' => $key,
+                        'name' => $item['name'],
+                        'stockUnit' => $item['stockUnit'],
+                        'material' => $item['material'],
+                        'total' => $total,
+                        'valid' => $valid,
+                        'minimum' => $minimum,
+                        'below' => $minimum !== null && $valid < $minimum,
+                        'lots' => $own->map(fn (StockLot $lot) => [
+                            'id' => $lot->id,
+                            'code' => $lot->lot_code,
+                            'expiresOn' => $lot->expires_on->format('d/m/Y'),
+                            'manufacturer' => $lot->manufacturer,
+                            'balance' => $lot->balance,
+                            'state' => match (true) {
+                                $lot->expires_on->toDateString() < $today => 'expired',
+                                $lot->expires_on->toDateString() <= $expiringLimit => 'expiring',
+                                default => 'valid',
+                            },
+                        ])->values(),
+                    ];
+                })->values(),
             'discardPages' => ['newer' => $discards->previousPageUrl(), 'older' => $discards->nextPageUrl()],
             'discards' => $discards->getCollection()->map(fn (StockMovement $movement) => [
                 'id' => $movement->id,
                 'at' => $movement->created_at->timezone($unit->timezone ?? 'UTC')->format('d/m/Y H:i'),
-                'name' => self::label($discarded[$movement->getAttribute('medication_id')]),
+                'name' => $discarded[StockItem::key($movement)]['name'],
                 'lot' => $movement->getAttribute('lot_code'),
                 'quantity' => -$movement->quantity,
                 'reason' => $movement->reason,
                 'note' => $movement->note,
             ])->values(),
-            'catalog' => ! in_array($unit->id, self::unitIds($request), true) ? [] : Medication::query()->where('active', true)->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->get()
-                ->map(fn (Medication $medication) => ['id' => $medication->id, 'name' => self::label($medication), 'stockUnit' => $medication->stock_unit])->values(),
+            'catalog' => ! in_array($unit->id, self::unitIds($request), true) ? [] : StockItem::catalog(),
         ]);
     }
 
@@ -104,19 +110,16 @@ class StockController extends Controller
     {
         $data = $request->validateWithBag('entry', [
             'unit_id' => ['required', 'integer', Rule::in(self::unitIds($request))],
-            'medication_id' => ['required', 'integer'],
+            ...StockItem::rules(),
             'lot_code' => ['required', 'string', 'max:50', 'regex:/^\s*[A-Za-z0-9][A-Za-z0-9.\/\- ]*$/'],
             // Up to 10 years ahead: a typo (2062, 20260) is caught.
             'expires_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.now()->addYears(10)->toDateString()],
             'manufacturer' => ['nullable', 'string', 'max:100'],
             'quantity' => ['required', 'integer', 'min:1', 'max:100000'],
         ], ['lot_code.regex' => 'O lote aceita letras sem acento, números, ponto, barra e hífen.'], [
-            'unit_id' => 'unidade', 'medication_id' => 'medicamento', 'lot_code' => 'lote', 'expires_on' => 'validade', 'manufacturer' => 'fabricante', 'quantity' => 'quantidade',
+            'unit_id' => 'unidade', 'medication_id' => 'medicamento ou material', 'material_id' => 'material', 'lot_code' => 'lote', 'expires_on' => 'validade', 'manufacturer' => 'fabricante', 'quantity' => 'quantidade',
         ]);
-        $medication = Medication::query()->where('active', true)->whereKey((int) $data['medication_id'])->first();
-        if ($medication === null) {
-            throw ValidationException::withMessages(['medication_id' => 'Escolha um medicamento ativo do catálogo.'])->errorBag('entry');
-        }
+        $item = StockItem::chosen($data, 'entry');
         $timezone = Unit::query()->whereKey($data['unit_id'])->value('timezone') ?? 'UTC';
         if ($data['expires_on'] < now($timezone)->toDateString()) {
             throw ValidationException::withMessages(['expires_on' => 'Lote vencido não entra no estoque.'])->errorBag('entry');
@@ -125,7 +128,7 @@ class StockController extends Controller
 
         $manufacturer = ($data['manufacturer'] ?? null) === null ? null : Medication::clean($data['manufacturer']);
 
-        DB::transaction(fn () => self::enter((int) $data['unit_id'], $medication, $code, $data['expires_on'], $manufacturer, (int) $data['quantity'], $request->user()));
+        DB::transaction(fn () => self::enter((int) $data['unit_id'], $item, $code, $data['expires_on'], $manufacturer, (int) $data['quantity'], $request->user()));
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Entrada registrada.']);
 
         return back();
@@ -162,7 +165,7 @@ class StockController extends Controller
             ]);
             // The reason code only: the text stays on the movement.
             AuditEvent::record('stock.discard', $lot->tenant_id, $movement, [
-                'unit_id' => $lot->unit_id, 'medication_id' => $lot->medication_id, 'stock_lot_id' => $lot->id, 'quantity' => $data['quantity'], 'reason' => $data['reason'],
+                'unit_id' => $lot->unit_id, ...StockItem::ids($lot), 'stock_lot_id' => $lot->id, 'quantity' => $data['quantity'], 'reason' => $data['reason'],
             ]);
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Descarte registrado.']);
@@ -171,17 +174,18 @@ class StockController extends Controller
     }
 
     /**
-     * The minimum of a medication in the unit; empty removes it.
+     * The minimum of a medication or a material in the unit; empty removes it.
      */
     public function updateMinimum(Request $request): RedirectResponse
     {
         $data = $request->validateWithBag('minimum', [
             'unit_id' => ['required', 'integer', Rule::in(self::unitIds($request))],
-            'medication_id' => ['required', 'integer'],
+            ...StockItem::rules(),
             'minimum' => ['nullable', 'integer', 'min:1', 'max:100000'],
-        ], [], ['unit_id' => 'unidade', 'medication_id' => 'medicamento', 'minimum' => 'estoque mínimo']);
-        abort_unless(Medication::query()->whereKey($data['medication_id'])->exists(), 404);
-        $keys = ['unit_id' => $data['unit_id'], 'medication_id' => $data['medication_id']];
+        ], [], ['unit_id' => 'unidade', 'medication_id' => 'medicamento ou material', 'material_id' => 'material', 'minimum' => 'estoque mínimo']);
+        $item = isset($data['material_id']) ? Material::query()->find((int) $data['material_id']) : Medication::query()->find((int) $data['medication_id']);
+        abort_if($item === null, 404);
+        $keys = ['unit_id' => $data['unit_id'], ...StockItem::columns($item)];
         $save = fn () => DB::transaction(function () use ($request, $data, $keys) {
             $minimum = $data['minimum'] ?? null;
             $current = StockMinimum::query()->where($keys)->value('minimum');
@@ -193,7 +197,7 @@ class StockController extends Controller
             } else {
                 StockMinimum::query()->updateOrCreate($keys, ['minimum' => $minimum, 'updated_by_user_id' => $request->user()->id]);
             }
-            AuditEvent::record('stock.minimum_set', UnitPolicy::currentMembership($request->user())?->tenant_id, null, [...$keys, 'minimum' => $minimum]);
+            AuditEvent::record('stock.minimum_set', UnitPolicy::currentMembership($request->user())?->tenant_id, null, ['unit_id' => $keys['unit_id'], ...StockItem::ids((object) $keys), 'minimum' => $minimum]);
         });
 
         try {
@@ -214,11 +218,11 @@ class StockController extends Controller
      *
      * @param  array<string, mixed>  $audit  more audit context (ids only)
      */
-    public static function enter(int $unitId, Medication $medication, string $code, string $expiresOn, ?string $manufacturer, int $quantity, User $user, array $audit = []): StockMovement
+    public static function enter(int $unitId, Medication|Material $item, string $code, string $expiresOn, ?string $manufacturer, int $quantity, User $user, array $audit = []): StockMovement
     {
         // The same lot entered twice at once: one creates it, the other finds it (savepoint).
         $lot = StockLot::query()->createOrFirst(
-            ['unit_id' => $unitId, 'medication_id' => $medication->id, 'lot_code' => $code, 'expires_on' => $expiresOn],
+            ['unit_id' => $unitId, ...StockItem::columns($item), 'lot_code' => $code, 'expires_on' => $expiresOn],
             ['manufacturer' => $manufacturer, 'created_by_user_id' => $user->id, 'created_at' => now()],
         );
         // A lot has one manufacturer: a different one is a different lot or a typo, never dropped silently.
@@ -231,15 +235,15 @@ class StockController extends Controller
             'stock_lot_id' => $lot->id, 'type' => 'entry', 'quantity' => $quantity, 'user_id' => $user->id, 'created_at' => now(),
         ]);
         AuditEvent::record('stock.entry', $lot->tenant_id, $movement, [
-            'unit_id' => $lot->unit_id, 'medication_id' => $lot->medication_id, 'stock_lot_id' => $lot->id, 'quantity' => $movement->quantity, ...$audit,
+            'unit_id' => $lot->unit_id, ...StockItem::ids($lot), 'stock_lot_id' => $lot->id, 'quantity' => $movement->quantity, ...$audit,
         ]);
 
         return $movement;
     }
 
-    public static function label(Medication $medication): string
+    public static function label(Medication|Material $item): string
     {
-        return "{$medication->active_ingredient} {$medication->strength} ({$medication->form})";
+        return StockItem::label($item);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Clinical;
 
 use App\Models\AuditEvent;
+use App\Models\Material;
 use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\StockLot;
@@ -17,7 +18,7 @@ use Tests\TestCase;
 
 /**
  * Step 4c.1a (ADR-0007): lot entries into the unit's pharmacy stock, the balance kept by the database from the
- * movements, and the minimum of each medication.
+ * movements, and the minimum of each medication; step 5b.6b (ADR-0009): materials in the same ledger.
  */
 class StockTest extends TestCase
 {
@@ -72,10 +73,10 @@ class StockTest extends TestCase
         $this->assertEqualsCanonicalizing(['unit_id', 'medication_id', 'stock_lot_id', 'quantity'], array_keys($audit->context));
 
         $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->component('stock/index')
-            ->where('medications.0.total', 125)->where('medications.0.stockUnit', 'comprimido')->where('medications.0.below', false)
+            ->where('items.0.total', 125)->where('items.0.stockUnit', 'comprimido')->where('items.0.below', false)
             // The nearest expiry first; X9 expires within 30 days.
-            ->where('medications.0.lots.0.code', 'X9')->where('medications.0.lots.0.state', 'expiring')
-            ->where('medications.0.lots.1.state', 'valid'));
+            ->where('items.0.lots.0.code', 'X9')->where('items.0.lots.0.state', 'expiring')
+            ->where('items.0.lots.1.state', 'valid'));
     }
 
     public function test_an_expired_lot_an_inactive_medication_and_another_units_stock_are_refused(): void
@@ -97,7 +98,7 @@ class StockTest extends TestCase
         $this->post(route('stock.entries.store'), ['unit_id' => $this->unit->id])->assertSessionHasErrors('unit_id', null, 'entry');
         $elsewhere = Membership::factory()->for($this->admin->tenant)->create();
         $elsewhere->grant(Role::Pharmacy, $this->other);
-        $this->actingAs($elsewhere->user)->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('unitId', $this->other->id)->has('medications', 0));
+        $this->actingAs($elsewhere->user)->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('unitId', $this->other->id)->has('items', 0));
     }
 
     public function test_a_discard_takes_from_the_lot_with_a_reason_and_never_more_than_its_balance(): void
@@ -144,7 +145,7 @@ class StockTest extends TestCase
         $this->travelTo('2026-11-21 02:59:00');
         $this->actingAs($this->pharmacist->user)->post(route('stock.discards.store', $lot), ['reason' => 'expired', 'quantity' => 7])->assertSessionHasErrorsIn("discard{$lot->id}", ['reason']);
         $this->travelTo('2026-12-01 12:00:00');
-        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('medications.0.lots.0.state', 'expired'));
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('items.0.lots.0.state', 'expired'));
 
         $this->actingAs($this->admin->user)->post(route('stock.discards.store', $lot), ['reason' => 'expired', 'quantity' => 7])->assertForbidden();
         $elsewhere = Membership::factory()->for($this->admin->tenant)->create();
@@ -162,11 +163,11 @@ class StockTest extends TestCase
         $this->travelTo('2026-11-14 02:00:00');
         $this->entry(['expires_on' => '2026-11-13', 'quantity' => 5]);
         $this->actingAs($this->pharmacist->user)->put(route('stock.minimums.update'), ['unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'minimum' => 5])->assertSessionHasNoErrors();
-        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('medications.0.lots.0.state', 'expiring')
-            ->where('medications.0.valid', 5)->where('medications.0.below', false));
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('items.0.lots.0.state', 'expiring')
+            ->where('items.0.valid', 5)->where('items.0.below', false));
         // From midnight in the unit, expired.
         $this->travelTo('2026-11-14 03:00:00');
-        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('medications.0.lots.0.state', 'expired')->where('medications.0.below', true));
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('items.0.lots.0.state', 'expired')->where('items.0.below', true));
     }
 
     public function test_the_database_keeps_the_balance_and_the_history(): void
@@ -238,7 +239,7 @@ class StockTest extends TestCase
     {
         $this->entry(['quantity' => 10]);
         $this->put(route('stock.minimums.update'), ['unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'minimum' => 30])->assertSessionHasNoErrors();
-        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('medications.0.minimum', 30)->where('medications.0.below', true));
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('items.0.minimum', 30)->where('items.0.below', true));
         $this->put(route('stock.minimums.update'), ['unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'minimum' => 5])->assertSessionHasNoErrors();
         $this->assertSame(5, DB::table('stock_minimums')->sole()->minimum);
         $this->put(route('stock.minimums.update'), ['unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'minimum' => ''])->assertSessionHasNoErrors();
@@ -260,5 +261,63 @@ class StockTest extends TestCase
             'active_ingredient' => 'Dipirona', 'form' => 'Comprimido', 'strength' => '500 mg', 'dose_unit' => 'mg', 'routes' => ['oral'], 'active' => true, 'stock_unit' => 'drágea',
         ])->assertSessionHasNoErrors();
         $this->assertSame('drágea', $this->medication->refresh()->stock_unit);
+    }
+
+    public function test_materials_share_the_ledger_with_entries_minimum_discard_report_indicators_and_alert(): void
+    {
+        app(CurrentTenant::class)->set($this->admin->tenant);
+        $gauze = Material::query()->create(['name' => 'Compressa cirúrgica', 'stock_unit' => 'pacote']);
+        $inactive = Material::query()->create(['name' => 'Luva antiga', 'stock_unit' => 'par', 'active' => false]);
+        app(CurrentTenant::class)->set(null);
+        $this->entry();
+        $material = fn (array $data) => $this->post(route('stock.entries.store'), ['unit_id' => $this->unit->id, 'lot_code' => 'g1', 'expires_on' => '2026-11-20', 'quantity' => 40, ...$data]);
+        $material(['material_id' => $gauze->id])->assertSessionHasNoErrors();
+        $material(['material_id' => $gauze->id, 'quantity' => 10])->assertSessionHasNoErrors();
+        // Exactly one item, active.
+        $material(['material_id' => $inactive->id])->assertSessionHasErrorsIn('entry', ['material_id' => 'Escolha um medicamento ou material ativo do catálogo.']);
+        $material(['material_id' => $gauze->id, 'medication_id' => $this->medication->id])->assertSessionHasErrorsIn('entry', ['medication_id']);
+        $material([])->assertSessionHasErrorsIn('entry', ['medication_id']);
+        $lot = StockLot::withoutTenantScope()->whereNotNull('material_id')->sole();
+        $this->assertSame([null, 'G1', 50], [$lot->medication_id, $lot->lot_code, $lot->balance]);
+        $this->assertEquals(['unit_id' => $this->unit->id, 'material_id' => $gauze->id, 'stock_lot_id' => $lot->id, 'quantity' => 10], AuditEvent::where('action', 'stock.entry')->latest('id')->firstOrFail()->context);
+
+        $this->put(route('stock.minimums.update'), ['unit_id' => $this->unit->id, 'material_id' => $gauze->id, 'minimum' => 60])->assertSessionHasNoErrors();
+        $this->assertEquals(['unit_id' => $this->unit->id, 'material_id' => $gauze->id, 'minimum' => 60], AuditEvent::where('action', 'stock.minimum_set')->sole()->context);
+        $this->post(route('stock.discards.store', $lot), ['reason' => 'damage', 'quantity' => 5])->assertSessionHasNoErrors();
+        $this->assertEquals(['unit_id' => $this->unit->id, 'material_id' => $gauze->id, 'stock_lot_id' => $lot->id, 'quantity' => 5, 'reason' => 'damage'], AuditEvent::where('action', 'stock.discard')->sole()->context);
+
+        // Medications first, then materials; the material flagged below its minimum.
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->has('items', 2)
+            ->where('items.0.key', "medication:{$this->medication->id}")->where('items.1.key', "material:{$gauze->id}")->where('items.1.material', true)
+            ->where('items.1.total', 45)->where('items.1.stockUnit', 'pacote')->where('items.1.below', true)->where('items.1.lots.0.state', 'expiring')
+            ->where('discards.0.name', 'Compressa cirúrgica')
+            ->where('catalog', fn ($catalog) => collect($catalog)->pluck('key')->all() === ["medication:{$this->medication->id}", "material:{$gauze->id}"]));
+
+        // The movement report filters by the material; its rows carry the name and no controlled flag.
+        $this->get(route('stock.movements.index', ['item' => "material:{$gauze->id}"]))->assertInertia(fn (Assert $page) => $page
+            ->where('filters.item', "material:{$gauze->id}")->has('summary', 1)->where('summary.0.entry', 50)->where('summary.0.discard', -5)
+            ->where('pages.total', 3)->where('movements.0.medication', 'Compressa cirúrgica')->where('movements.0.controlled', false)
+            ->where('options', fn ($options) => collect($options)->pluck('key')->all() === ["medication:{$this->medication->id}", "material:{$gauze->id}"]));
+        $this->get(route('stock.movements.index', ['item' => 'material:x']))->assertInertia(fn (Assert $page) => $page->where('filters.item', null)->where('pages.total', 4));
+
+        $this->get(route('stock.indicators.index'))->assertInertia(fn (Assert $page) => $page->where('units.0.below', 1)->where('units.0.expiring', 1)
+            ->where('detail.below.0.id', "material:{$gauze->id}")->where('detail.below.0.medication', 'Compressa cirúrgica')->where('detail.below.0.valid', 45)
+            ->where('detail.expiring.0.stockUnit', 'pacote')->where('detail.losses.0.medication', 'Compressa cirúrgica'));
+        $this->artisan('stock:alerts')->expectsOutput('Avisos enviados: 1.')->assertSuccessful();
+        $this->assertEquals(['expiring' => 1, 'expired' => 0, 'below_minimum' => 1], collect(AuditEvent::where('action', 'stock.daily_alert')->sole()->context)->only(['expiring', 'expired', 'below_minimum'])->all());
+
+        // The database keeps one item per lot and per minimum.
+        foreach ([
+            fn () => DB::table('stock_lots')->insert(['tenant_id' => $lot->tenant_id, 'unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'material_id' => $gauze->id, 'lot_code' => 'X1', 'expires_on' => '2027-01-01', 'created_by_user_id' => $this->pharmacist->user->id, 'created_at' => now()]),
+            fn () => DB::table('stock_lots')->insert(['tenant_id' => $lot->tenant_id, 'unit_id' => $this->unit->id, 'lot_code' => 'X2', 'expires_on' => '2027-01-01', 'created_by_user_id' => $this->pharmacist->user->id, 'created_at' => now()]),
+            fn () => DB::table('stock_minimums')->insert(['tenant_id' => $lot->tenant_id, 'unit_id' => $this->unit->id, 'minimum' => 1, 'updated_by_user_id' => $this->pharmacist->user->id, 'created_at' => now(), 'updated_at' => now()]),
+        ] as $insert) {
+            try {
+                DB::transaction($insert);
+                $this->fail('The database accepted a row without exactly one item.');
+            } catch (QueryException $e) {
+                $this->assertSame('23514', $e->getCode(), $e->getMessage());
+            }
+        }
     }
 }

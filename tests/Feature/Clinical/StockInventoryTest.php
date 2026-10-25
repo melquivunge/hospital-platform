@@ -3,6 +3,7 @@
 namespace Tests\Feature\Clinical;
 
 use App\Models\AuditEvent;
+use App\Models\Material;
 use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\StockInventory;
@@ -249,6 +250,43 @@ class StockInventoryTest extends TestCase
                 $this->fail('The database accepted '.json_encode($wrong));
             } catch (QueryException $exception) {
                 $this->assertSame($code, $exception->getCode());
+            }
+        }
+    }
+
+    public function test_material_lots_are_counted_found_and_adjusted_like_medications(): void
+    {
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $gauze = Material::query()->create(['name' => 'Compressa cirúrgica', 'stock_unit' => 'pacote']);
+        app(CurrentTenant::class)->set(null);
+        $this->stockLot($this->unit->id, $this->medication, 10, 'A');
+        $this->actingAs($this->pharmacist->user)->post(route('stock.entries.store'), ['unit_id' => $this->unit->id, 'material_id' => $gauze->id, 'lot_code' => 'G1', 'expires_on' => '2027-06-30', 'quantity' => 20])->assertSessionHasNoErrors();
+        $g1 = StockLot::withoutTenantScope()->where('lot_code', 'G1')->sole()->id;
+        $this->get(route('stock.inventories.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('openUnits.0.items', fn ($items) => collect($items)->pluck('key')->all() === ["medication:{$this->medication->id}", "material:{$gauze->id}"]));
+
+        // Only the chosen material is counted.
+        $this->post(route('stock.inventories.store'), ['unit_id' => $this->unit->id, 'material_ids' => [$gauze->id]])->assertSessionHasNoErrors();
+        $inventory = StockInventory::withoutTenantScope()->latest('id')->firstOrFail();
+        $this->assertSame([$g1], $inventory->lines()->pluck('stock_lot_id')->all());
+        $this->countLot($this->pharmacist, $inventory, $g1, 18);
+        $this->post(route('stock.inventories.found', $inventory), ['material_id' => $gauze->id, 'lot_code' => 'g2', 'expires_on' => '2027-08-31', 'counted' => 4])->assertSessionHasNoErrors();
+        $this->post(route('stock.inventories.found', $inventory), ['material_id' => $gauze->id, 'lot_code' => 'G2', 'expires_on' => '2027-08-31', 'counted' => 1])
+            ->assertSessionHasErrorsIn('found', ['lot_code' => 'Este lote já está na lista. Corrija a contagem dele.']);
+        $this->get(route('stock.inventories.show', $inventory))->assertInertia(fn (Assert $page) => $page->where('lines.0.medication', 'Compressa cirúrgica')->where('lines.1.stockUnit', 'pacote')
+            ->where('catalog', fn ($catalog) => collect($catalog)->pluck('key')->contains("material:{$gauze->id}")));
+        $this->post(route('stock.inventories.submit', $inventory))->assertSessionHasNoErrors();
+        $this->actingAs($this->manager->user)->post(route('stock.inventories.approve', $inventory))->assertSessionHasNoErrors();
+
+        $this->assertSame(['A' => 10, 'G1' => 18, 'G2' => 4], $this->balances());
+        $this->assertSame($gauze->id, StockLot::withoutTenantScope()->where('lot_code', 'G2')->value('material_id'));
+        // An inventory line holds one item, never both or none.
+        foreach ([['medication_id' => $this->medication->id, 'material_id' => $gauze->id], []] as $item) {
+            try {
+                DB::transaction(fn () => DB::table('stock_inventory_lines')->insert(['tenant_id' => $inventory->tenant_id, 'stock_inventory_id' => $inventory->id, 'lot_code' => 'X'.count($item), 'expires_on' => '2027-01-01', ...$item]));
+                $this->fail('The database accepted an inventory line without exactly one item.');
+            } catch (QueryException $e) {
+                $this->assertSame('23514', $e->getCode(), $e->getMessage());
             }
         }
     }

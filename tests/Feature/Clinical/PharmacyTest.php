@@ -5,6 +5,7 @@ namespace Tests\Feature\Clinical;
 use App\Jobs\DeliverNotifications;
 use App\Models\AuditEvent;
 use App\Models\EmergencyEpisode;
+use App\Models\Material;
 use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\Prescription;
@@ -270,12 +271,18 @@ class PharmacyTest extends ClinicalTestCase
         $this->post(route('pharmacy.dispense', $ceftriaxone), ['quantity' => 1, 'lots' => [['id' => $later, 'quantity' => 1]]])->assertSessionHasErrors(['quantity' => 'Lote fora do estoque deste medicamento na unidade.'], null, "dispense{$ceftriaxone->id}");
         $this->post(route('pharmacy.dispense', $ceftriaxone), ['quantity' => 2, 'lots' => [['id' => $c1, 'quantity' => 2], ['id' => $later, 'quantity' => 0]]])->assertSessionHasNoErrors();
         $this->assertSame(8, DB::table('stock_lots')->where('id', $c1)->value('balance'));
+        // A material lot of the same unit, with balance (step 5b.6b): never dispensed.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $gauze = Material::query()->create(['name' => 'Compressa', 'stock_unit' => 'pacote']);
+        app(CurrentTenant::class)->set(null);
+        $this->post(route('stock.entries.store'), ['unit_id' => $this->unit->id, 'material_id' => $gauze->id, 'lot_code' => 'G1', 'expires_on' => now()->addYear()->toDateString(), 'quantity' => 10])->assertSessionHasNoErrors();
+        $material = DB::table('stock_lots')->where('lot_code', 'G1')->value('id');
         // The database keeps a return to what its dispensing took from each lot.
         $ceftriaxoneDispensing = PrescriptionDispensing::withoutTenantScope()->where('prescription_item_id', $ceftriaxone->id)->sole()->id;
         app(CurrentTenant::class)->set($this->unit->tenant);
         // ...and a dispensing to a valid lot of the prescription's unit and of the item's medication.
         $dipyroneDispensing = PrescriptionDispensing::withoutTenantScope()->where('prescription_item_id', $dipyrone->id)->sole()->id;
-        foreach ([$elsewhere, $expired, $c1] as $lot) {
+        foreach ([$elsewhere, $expired, $c1, $material] as $lot) {
             try {
                 DB::transaction(fn () => DB::table('stock_movements')->insert(['tenant_id' => $this->unit->tenant_id, 'stock_lot_id' => $lot, 'type' => 'dispensing', 'quantity' => -1, 'user_id' => $this->pharmacist->user_id, 'prescription_dispensing_id' => $dipyroneDispensing, 'created_at' => now()]));
                 $this->fail('A dispensing took from a lot it may not.');

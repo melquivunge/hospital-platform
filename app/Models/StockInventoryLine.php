@@ -14,7 +14,8 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $tenant_id
  * @property int $stock_inventory_id
- * @property int $medication_id
+ * @property int|null $medication_id
+ * @property int|null $material_id a material instead of a medication (step 5b.6b); exactly one of the two
  * @property int|null $stock_lot_id
  * @property string|null $lot_code
  * @property Carbon|null $expires_on
@@ -23,7 +24,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $counted_by_user_id
  * @property Carbon|null $counted_at
  */
-#[Fillable(['stock_inventory_id', 'medication_id', 'stock_lot_id', 'lot_code', 'expires_on', 'counted', 'expected', 'counted_by_user_id', 'counted_at'])]
+#[Fillable(['stock_inventory_id', 'medication_id', 'material_id', 'stock_lot_id', 'lot_code', 'expires_on', 'counted', 'expected', 'counted_by_user_id', 'counted_at'])]
 class StockInventoryLine extends Model
 {
     use BelongsToTenant;

@@ -94,7 +94,7 @@ class StockReportTest extends TestCase
         $response = $this->actingAs($this->pharmacist->user)->get(route('stock.movements.csv', ['from' => '2026-11-01', 'to' => '2026-11-13']));
         $response->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
         $rows = array_map(fn (string $line) => str_getcsv($line, ';', '"', ''), explode("\n", trim(substr($response->streamedContent(), 3))));
-        $this->assertSame(['Data e hora', 'Medicamento', 'Controlado', 'Lote', 'Validade', 'Tipo', 'Entrada', 'Saída', 'Motivo', 'Responsável'], $rows[0]);
+        $this->assertSame(['Data e hora', 'Medicamento ou material', 'Controlado', 'Lote', 'Validade', 'Tipo', 'Entrada', 'Saída', 'Motivo', 'Responsável'], $rows[0]);
         $this->assertCount(5, $rows);
         $this->assertSame(['Morfina 10 mg/mL (Ampola)', 'sim', 'M1', '30/06/2027', 'Entrada', '10', '', ''], array_slice($rows[2], 1, 8));
         // Quantities as positive numbers in two columns: a spreadsheet keeps them numbers.
