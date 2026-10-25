@@ -66,7 +66,11 @@ class SurgeryRecordController extends Controller
     public static function mineQuery(int $professionalId): Builder
     {
         return Surgery::query()->where(fn (Builder $mine) => $mine
-            ->where(fn (Builder $live) => $live->whereIn('status', Surgery::LIVE)->whereHas('team', fn ($team) => $team->where('professional_id', $professionalId)))
+            // Security review 5b.7: only the ones whose record opens now, or still to be described by this surgeon, so the
+            // link never leads to a 403.
+            ->where(fn (Builder $live) => ClinicalAccess::qualifiedInSurgeryUnit($live->where(fn (Builder $open) => Surgery::recordWindow($open)
+                ->orWhere(fn (Builder $started) => $started->where('status', 'in_progress')->whereHas('team', fn ($team) => $team->where('professional_id', $professionalId)->where('role', 'surgeon'))))
+                ->whereHas('team', fn ($team) => $team->where('professional_id', $professionalId)), $professionalId))
             // Review 5b.5: only where the addendum is still allowed, so the link never leads to a 403.
             ->orWhere(fn (Builder $done) => ClinicalAccess::qualifiedInSurgeryUnit($done->where('status', 'completed')->where('completed_at', '>=', now()->subDays(SurgeryDescription::ADDENDUM_DAYS))
                 ->whereHas('team', fn ($team) => $team->where('professional_id', $professionalId)->where('role', 'surgeon')), $professionalId)));
@@ -79,7 +83,9 @@ class SurgeryRecordController extends Controller
         // addenda (step 5b.5).
         $open = ClinicalAccess::openSurgeries($request->user())->whereKey($surgery->id)->exists();
         $canAddendum = SurgeryDescriptionController::canAddendum($request->user(), $surgery);
-        abort_unless($open || $canAddendum, 403);
+        // A surgery left in progress past its window still gets its description: its surgeons keep the restricted view.
+        $toDescribe = $surgery->status === 'in_progress' && SurgeryDescriptionController::canSign($request->user(), $surgery);
+        abort_unless($open || $canAddendum || $toDescribe, 403);
         $patient = Patient::query()->findOrFail($surgery->patient_id);
         ClinicalAccess::recordRead($request->user(), $patient, $surgery);
         Inertia::encryptHistory();
@@ -105,7 +111,8 @@ class SurgeryRecordController extends Controller
                 'room' => $surgery->room?->name,
                 'start' => $surgery->scheduled_start?->timezone($timezone)->format('d/m/Y H:i'),
                 'end' => $surgery->scheduled_end?->timezone($timezone)->format('d/m/Y H:i'),
-                'urgentReason' => $surgery->urgent_reason,
+                // Free texts that may be clinical: only while the record is open (security review 5b.7).
+                'urgentReason' => $open ? $surgery->urgent_reason : null,
                 'team' => $surgery->team->map(fn (SurgeryTeamMember $member) => ['id' => $member->id, 'name' => $member->professional->name, 'role' => $member->role])->values(),
                 'place' => ExamQueueController::places([$surgery])[$surgery->id],
                 'startedAt' => $surgery->started_at?->timezone($timezone)->format('d/m/Y H:i'),
@@ -114,7 +121,7 @@ class SurgeryRecordController extends Controller
                     'id' => $consent->id,
                     'kind' => $consent->kind,
                     'name' => $consent->original_name,
-                    'waiverReason' => $consent->waiver_reason,
+                    'waiverReason' => $open ? $consent->waiver_reason : null,
                     'by' => $users->get($consent->created_by_user_id),
                     'at' => $consent->created_at->timezone($timezone)->format('d/m/Y H:i'),
                 ],

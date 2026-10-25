@@ -75,7 +75,31 @@ class Surgery extends Model
     /** ADR-0009: a surgery still scheduled this many hours after its planned end reaches the manager (step 5b.3c). */
     public const OVERDUE_HOURS = 24;
 
+    /** Security review 5b.7: a request or a booking opens the record only this many days before its date. */
+    public const ACCESS_AHEAD_DAYS = 30;
+
+    /** Security review 5b.7: a surgery in progress opens the record this many days after its start. */
+    public const IN_PROGRESS_ACCESS_DAYS = 7;
+
     public $timestamps = false;
+
+    /**
+     * The surgeries whose record is open now, bounded in time (security reviews 5b.3b and 5b.7): a request only near
+     * its wished date; a booking from ACCESS_AHEAD_DAYS before its start until OVERDUE_HOURS after its planned end; a
+     * surgery in progress for IN_PROGRESS_ACCESS_DAYS after its start. A surgery left behind closes the record alone.
+     *
+     * @param  Builder<Surgery>  $query
+     * @return Builder<Surgery>
+     */
+    public static function recordWindow(Builder $query): Builder
+    {
+        return $query
+            ->where(fn (Builder $requested) => $requested->where('status', 'requested')
+                ->whereBetween('desired_date', [now()->subDays(self::REQUESTED_ACCESS_DAYS)->toDateString(), now()->addDays(self::ACCESS_AHEAD_DAYS)->toDateString()]))
+            ->orWhere(fn (Builder $scheduled) => $scheduled->where('status', 'scheduled')
+                ->where('scheduled_start', '<=', now()->addDays(self::ACCESS_AHEAD_DAYS))->where('scheduled_end', '>=', now()->subHours(self::OVERDUE_HOURS)))
+            ->orWhere(fn (Builder $started) => $started->where('status', 'in_progress')->where('started_at', '>=', now()->subDays(self::IN_PROGRESS_ACCESS_DAYS)));
+    }
 
     /**
      * Step 5b.3c: still scheduled more than OVERDUE_HOURS after the planned end (a long surgery still running is not

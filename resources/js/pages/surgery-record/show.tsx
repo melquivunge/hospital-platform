@@ -65,7 +65,8 @@ function Consent({ surgery, open }: { surgery: Surgery; open: boolean }) {
                 </p>
             ) : (
                 <p className="text-sm">
-                    Urgência sem termo: {consent.waiverReason}{' '}
+                    Urgência sem termo
+                    {consent.waiverReason && `: ${consent.waiverReason}`}{' '}
                     <span className="text-muted-foreground">
                         · {consent.by} em {consent.at}
                     </span>

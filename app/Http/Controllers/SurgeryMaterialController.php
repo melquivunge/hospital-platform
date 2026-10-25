@@ -25,6 +25,9 @@ use Inertia\Inertia;
  */
 class SurgeryMaterialController extends Controller
 {
+    /** The same consumption by the same person within this many seconds is taken as a repeated submission. */
+    private const REPEAT_SECONDS = 10;
+
     public function store(Request $request, Surgery $surgery): RedirectResponse
     {
         abort_unless(self::canUse($request->user(), $surgery), 403);
@@ -46,6 +49,11 @@ class SurgeryMaterialController extends Controller
             };
             if ($refusal !== null) {
                 throw ValidationException::withMessages([$refusal[0] => $refusal[1]])->errorBag('material');
+            }
+            // The same consumption sent twice in a row (double click, a retry) is recorded once (security review 5b.7).
+            if (StockMovement::query()->where(['surgery_id' => $locked->id, 'stock_lot_id' => $lot->id, 'type' => 'surgery', 'quantity' => -$data['quantity'], 'user_id' => $request->user()->id])
+                ->where('created_at', '>=', now()->subSeconds(self::REPEAT_SECONDS))->exists()) {
+                throw ValidationException::withMessages(['quantity' => 'Este consumo acabou de ser registrado. Se foram mais, registre de novo em instantes.'])->errorBag('material');
             }
             $movement = StockMovement::query()->create([
                 'stock_lot_id' => $lot->id, 'type' => 'surgery', 'quantity' => -$data['quantity'], 'surgery_id' => $locked->id, 'user_id' => $request->user()->id, 'created_at' => now(),

@@ -92,6 +92,8 @@ class SurgeryChecklistController extends Controller
             DB::transaction(function () use ($request, $surgery, $step, $data, $bag, $previous) {
                 // The surgery first, as cancel and reschedule lock it: one of them wins.
                 $locked = Surgery::query()->lockForUpdate()->findOrFail($surgery->id);
+                // Taken off the team or the qualification lapsed while the request was in flight (security review 5b.7).
+                abort_unless(self::canConfirm($request->user(), $locked), 403);
                 $expected = $step === 'sign_in' ? 'scheduled' : 'in_progress';
                 if ($locked->status !== $expected) {
                     throw ValidationException::withMessages(['step' => $locked->status === 'cancelled' ? 'Esta cirurgia foi cancelada.' : 'Esta etapa não pode ser confirmada agora. Recarregue a página.'])->errorBag($bag);
@@ -162,6 +164,7 @@ class SurgeryChecklistController extends Controller
     {
         DB::transaction(function () use ($request, $surgery, $values) {
             $locked = Surgery::query()->lockForUpdate()->findOrFail($surgery->id);
+            abort_unless(self::canConfirm($request->user(), $locked), 403);
             if (! in_array($locked->status, Surgery::OPEN, true)) {
                 throw ValidationException::withMessages([$values['kind'] === 'waiver' ? 'reason' : 'file' => 'O termo só muda antes da primeira etapa do checklist.'])->errorBag($values['kind'] === 'waiver' ? 'waiver' : 'consent');
             }

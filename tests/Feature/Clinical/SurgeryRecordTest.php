@@ -26,7 +26,8 @@ use Inertia\Testing\AssertableInertia as Assert;
 /**
  * The record for the surgery (step 5b.3b, ADR-0009): the Surgical center of the unit and the members of the active
  * team read the record while the surgery is requested or scheduled, one trail row per opening with the reason
- * "surgery"; the access ends with the cancellation or the removal from the team.
+ * "surgery"; the access ends with the cancellation or the removal from the team. Security review 5b.7: the access is
+ * bounded in time, the team holds a function that attends patients, and the same surgery is not ordered twice.
  */
 class SurgeryRecordTest extends ClinicalTestCase
 {
@@ -184,5 +185,46 @@ class SurgeryRecordTest extends ClinicalTestCase
         DB::table('memberships')->whereIn('id', [$this->surgeonAccount->id, $this->center->id])->update(['revoked_at' => now()]);
         $this->get(route('surgery-record.show', $surgery))->assertForbidden();
         $this->actingAs($this->center->user)->get(route('surgery-record.show', $surgery))->assertForbidden();
+    }
+
+    public function test_the_access_is_bounded_in_time_the_team_attends_patients_and_an_order_is_not_repeated(): void
+    {
+        $surgery = $this->surgery();
+        // The same order again (a double click, a second tab) is refused while it waits; another side is another surgery.
+        $order = fn (array $values) => $this->actingAs($this->doctorAccount->user)->post(route('surgery-orders.visit.store', $this->visit), [
+            'surgical_procedure_id' => $surgery->surgical_procedure_id, 'laterality' => 'left', 'urgency' => 'elective', 'desired_date' => '2026-11-20',
+            'indication' => 'Hérnia.', 'password' => 'password', ...$values,
+        ]);
+        $order([])->assertSessionHasErrorsIn('order', ['surgical_procedure_id' => 'Este pedido já foi feito neste atendimento e aguarda agendamento.']);
+        // A request wished for far ahead opens the record only from 30 days before it.
+        $order(['laterality' => 'right', 'desired_date' => '2027-03-01'])->assertSessionHasNoErrors();
+        $far = Surgery::withoutTenantScope()->latest('id')->firstOrFail();
+        $this->actingAs($this->center->user)->get(route('surgery-record.show', $surgery))->assertOk();
+        $this->get(route('surgery-record.show', $far))->assertForbidden();
+
+        // A function that does not attend patients is never on the team.
+        app(CurrentTenant::class)->set($this->patient->tenant);
+        $clerk = Professional::factory()->create(['base_unit_id' => $this->unit->id, 'name' => 'Sra. Lúcia']);
+        $office = JobFunction::query()->create(['name' => 'Secretaria', 'attends_patients' => false]);
+        Qualification::request($clerk, $this->unit, ['job_function_id' => $office->id, 'valid_from' => '2026-01-01', 'valid_until' => null], [Sector::query()->where('unit_id', $this->unit->id)->value('id')])
+            ->transitionTo(QualificationStatus::Approved, null);
+        app(CurrentTenant::class)->set(null);
+        $this->get(route('surgery-schedule.show', $surgery))->assertInertia(fn (Assert $page) => $page->where('professionals', fn ($people) => ! collect($people)->pluck('id')->contains($clerk->id)));
+        $this->post(route('surgery-schedule.schedule', $surgery), ['operating_room_id' => $this->room->id, 'start' => '2026-11-20T08:00', 'duration_minutes' => 60, 'surgeon_id' => $clerk->id])
+            ->assertSessionHasErrorsIn('schedule', ['surgeon_id']);
+
+        // Scheduled: open until 24 hours after the planned end, then closed for the center and the team, and gone from
+        // "Minhas cirurgias".
+        $this->post(route('surgery-schedule.schedule', $surgery), ['operating_room_id' => $this->room->id, 'start' => '2026-11-20T08:00', 'duration_minutes' => 60, 'surgeon_id' => $this->surgeon->id])->assertSessionHasNoErrors();
+        $this->travelTo('2026-11-21 11:30:00');
+        $this->get(route('surgery-record.show', $surgery))->assertOk();
+        $this->actingAs($this->surgeonAccount->user)->get(route('surgery-record.mine'))->assertInertia(fn (Assert $page) => $page->has('surgeries', 1));
+        $this->travelTo('2026-11-21 12:30:00');
+        $this->get(route('surgery-record.show', $surgery))->assertForbidden();
+        $this->get(route('surgery-record.mine'))->assertInertia(fn (Assert $page) => $page->has('surgeries', 0));
+        $this->actingAs($this->center->user)->get(route('surgery-record.show', $surgery))->assertForbidden();
+        // Rescheduled, it opens again.
+        $this->post(route('surgery-schedule.reschedule', $surgery), ['operating_room_id' => $this->room->id, 'start' => '2026-11-23T08:00', 'duration_minutes' => 60, 'reason' => 'Paciente não compareceu.'])->assertSessionHasNoErrors();
+        $this->get(route('surgery-record.show', $surgery))->assertOk();
     }
 }

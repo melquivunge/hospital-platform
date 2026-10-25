@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditEvent;
+use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\OperatingRoom;
 use App\Models\Patient;
@@ -275,7 +276,8 @@ class SurgeryScheduleController extends Controller
     }
 
     /**
-     * Professionals with an approved qualification valid today in the unit: who may be on a surgical team there.
+     * Professionals with an approved qualification valid today in the unit, in a function that attends patients: who
+     * may be on a surgical team there (a non-clinical function never reads the record nor signs; security review 5b.7).
      *
      * @return Builder<Professional>
      */
@@ -284,6 +286,7 @@ class SurgeryScheduleController extends Controller
         $today = now(Unit::query()->whereKey($unitId)->value('timezone') ?? 'UTC')->toDateString();
 
         return Professional::query()->whereIn('professionals.id', Qualification::query()->where('unit_id', $unitId)->where('status', QualificationStatus::Approved)
+            ->whereIn('job_function_id', JobFunction::query()->where('attends_patients', true)->select('id'))
             ->whereDate('valid_from', '<=', $today)->where(fn ($query) => $query->whereNull('valid_until')->orWhereDate('valid_until', '>=', $today))
             ->select('professional_id'));
     }

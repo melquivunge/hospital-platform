@@ -159,6 +159,20 @@ class SurgeryDescriptionTest extends ClinicalTestCase
             ->assertInertia(fn (Assert $page) => $page->has('surgeryDescriptions', 1)->where('surgeryDescriptions.0.technique', 'Videolaparoscopia.')->where('surgeryDescriptions.0.addenda', []));
     }
 
+    public function test_a_surgery_left_in_progress_past_its_window_is_still_described_without_the_record(): void
+    {
+        $surgery = $this->started();
+        $this->travel(Surgery::IN_PROGRESS_ACCESS_DAYS + 1)->days();
+        // The record is closed for the center and the team; the surgeon keeps the restricted view to sign the description.
+        $this->actingAs($this->center->user)->get(route('surgery-record.show', $surgery))->assertForbidden();
+        $this->actingAs($this->assistantAccount->user)->get(route('surgery-record.show', $surgery))->assertForbidden();
+        $this->actingAs($this->surgeonAccount->user)->get(route('surgery-record.mine'))->assertInertia(fn (Assert $page) => $page->has('surgeries', 1));
+        $this->get(route('surgery-record.show', $surgery))->assertInertia(fn (Assert $page) => $page->where('open', false)->where('record', [])
+            ->where('surgery.indication', null)->where('surgery.canDescribe', true));
+        $this->post(route('surgery-description.store', $surgery), self::DESCRIPTION)->assertSessionHasNoErrors();
+        $this->assertSame('completed', $surgery->fresh()->status);
+    }
+
     public function test_after_the_completion_the_record_closes_and_the_surgeons_sign_addenda_for_30_days(): void
     {
         $surgery = $this->started();
@@ -310,6 +324,8 @@ class SurgeryDescriptionTest extends ClinicalTestCase
         $this->actingAs($this->center->user)->get(route('surgery-schedule.show', $surgery))->assertInertia(fn (Assert $page) => $page->where('canUseMaterials', true)
             ->where('materials.used', [])->where('materials.lots', fn ($lots) => collect($lots)->pluck('id')->all() === [$soon, $g1]));
         $use($g1, 5)->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Consumo registrado.');
+        // The same consumption sent twice in a row is recorded once.
+        $use($g1, 5)->assertSessionHasErrorsIn('material', ['quantity' => 'Este consumo acabou de ser registrado. Se foram mais, registre de novo em instantes.']);
         $use($g1, 16)->assertSessionHasErrorsIn('material', ['quantity' => 'O lote tem 15 em saldo.']);
         foreach ([$old => 'Lote vencido não é consumido.', $elsewhere => 'Escolha um lote de material desta unidade.', $drug => 'Escolha um lote de material desta unidade.'] as $lot => $message) {
             $use($lot, 1)->assertSessionHasErrorsIn('material', ['stock_lot_id' => $message]);
