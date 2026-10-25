@@ -4,7 +4,7 @@ Atualizado em 19/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: entrega 4c concluída (23/10/2026). Entrega 5 (exames e cirurgia): decisões do usuário registradas (23/10/2026: exames na 5, cirurgia na 5b; papéis Laboratório e Imagem; equipe lê o prontuário durante a execução); ADR-0008 e plano `plans/web-v6-exames.md` aceitos e implementação autorizada em 24/10/2026. Entrega 5 (exames) concluída e mesclada (5.6, PR #87, 24/10/2026). Entrega 5b (cirurgia): ADR-0009 e plano `plans/web-v7-cirurgia.md` aceitos e implementação autorizada em 24/10/2026 (equipe escalada lê o prontuário; centro cirúrgico ou equipe confirma o checklist; farmácia mantém os materiais). 5b.1a a 5b.3c mescladas (PRs #90 a #95). Próximo passo: revisão e merge da 5b.4 (checklist de cirurgia segura e termo); depois a 5b.5 (descrição cirúrgica e adendo).
+Plataforma hospitalar SaaS (multi-cliente) para escalas de plantão. Base web pronta: login, isolamento entre clientes, unidades, setores, pessoas e papéis, catálogo de regras herdadas, profissionais, funções, habilitações, elegibilidade, escala (publicação segura e agenda) importação CSV, acesso do profissional, "Meus plantões", vagas com candidatura e escolha justificada anúncio do próprio plantão para substituição transferência direta e troca entre dois plantões com aceite e aprovação presença por localização e ocorrências com saída ajustada pela coordenação, com identidade visual própria. Entrega 4b concluída (22/10/2026). Entrega 4c (estoque da farmácia) aprovada em 22/10/2026 (ADR-0007, `plans/web-v5-estoque.md`). Próximo passo: entrega 4c concluída (23/10/2026). Entrega 5 (exames e cirurgia): decisões do usuário registradas (23/10/2026: exames na 5, cirurgia na 5b; papéis Laboratório e Imagem; equipe lê o prontuário durante a execução); ADR-0008 e plano `plans/web-v6-exames.md` aceitos e implementação autorizada em 24/10/2026. Entrega 5 (exames) concluída e mesclada (5.6, PR #87, 24/10/2026). Entrega 5b (cirurgia): ADR-0009 e plano `plans/web-v7-cirurgia.md` aceitos e implementação autorizada em 24/10/2026 (equipe escalada lê o prontuário; centro cirúrgico ou equipe confirma o checklist; farmácia mantém os materiais). 5b.1a a 5b.4 mescladas (PRs #90 a #96). Próximo passo: revisão e merge da 5b.5 (descrição cirúrgica e adendo); depois a 5b.6 (materiais no livro de estoque).
 
 ## Onde está cada coisa
 
@@ -117,7 +117,8 @@ Stack: Laravel 13 / PHP 8.5, React 19 + Inertia 3 + TypeScript, PostgreSQL 18, D
 | #93 | 5b.3a: agenda cirúrgica, sala e equipe | Mesclado |
 | #94 | 5b.3b: acesso do centro cirúrgico e da equipe ao prontuário | Mesclado |
 | #95 | 5b.3c: cirurgias paradas ao gestor | Mesclado |
-| — | 5b.4: checklist de cirurgia segura e termo (branch `feat/surgery-checklist`) | Em revisão |
+| #96 | 5b.4: checklist de cirurgia segura e termo | Mesclado |
+| — | 5b.5: descrição cirúrgica, adendo e conclusão (branch `feat/surgery-description`) | Em revisão |
 
 Regra de ouro: nunca trabalhar na `main`. Uma branch por tarefa, PR com CI verde e revisão. O merge só acontece com autorização do usuário.
 
@@ -600,7 +601,7 @@ npm run check
 sh scripts/test-branch-guards.sh
 ```
 
-Último resultado: 479 testes passando (5b.4), PHPStan sem erros, lint e TypeScript limpos.
+Último resultado: 483 testes passando (5b.5), PHPStan sem erros, lint e TypeScript limpos.
 
 ## Armadilhas conhecidas
 

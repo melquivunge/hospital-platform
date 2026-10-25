@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -28,7 +29,7 @@ use Illuminate\Support\Carbon;
  * @property string $urgency elective | urgent
  * @property Carbon $desired_date
  * @property string $indication
- * @property string $status requested | scheduled | in_progress | cancelled
+ * @property string $status requested | scheduled | in_progress | completed | cancelled
  * @property string $signature_method
  * @property Carbon $created_at
  * @property Carbon|null $cancelled_at
@@ -41,8 +42,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $scheduled_at
  * @property string|null $urgent_reason
  * @property Carbon|null $started_at step 5b.4: the first checklist step
+ * @property Carbon|null $completed_at step 5b.5: the signed description
  */
-#[Fillable(['patient_id', 'unit_id', 'admission_id', 'visit_id', 'author_user_id', 'professional_id', 'surgical_procedure_id', 'procedure_name', 'laterality', 'urgency', 'desired_date', 'indication', 'status', 'signature_method', 'created_at', 'cancelled_at', 'cancelled_by_user_id', 'cancellation_reason', 'operating_room_id', 'scheduled_start', 'scheduled_end', 'scheduled_by_user_id', 'scheduled_at', 'urgent_reason', 'started_at'])]
+#[Fillable(['patient_id', 'unit_id', 'admission_id', 'visit_id', 'author_user_id', 'professional_id', 'surgical_procedure_id', 'procedure_name', 'laterality', 'urgency', 'desired_date', 'indication', 'status', 'signature_method', 'created_at', 'cancelled_at', 'cancelled_by_user_id', 'cancellation_reason', 'operating_room_id', 'scheduled_start', 'scheduled_end', 'scheduled_by_user_id', 'scheduled_at', 'urgent_reason', 'started_at', 'completed_at'])]
 class Surgery extends Model
 {
     use BelongsToTenant;
@@ -115,6 +117,16 @@ class Surgery extends Model
     }
 
     /**
+     * Step 5b.5: the signed description, addenda excluded.
+     *
+     * @return HasOne<SurgeryDescription, $this>
+     */
+    public function description(): HasOne
+    {
+        return $this->hasOne(SurgeryDescription::class)->whereNull('addendum_of_id');
+    }
+
+    /**
      * @return HasMany<SurgeryConsent, $this>
      */
     public function consents(): HasMany
@@ -143,6 +155,6 @@ class Surgery extends Model
      */
     protected function casts(): array
     {
-        return ['desired_date' => 'date', 'created_at' => 'datetime', 'cancelled_at' => 'datetime', 'scheduled_start' => 'datetime', 'scheduled_end' => 'datetime', 'scheduled_at' => 'datetime', 'started_at' => 'datetime'];
+        return ['desired_date' => 'date', 'created_at' => 'datetime', 'cancelled_at' => 'datetime', 'scheduled_start' => 'datetime', 'scheduled_end' => 'datetime', 'scheduled_at' => 'datetime', 'started_at' => 'datetime', 'completed_at' => 'datetime'];
     }
 }

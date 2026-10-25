@@ -18,8 +18,14 @@ type Surgery = {
     procedure: string;
     laterality: string;
     urgency: string;
-    status: 'requested' | 'scheduled' | 'in_progress' | 'cancelled';
+    status:
+        | 'requested'
+        | 'scheduled'
+        | 'in_progress'
+        | 'completed'
+        | 'cancelled';
     startedAt: string | null;
+    completedAt: string | null;
     desiredDate: string;
     author: string | null;
     room: string | null;
@@ -177,6 +183,7 @@ export default function SurgeryScheduleShow({
         requested: 'Aguardando agendamento',
         scheduled: `Agendada: ${surgery.room}, ${surgery.start} – ${surgery.end}`,
         in_progress: `Em andamento desde ${surgery.startedAt}: ${surgery.room}, ${surgery.start} – ${surgery.end}`,
+        completed: `Concluída em ${surgery.completedAt}: ${surgery.room}, início ${surgery.startedAt}`,
         cancelled: `Cancelada: ${surgery.cancellationReason}`,
     }[surgery.status];
 

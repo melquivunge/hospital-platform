@@ -40,7 +40,7 @@ class DeliverNotifications implements ShouldQueue
         'prescription_item.reviewed',
         'stock.daily_alert', 'stock.inventory_submitted', 'stock.discard',
         'exam.overdue_orders', 'exam_result.released', 'exam_result.critical_unacknowledged',
-        'surgery.overdue',
+        'surgery.overdue', 'surgery.completed', 'surgery.description_addendum',
     ];
 
     /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
@@ -167,6 +167,15 @@ class DeliverNotifications implements ShouldQueue
             ]));
 
             return [[$managers !== [] ? $managers : $this->usersWithRole($tenant, Role::NetworkAdmin), $title, "/surgery-overdue?unit={$unit}"]];
+        }
+        // Step 5b.5: who ordered the surgery hears of its completion and of an addendum, with nothing clinical in the text.
+        if ($event->action === 'surgery.completed' || $event->action === 'surgery.description_addendum') {
+            $title = $event->action === 'surgery.completed' ? 'Uma cirurgia que você pediu foi concluída' : 'A descrição de uma cirurgia que você pediu recebeu um adendo';
+
+            // Not of one's own signature (review 5b.5).
+            $author = (int) ($context['author_user_id'] ?? 0);
+
+            return [[$author === (int) ($context['signer_user_id'] ?? 0) ? [] : array_filter([$author]), $title, '/patients/'.((int) ($context['patient_id'] ?? 0)).'/record']];
         }
         // Step 5.4: the orderer hears of a released or rectified result, with no exam, patient or value in the text.
         if ($event->action === 'exam_result.released') {

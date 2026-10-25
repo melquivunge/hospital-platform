@@ -44,6 +44,7 @@ use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\SurgeryCatalogController;
 use App\Http\Controllers\SurgeryChecklistController;
+use App\Http\Controllers\SurgeryDescriptionController;
 use App\Http\Controllers\SurgeryOrderController;
 use App\Http\Controllers\SurgeryOverdueController;
 use App\Http\Controllers\SurgeryRecordController;
@@ -241,6 +242,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('surgeries/{surgery}/consent', [SurgeryChecklistController::class, 'storeConsent'])->middleware('throttle:30,1')->name('surgery-checklist.consent');
     Route::post('surgeries/{surgery}/consent-waiver', [SurgeryChecklistController::class, 'waiveConsent'])->middleware('throttle:30,1')->name('surgery-checklist.waiver');
     Route::post('surgeries/{surgery}/checklist/{step}', [SurgeryChecklistController::class, 'confirm'])->middleware('throttle:60,1')->whereIn('step', ['sign_in', 'time_out', 'sign_out'])->name('surgery-checklist.confirm');
+    // Step 5b.5: the surgical description and its addenda.
+    Route::post('surgeries/{surgery}/description', [SurgeryDescriptionController::class, 'store'])->middleware('throttle:30,1')->name('surgery-description.store');
+    Route::post('surgeries/{surgery}/description/addenda', [SurgeryDescriptionController::class, 'addendum'])->middleware('throttle:30,1')->name('surgery-description.addendum');
     Route::get('surgery-consents/{consent}/download', [SurgeryChecklistController::class, 'downloadConsent'])->middleware('throttle:60,1')->name('surgery-checklist.consent.download');
     // Step 5b.3a: the surgical agenda of the Surgical center role.
     Route::get('surgery-schedule', [SurgeryScheduleController::class, 'index'])->middleware('throttle:120,1')->name('surgery-schedule.index');

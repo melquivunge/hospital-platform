@@ -7,10 +7,12 @@ use App\Models\OperatingRoom;
 use App\Models\Patient;
 use App\Models\Surgery;
 use App\Models\SurgeryChecklistStep;
+use App\Models\SurgeryDescription;
 use App\Models\SurgeryTeamMember;
 use App\Models\Unit;
 use App\Models\User;
 use App\Policies\UnitPolicy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -27,10 +29,9 @@ class SurgeryRecordController extends Controller
     {
         $professional = ClinicalAccess::professional($request->user());
         abort_if($professional === null, 403);
-        $surgeries = Surgery::query()->whereIn('status', Surgery::LIVE)
-            ->whereHas('team', fn ($team) => $team->where('professional_id', $professional->id))
+        $surgeries = self::mineQuery($professional->id)
             ->with(['team' => fn ($team) => $team->where('professional_id', $professional->id)])
-            ->orderByRaw('scheduled_start IS NULL')->orderBy('scheduled_start')->orderBy('id')->limit(100)->get();
+            ->orderByRaw("status = 'completed'")->orderByRaw('scheduled_start IS NULL')->orderBy('scheduled_start')->orderBy('id')->limit(100)->get();
         $places = ExamQueueController::places($surgeries);
         $patients = Patient::query()->whereKey($surgeries->pluck('patient_id')->unique()->all())->get(['id', 'name', 'social_name'])->keyBy('id');
         $rooms = OperatingRoom::query()->whereKey($surgeries->pluck('operating_room_id')->filter()->unique()->all())->pluck('name', 'id');
@@ -47,23 +48,45 @@ class SurgeryRecordController extends Controller
                 'room' => $rooms->get((int) $surgery->operating_room_id),
                 'start' => $surgery->scheduled_start?->timezone($timezones->get($surgery->unit_id) ?? 'UTC')->format('d/m/Y H:i'),
                 'role' => $surgery->team->first()?->role,
+                'status' => $surgery->status,
             ])->values(),
             'roles' => SurgeryTeamMember::ROLES,
             'lateralities' => Surgery::LATERALITIES,
             'urgencies' => Surgery::URGENCIES,
+            'addendumDays' => SurgeryDescription::ADDENDUM_DAYS,
         ]);
+    }
+
+    /**
+     * The live surgeries where the professional is on the team, and, for ADDENDUM_DAYS, the completed ones where
+     * they are a surgeon (step 5b.5).
+     *
+     * @return Builder<Surgery>
+     */
+    public static function mineQuery(int $professionalId): Builder
+    {
+        return Surgery::query()->where(fn (Builder $mine) => $mine
+            ->where(fn (Builder $live) => $live->whereIn('status', Surgery::LIVE)->whereHas('team', fn ($team) => $team->where('professional_id', $professionalId)))
+            // Review 5b.5: only where the addendum is still allowed, so the link never leads to a 403.
+            ->orWhere(fn (Builder $done) => ClinicalAccess::qualifiedInSurgeryUnit($done->where('status', 'completed')->where('completed_at', '>=', now()->subDays(SurgeryDescription::ADDENDUM_DAYS))
+                ->whereHas('team', fn ($team) => $team->where('professional_id', $professionalId)->where('role', 'surgeon')), $professionalId)));
     }
 
     public function show(Request $request, Surgery $surgery): Response
     {
-        // Only while open, only for the unit's center or the active team (ADR-0009).
-        abort_unless(ClinicalAccess::openSurgeries($request->user())->whereKey($surgery->id)->exists(), 403);
+        // The record only while open, only for the unit's center or the active team (ADR-0009); after the
+        // completion, the surgeons of the team see the surgery and its description, without the record, to sign
+        // addenda (step 5b.5).
+        $open = ClinicalAccess::openSurgeries($request->user())->whereKey($surgery->id)->exists();
+        $canAddendum = SurgeryDescriptionController::canAddendum($request->user(), $surgery);
+        abort_unless($open || $canAddendum, 403);
         $patient = Patient::query()->findOrFail($surgery->patient_id);
         ClinicalAccess::recordRead($request->user(), $patient, $surgery);
         Inertia::encryptHistory();
         $timezone = Unit::query()->whereKey($surgery->unit_id)->value('timezone') ?? 'UTC';
         $ids = ClinicalAccess::recordIds($patient);
-        $surgery->load(['team.professional:id,name', 'room:id,name', 'checklist', 'consents']);
+        $surgery->load(['team.professional:id,name', 'room:id,name', 'checklist', 'consents', 'description.addenda']);
+        $canSign = SurgeryDescriptionController::canSign($request->user(), $surgery);
         $users = User::query()->whereKey([...$surgery->checklist->pluck('confirmed_by_user_id')->all(), ...$surgery->consents->pluck('created_by_user_id')->all()])->pluck('name', 'id');
         $consent = $surgery->consents->last();
         $author = User::query()->whereKey($surgery->author_user_id)->value('name');
@@ -74,7 +97,8 @@ class SurgeryRecordController extends Controller
                 'procedure' => $surgery->procedure_name,
                 'laterality' => $surgery->laterality,
                 'urgency' => $surgery->urgency,
-                'indication' => $surgery->indication,
+                // Review 5b.5: the restricted view keeps the surgery's own records, not the clinical indication.
+                'indication' => $open ? $surgery->indication : null,
                 'status' => $surgery->status,
                 'desiredDate' => $surgery->desired_date->format('d/m/Y'),
                 'author' => $author,
@@ -99,7 +123,12 @@ class SurgeryRecordController extends Controller
                     'by' => $users->get($step->confirmed_by_user_id),
                     'at' => $step->confirmed_at->timezone($timezone)->format('d/m/Y H:i'),
                 ]]),
-                'canConfirm' => SurgeryChecklistController::canConfirm($request->user(), $surgery),
+                'canConfirm' => $open && SurgeryChecklistController::canConfirm($request->user(), $surgery),
+                'completedAt' => $surgery->completed_at?->timezone($timezone)->format('d/m/Y H:i'),
+                // Step 5b.5: the signed description, and what the user may sign now.
+                'description' => $surgery->description === null ? null : SurgeryDescriptionController::present($surgery, $timezone),
+                'canDescribe' => $canSign && $surgery->status === 'in_progress' && $surgery->checklist->contains('step', 'sign_out'),
+                'canAddendum' => $canAddendum,
                 'canManage' => in_array($surgery->unit_id, SurgeryScheduleController::unitIds(UnitPolicy::currentMembership($request->user())), true),
             ],
             'roles' => SurgeryTeamMember::ROLES,
@@ -108,12 +137,15 @@ class SurgeryRecordController extends Controller
             'lateralities' => Surgery::LATERALITIES,
             'urgencies' => Surgery::URGENCIES,
             'patient' => VisitController::patientHeader($patient),
-            'allergies' => PatientAllergyController::listing($ids, $timezone),
-            'record' => VisitController::signedRecord($ids, $timezone),
-            'prescriptions' => ExamQueueController::readOnlyPrescriptions($request->user(), $surgery, $timezone),
+            'open' => $open,
+            'addendumDays' => SurgeryDescription::ADDENDUM_DAYS,
+            'allergies' => $open ? PatientAllergyController::listing($ids, $timezone) : [],
+            'record' => $open ? VisitController::signedRecord($ids, $timezone) : [],
+            'prescriptions' => $open ? ExamQueueController::readOnlyPrescriptions($request->user(), $surgery, $timezone) : null,
             // Read-only here: withdrawing belongs to who attends.
-            'documents' => array_map(fn (array $document) => [...$document, 'canWithdraw' => false], ClinicalDocumentController::listing($ids, $timezone, $request->user()->id)),
-            'examResults' => ExamResultController::listing($ids, $timezone, $request->user()),
+            'documents' => $open ? array_map(fn (array $document) => [...$document, 'canWithdraw' => false], ClinicalDocumentController::listing($ids, $timezone, $request->user()->id)) : [],
+            'examResults' => $open ? ExamResultController::listing($ids, $timezone, $request->user()) : [],
+            'surgeryDescriptions' => $open ? SurgeryDescriptionController::listing($ids, $timezone) : [],
         ]);
     }
 }

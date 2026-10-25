@@ -1,5 +1,6 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import SurgeryChecklistController from '@/actions/App/Http/Controllers/SurgeryChecklistController';
+import SurgeryDescriptionController from '@/actions/App/Http/Controllers/SurgeryDescriptionController';
 import SurgeryScheduleController from '@/actions/App/Http/Controllers/SurgeryScheduleController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
@@ -12,6 +13,11 @@ import type { PatientAllergy } from '@/components/patient-allergies';
 import { PatientAllergies } from '@/components/patient-allergies';
 import type { PrescriptionPanelData } from '@/components/prescription-panel';
 import { PrescriptionPanel } from '@/components/prescription-panel';
+import type { SurgeryDescriptionData } from '@/components/surgery-descriptions';
+import {
+    SurgeryDescriptionEntry,
+    SurgeryDescriptions,
+} from '@/components/surgery-descriptions';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,9 +29,11 @@ type Steps = Record<
 >;
 
 /** The consent term (step 5b.4): attached file, or the urgent waiver, before the first step. */
-function Consent({ surgery }: { surgery: Surgery }) {
+function Consent({ surgery, open }: { surgery: Surgery; open: boolean }) {
     const consent = surgery.consent;
-    const editable = surgery.canConfirm && surgery.status !== 'in_progress';
+    const editable =
+        surgery.canConfirm &&
+        (surgery.status === 'requested' || surgery.status === 'scheduled');
 
     return (
         <section className="grid gap-3 rounded-xl border bg-card p-5 sm:p-6">
@@ -33,6 +41,13 @@ function Consent({ surgery }: { surgery: Surgery }) {
             {consent === null ? (
                 <p className="text-sm text-muted-foreground">
                     Nenhum termo anexado.
+                </p>
+            ) : consent.kind === 'document' && !open ? (
+                <p className="text-sm">
+                    {consent.name}{' '}
+                    <span className="text-muted-foreground">
+                        · anexado por {consent.by} em {consent.at}
+                    </span>
                 </p>
             ) : consent.kind === 'document' ? (
                 <p className="text-sm">
@@ -128,6 +143,175 @@ function Consent({ surgery }: { surgery: Surgery }) {
                             >
                                 Registrar
                             </Button>
+                        </>
+                    )}
+                </Form>
+            )}
+        </section>
+    );
+}
+
+/** The password field that signs the description and the addendum. */
+function SignPassword({ id, error }: { id: string; error?: string }) {
+    return (
+        <div className="grid gap-2">
+            <Label htmlFor={id}>Sua senha (assinatura)</Label>
+            <Input
+                id={id}
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                aria-invalid={!!error}
+                aria-describedby={error ? `${id}-error` : undefined}
+                className="h-11"
+            />
+            <InputError id={`${id}-error`} message={error} />
+        </div>
+    );
+}
+
+const descriptionFields = [
+    ['findings', 'Achados', true, 5000],
+    ['technique', 'Técnica', true, 5000],
+    ['complications', 'Intercorrências', true, 5000],
+    ['specimens', 'Peças enviadas (opcional)', false, 1000],
+] as const;
+
+/**
+ * The surgical description (step 5b.5): signed with the password by a surgeon of the team after the three checklist
+ * steps; it completes the surgery. Addenda come after, the original stays.
+ */
+function Description({ surgery }: { surgery: Surgery }) {
+    const description = surgery.description;
+
+    if (description === null && !surgery.canDescribe) {
+        return (
+            <section className="grid gap-2 rounded-xl border bg-card p-5 sm:p-6">
+                <h2 className="font-semibold">Descrição cirúrgica</h2>
+                <p className="text-sm text-muted-foreground">
+                    {surgery.status === 'in_progress' &&
+                    surgery.checklist.sign_out
+                        ? 'Aguardando a descrição assinada por um cirurgião da equipe.'
+                        : 'A descrição é assinada por um cirurgião da equipe depois das três etapas do checklist.'}
+                </p>
+            </section>
+        );
+    }
+
+    return (
+        <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
+            <h2 className="font-semibold">Descrição cirúrgica</h2>
+            {description !== null ? (
+                <ul className="grid">
+                    <SurgeryDescriptionEntry description={description}>
+                        {surgery.canAddendum && (
+                            <Form
+                                {...SurgeryDescriptionController.addendum.form(
+                                    surgery.id,
+                                )}
+                                errorBag="addendum"
+                                options={{ preserveScroll: true }}
+                                resetOnSuccess
+                                resetOnError={['password']}
+                                className="grid gap-3 border-t pt-3"
+                            >
+                                {({ processing, errors }) => (
+                                    <>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="addendum-body">
+                                                Adendo
+                                            </Label>
+                                            <textarea
+                                                id="addendum-body"
+                                                name="body"
+                                                required
+                                                maxLength={5000}
+                                                rows={3}
+                                                aria-invalid={!!errors.body}
+                                                aria-describedby={
+                                                    errors.body
+                                                        ? 'addendum-body-error'
+                                                        : undefined
+                                                }
+                                                className="rounded-md border bg-background px-3 py-2 text-sm"
+                                            />
+                                            <InputError
+                                                id="addendum-body-error"
+                                                message={errors.body}
+                                            />
+                                        </div>
+                                        <SignPassword
+                                            id="addendum-password"
+                                            error={errors.password}
+                                        />
+                                        <div>
+                                            <Button
+                                                type="submit"
+                                                variant="outline"
+                                                disabled={processing}
+                                                className="min-h-11"
+                                            >
+                                                Assinar adendo
+                                            </Button>
+                                        </div>
+                                    </>
+                                )}
+                            </Form>
+                        )}
+                    </SurgeryDescriptionEntry>
+                </ul>
+            ) : (
+                <Form
+                    {...SurgeryDescriptionController.store.form(surgery.id)}
+                    errorBag="description"
+                    options={{ preserveScroll: true }}
+                    resetOnError={['password']}
+                    className="grid gap-3"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            {descriptionFields.map(
+                                ([name, label, required, max]) => (
+                                    <div key={name} className="grid gap-2">
+                                        <Label htmlFor={`description-${name}`}>
+                                            {label}
+                                        </Label>
+                                        <textarea
+                                            id={`description-${name}`}
+                                            name={name}
+                                            required={required}
+                                            maxLength={max}
+                                            rows={required ? 4 : 2}
+                                            aria-invalid={!!errors[name]}
+                                            aria-describedby={
+                                                errors[name]
+                                                    ? `description-${name}-error`
+                                                    : undefined
+                                            }
+                                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                                        />
+                                        <InputError
+                                            id={`description-${name}-error`}
+                                            message={errors[name]}
+                                        />
+                                    </div>
+                                ),
+                            )}
+                            <SignPassword
+                                id="description-password"
+                                error={errors.password}
+                            />
+                            <InputError message={errors.description} />
+                            <div>
+                                <Button
+                                    type="submit"
+                                    disabled={processing}
+                                    className="min-h-11"
+                                >
+                                    Assinar e concluir a cirurgia
+                                </Button>
+                            </div>
                         </>
                     )}
                 </Form>
@@ -277,9 +461,13 @@ type Surgery = {
     procedure: string;
     laterality: string;
     urgency: string;
-    indication: string;
-    status: 'requested' | 'scheduled' | 'in_progress';
+    indication: string | null;
+    status: 'requested' | 'scheduled' | 'in_progress' | 'completed';
     startedAt: string | null;
+    completedAt: string | null;
+    description: SurgeryDescriptionData | null;
+    canDescribe: boolean;
+    canAddendum: boolean;
     consent: {
         id: number;
         kind: 'document' | 'waiver';
@@ -315,12 +503,15 @@ export default function SurgeryRecord({
     answers,
     lateralities,
     urgencies,
+    addendumDays,
     patient,
+    open,
     allergies,
     record,
     prescriptions,
     documents,
     examResults,
+    surgeryDescriptions,
 }: {
     surgery: Surgery;
     roles: Record<string, string>;
@@ -328,12 +519,15 @@ export default function SurgeryRecord({
     answers: Record<string, string>;
     lateralities: Record<string, string>;
     urgencies: Record<string, string>;
+    addendumDays: number;
     patient: RecordPatient;
     allergies: PatientAllergy[];
+    open: boolean;
     record: RecordNote[];
-    prescriptions: PrescriptionPanelData;
+    prescriptions: PrescriptionPanelData | null;
     documents: ClinicalDocument[];
     examResults: ExamResultItem[];
+    surgeryDescriptions: SurgeryDescriptionData[];
 }) {
     return (
         <>
@@ -361,7 +555,18 @@ export default function SurgeryRecord({
                         )
                     }
                 />
-                <PatientAllergies allergies={allergies} />
+                {open ? (
+                    <PatientAllergies allergies={allergies} />
+                ) : (
+                    <p
+                        role="status"
+                        className="mb-6 rounded-xl border bg-card px-5 py-4 text-sm"
+                    >
+                        Cirurgia concluída em {surgery.completedAt}. O
+                        prontuário não está mais aberto; os cirurgiões da equipe
+                        assinam adendos à descrição por {addendumDays} dias.
+                    </p>
+                )}
 
                 <section className="mb-8 grid gap-2 rounded-xl border bg-card p-5 sm:p-6">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -378,17 +583,21 @@ export default function SurgeryRecord({
                     </div>
                     <p className="text-sm text-muted-foreground">
                         {surgery.place} ·{' '}
-                        {surgery.startedAt &&
-                            `em andamento desde ${surgery.startedAt} · `}
+                        {surgery.completedAt
+                            ? `concluída em ${surgery.completedAt} · `
+                            : surgery.startedAt &&
+                              `em andamento desde ${surgery.startedAt} · `}
                         {surgery.start
                             ? `${surgery.room}, ${surgery.start} – ${surgery.end}`
                             : `aguardando agendamento, desejada para ${surgery.desiredDate}`}{' '}
                         · pedida por {surgery.author}
                     </p>
-                    <p className="text-sm">
-                        <span className="font-medium">Indicação:</span>{' '}
-                        {surgery.indication}
-                    </p>
+                    {surgery.indication && (
+                        <p className="text-sm">
+                            <span className="font-medium">Indicação:</span>{' '}
+                            {surgery.indication}
+                        </p>
+                    )}
                     {surgery.urgentReason && (
                         <p className="text-sm">
                             <span className="font-medium">
@@ -411,31 +620,47 @@ export default function SurgeryRecord({
                 </section>
 
                 <div className="grid gap-8">
-                    <Consent surgery={surgery} />
+                    <Consent surgery={surgery} open={open} />
                     <Checklist
                         surgery={surgery}
                         steps={steps}
                         answers={answers}
                     />
-                    <PrescriptionPanel data={prescriptions} />
-                    <ExamResults results={examResults} />
-                    <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
-                        <h2 className="font-semibold">Evoluções assinadas</h2>
-                        {record.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                Nenhuma evolução assinada.
-                            </p>
-                        ) : (
-                            <ol className="grid gap-4">
-                                {record.map((note) => (
-                                    <RecordEntry key={note.id} note={note} />
-                                ))}
-                            </ol>
-                        )}
-                    </section>
-                    <ClinicalDocuments documents={documents} />
+                    <Description surgery={surgery} />
+                    {open && (
+                        <>
+                            {prescriptions && (
+                                <PrescriptionPanel data={prescriptions} />
+                            )}
+                            <ExamResults results={examResults} />
+                            <SurgeryDescriptions
+                                descriptions={surgeryDescriptions}
+                            />
+                            <RecordNotes record={record} />
+                            <ClinicalDocuments documents={documents} />
+                        </>
+                    )}
                 </div>
             </Page>
         </>
+    );
+}
+
+function RecordNotes({ record }: { record: RecordNote[] }) {
+    return (
+        <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
+            <h2 className="font-semibold">Evoluções assinadas</h2>
+            {record.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                    Nenhuma evolução assinada.
+                </p>
+            ) : (
+                <ol className="grid gap-4">
+                    {record.map((note) => (
+                        <RecordEntry key={note.id} note={note} />
+                    ))}
+                </ol>
+            )}
+        </section>
     );
 }

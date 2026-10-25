@@ -9,6 +9,8 @@ import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
 import type { ExamResultItem } from '@/components/exam-results';
 import { ExamResults } from '@/components/exam-results';
+import { SurgeryDescriptions } from '@/components/surgery-descriptions';
+import type { SurgeryDescriptionData } from '@/components/surgery-descriptions';
 import type { Draft } from '@/components/clinical-notes';
 import { NotesWorkspace, textareaClassName } from '@/components/clinical-notes';
 import type { RecordNote, RecordPatient } from '@/components/clinical-record';
@@ -49,6 +51,7 @@ export default function WardShow({
     drafts,
     documents,
     examResults,
+    surgeryDescriptions,
 }: {
     admission: {
         id: number;
@@ -76,6 +79,7 @@ export default function WardShow({
     drafts: Draft[];
     documents: ClinicalDocument[];
     examResults: ExamResultItem[];
+    surgeryDescriptions: SurgeryDescriptionData[];
 }) {
     return (
         <>
@@ -241,6 +245,7 @@ export default function WardShow({
                         )}
                     </section>
                     <ExamResults results={examResults} />
+                    <SurgeryDescriptions descriptions={surgeryDescriptions} />
                     <ClinicalDocuments
                         documents={documents}
                         attach={ClinicalDocumentController.storeForAdmission.form(

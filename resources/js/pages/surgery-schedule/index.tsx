@@ -42,6 +42,7 @@ export default function SurgerySchedule({
             start: string;
             end: string;
             surgeons: string[];
+            status: string;
         })[];
     }[];
 }) {
@@ -139,6 +140,12 @@ export default function SurgerySchedule({
                                                             {surgery.urgency ===
                                                                 'urgent' &&
                                                                 ' · Urgência'}
+                                                            {surgery.status ===
+                                                                'in_progress' &&
+                                                                ' · Em andamento'}
+                                                            {surgery.status ===
+                                                                'completed' &&
+                                                                ' · Concluída'}
                                                         </span>
                                                         <span>
                                                             {surgery.patient}
