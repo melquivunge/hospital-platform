@@ -163,8 +163,7 @@ final class ClinicalAccess
 
     /**
      * ADR-0009: the surgeries still open (requested, scheduled or in progress) whose record the user reads: as the Surgical center
-     * of the unit, or as a member of the active team qualified in the unit. A request still unscheduled counts only
-     * until REQUESTED_ACCESS_DAYS after its wished date.
+     * of the unit, or as a member of the active team qualified in the unit, within the time bounds below.
      *
      * @return Builder<Surgery>
      */
@@ -175,9 +174,7 @@ final class ClinicalAccess
         $professional = self::professional($user);
 
         return Surgery::query()
-            // A request nobody schedules does not open the record for ever (security review 5b.3b).
-            ->where(fn (Builder $open) => $open->whereIn('status', Surgery::ACTIVE)
-                ->orWhere(fn (Builder $requested) => $requested->where('status', 'requested')->where('desired_date', '>=', now()->subDays(Surgery::REQUESTED_ACCESS_DAYS)->toDateString())))
+            ->where(fn (Builder $open) => Surgery::recordWindow($open))
             ->where(function (Builder $query) use ($units, $professional) {
                 $query->whereIn('unit_id', $units);
                 if ($professional !== null) {
@@ -188,19 +185,23 @@ final class ClinicalAccess
     }
 
     /**
-     * Surgeries whose unit the professional holds a valid qualification in today.
+     * Surgeries whose unit the professional holds a valid qualification in today (the unit's day), in a function that
+     * attends patients (security review 5b.7).
      *
      * @param  Builder<Surgery>  $query
      * @return Builder<Surgery>
      */
     public static function qualifiedInSurgeryUnit(Builder $query, int $professionalId): Builder
     {
-        $today = now()->toDateString();
+        // The moment comes from the application (its clock), the day from the surgery's unit.
+        $today = "(?::timestamptz AT TIME ZONE coalesce((SELECT units.timezone FROM units WHERE units.id = surgeries.unit_id), 'UTC'))::date";
+        $now = now()->toIso8601String();
 
         return $query->whereExists(fn ($qualification) => $qualification->selectRaw('1')->from('qualifications')
+            ->join('job_functions', 'job_functions.id', '=', 'qualifications.job_function_id')->where('job_functions.attends_patients', true)
             ->where('qualifications.professional_id', $professionalId)->whereColumn('qualifications.unit_id', 'surgeries.unit_id')
-            ->where('qualifications.status', QualificationStatus::Approved->value)->whereDate('qualifications.valid_from', '<=', $today)
-            ->where(fn ($valid) => $valid->whereNull('qualifications.valid_until')->orWhereDate('qualifications.valid_until', '>=', $today)));
+            ->where('qualifications.status', QualificationStatus::Approved->value)->whereRaw("qualifications.valid_from <= {$today}", [$now])
+            ->where(fn ($valid) => $valid->whereNull('qualifications.valid_until')->orWhereRaw("qualifications.valid_until >= {$today}", [$now])));
     }
 
     /**

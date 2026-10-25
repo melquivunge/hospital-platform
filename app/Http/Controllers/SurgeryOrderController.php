@@ -127,6 +127,13 @@ class SurgeryOrderController extends Controller
             ($admission !== null ? Admission::query() : Visit::query())->lockForUpdate()->findOrFail($admission->id ?? $visit?->id);
             ExamOrderController::writer($request, $admission?->fresh(), $visit?->fresh());
             $procedure = SurgicalProcedure::query()->where('active', true)->whereKey((int) $data['surgical_procedure_id'])->firstOrFail();
+            // A double click or a second tab never orders the same surgery twice (security review 5b.7); under the
+            // encounter's lock, so two at once see each other.
+            $same = Surgery::query()->where('status', 'requested')->where($admission !== null ? 'admission_id' : 'visit_id', $admission->id ?? $visit?->id)
+                ->where('surgical_procedure_id', $procedure->id)->where('laterality', $data['laterality'])->whereDate('desired_date', $data['desired_date'])->exists();
+            if ($same) {
+                throw ValidationException::withMessages(['surgical_procedure_id' => 'Este pedido já foi feito neste atendimento e aguarda agendamento.'])->errorBag('order');
+            }
             $surgery = Surgery::query()->create([
                 'patient_id' => $patient->merged_into_id ?? $patient->id, 'unit_id' => $admission->unit_id ?? $visit?->unit_id,
                 'admission_id' => $admission?->id, 'visit_id' => $visit?->id, 'author_user_id' => $request->user()->id, 'professional_id' => $professional->id,

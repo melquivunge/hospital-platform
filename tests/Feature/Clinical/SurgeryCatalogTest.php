@@ -82,6 +82,11 @@ class SurgeryCatalogTest extends TestCase
 
         $this->put(route('materials.update', $material), ['name' => 'Compressa cirúrgica', 'code' => 'CMP/45', 'stock_unit' => 'unidade', 'active' => false])->assertSessionHasNoErrors();
         $this->assertEquals(['fields' => ['stock_unit', 'active'], 'active' => false], AuditEvent::where('action', 'material.updated')->sole()->context);
+        // Once a lot holds it, the unit of stock never changes (every balance is counted in it).
+        DB::table('stock_lots')->insert(['tenant_id' => $this->admin->tenant_id, 'unit_id' => $this->unit->id, 'material_id' => $material->id, 'lot_code' => 'C1', 'expires_on' => '2027-01-01', 'created_by_user_id' => $this->admin->user_id, 'created_at' => now()]);
+        $this->put(route('materials.update', $material), ['name' => 'Compressa cirúrgica', 'code' => 'CMP/45', 'stock_unit' => 'caixa', 'active' => false])
+            ->assertSessionHasErrorsIn("material-{$material->id}", ['stock_unit' => 'Este material já tem lotes no estoque; a unidade de estoque não muda.']);
+        $this->put(route('materials.update', $material), ['name' => 'Compressa cirúrgica', 'code' => 'CMP/45', 'stock_unit' => 'unidade', 'active' => true])->assertSessionHasNoErrors();
         $this->post(route('materials.store'), ['name' => 'Luva estéril', 'stock_unit' => 'par'])->assertSessionHasNoErrors();
         $this->get(route('surgery-catalog.index', ['m' => 'luva']))->assertInertia(fn (Assert $page) => $page
             ->where('materialTotal', 2)->has('materials', 1)->where('materials.0.stock_unit', 'par')->has('procedures', 0)->where('stockUnits', Material::STOCK_UNITS));

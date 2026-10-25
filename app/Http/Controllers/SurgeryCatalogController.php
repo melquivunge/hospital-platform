@@ -6,6 +6,7 @@ use App\Models\AuditEvent;
 use App\Models\Material;
 use App\Models\Medication;
 use App\Models\OperatingRoom;
+use App\Models\StockLot;
 use App\Models\SurgicalProcedure;
 use App\Models\Unit;
 use Closure;
@@ -118,6 +119,10 @@ class SurgeryCatalogController extends Controller
         Gate::authorize('manage', SurgicalProcedure::class);
         $bag = "material-{$material->id}";
         $material->fill(self::material($request, $bag, true));
+        // The unit of stock gives the meaning of every balance: never changed once a lot holds it (security review 5b.7).
+        if ($material->isDirty('stock_unit') && StockLot::query()->where('material_id', $material->id)->exists()) {
+            throw ValidationException::withMessages(['stock_unit' => 'Este material já tem lotes no estoque; a unidade de estoque não muda.'])->errorBag($bag);
+        }
         $changed = array_values(array_diff(array_keys($material->getDirty()), ['updated_at', 'name_key']));
         self::unique(function () use ($material, $changed) {
             $material->save();
