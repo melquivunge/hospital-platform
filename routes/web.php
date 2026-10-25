@@ -43,6 +43,7 @@ use App\Http\Controllers\StockIndicatorController;
 use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\SurgeryCatalogController;
+use App\Http\Controllers\SurgeryOrderController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\TriageLevelController;
 use App\Http\Controllers\UnitController;
@@ -221,6 +222,12 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('exam-queue/items/{item}/result', [ExamResultController::class, 'release'])->middleware('throttle:30,1')->name('exam-results.release');
     Route::post('exam-results/{result}/acknowledge', [ExamResultController::class, 'acknowledge'])->middleware('throttle:60,1')->name('exam-results.acknowledge');
     Route::get('exam-results/{result}/attachment', [ExamResultController::class, 'download'])->middleware('throttle:60,1')->name('exam-results.download');
+    // Step 5b.2: surgery orders of an open visit or an active admission.
+    Route::get('admissions/{admission}/surgeries', [SurgeryOrderController::class, 'forAdmission'])->middleware('throttle:120,1')->name('surgery-orders.admission');
+    Route::post('admissions/{admission}/surgeries', [SurgeryOrderController::class, 'storeForAdmission'])->middleware('throttle:30,1')->name('surgery-orders.admission.store');
+    Route::get('visits/{visit}/surgeries', [SurgeryOrderController::class, 'forVisit'])->middleware('throttle:120,1')->name('surgery-orders.visit');
+    Route::post('visits/{visit}/surgeries', [SurgeryOrderController::class, 'storeForVisit'])->middleware('throttle:30,1')->name('surgery-orders.visit.store');
+    Route::post('surgeries/{surgery}/cancel', [SurgeryOrderController::class, 'cancel'])->middleware('throttle:30,1')->name('surgery-orders.cancel');
     // Step 5.1a: the network exam catalog.
     Route::get('exams', [ExamController::class, 'index'])->name('exams.index');
     Route::post('exams', [ExamController::class, 'store'])->middleware('throttle:60,1')->name('exams.store');

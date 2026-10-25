@@ -48,7 +48,7 @@ class ExamOrderTest extends ClinicalTestCase
 
     public function test_the_attending_doctor_orders_exams_signed_with_the_password(): void
     {
-        $this->actingAs($this->doctorAccount->user)->get(route('visits.show', $this->visit))->assertInertia(fn (Assert $page) => $page->where('canOrderExams', true));
+        $this->actingAs($this->doctorAccount->user)->get(route('visits.show', $this->visit))->assertInertia(fn (Assert $page) => $page->where('canOrder', true));
         $this->get(route('exam-orders.visit', $this->visit))->assertInertia(fn (Assert $page) => $page
             ->component('exam-orders/index')->has('catalog', 2)->has('orders', 0));
         $this->assertTrue(DB::table('clinical_reads')->where('user_id', $this->doctorAccount->user_id)->where('visit_id', $this->visit->id)->exists());
@@ -104,7 +104,7 @@ class ExamOrderTest extends ClinicalTestCase
         $this->post(route('exam-orders.visit.store', $this->visit), $this->order())->assertForbidden();
         $this->post(route('exam-orders.cancel', $first), ['reason' => 'Será pedido na internação.'])->assertSessionHasNoErrors();
 
-        $this->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('canOrderExams', true));
+        $this->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('canOrder', true));
         $this->get(route('exam-orders.admission', $admission))->assertInertia(fn (Assert $page) => $page->where('encounter.type', 'admission')->has('orders', 0));
         $this->post(route('exam-orders.admission.store', $admission), $this->order(['exam_ids' => [$this->exams['blood']->id], 'priority' => 'routine']))->assertSessionHasNoErrors();
         $order = ExamOrder::withoutTenantScope()->latest('id')->firstOrFail();
@@ -117,7 +117,7 @@ class ExamOrderTest extends ClinicalTestCase
         $this->assertSame(1, AuditEvent::where('action', 'exam_order.sign_failed')->count());
 
         DB::table('job_functions')->update(['attends_patients' => false]);
-        $this->get(route('visits.show', $this->visit))->assertInertia(fn (Assert $page) => $page->where('canOrderExams', false));
+        $this->get(route('visits.show', $this->visit))->assertInertia(fn (Assert $page) => $page->where('canOrder', false));
         $this->get(route('exam-orders.visit', $this->visit))->assertForbidden();
         $this->post(route('exam-orders.visit.store', $this->visit), $this->order())->assertForbidden();
         $this->assertSame(0, ExamOrder::withoutTenantScope()->count());

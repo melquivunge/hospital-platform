@@ -28,6 +28,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - Cancelamento por quem pediu, com motivo, antes do início.
 - O pedido aparece no prontuário.
 - **Saída:** pedido só com acesso clínico válido; nada clínico na auditoria.
+- **Feito na 5b.2:** o prontuário do atendimento e da internação ganha o botão "Cirurgias", ao lado de "Exames", que abre os pedidos daquele encontro. Pedido com procedimento do catálogo (nome gravado como pedido), lateralidade sempre explícita ("não se aplica", esquerdo, direito ou bilateral), caráter, data desejada (de hoje até um ano, no fuso da unidade) e indicação, assinado com a senha. O pedido trava o atendimento ou a internação; corrida real contra a alta: o pedido nasce antes da alta ou recebe 403, nunca numa internação encerrada. O autor cancela com motivo, também depois do fechamento do encontro (corrida real de dois e três cancelamentos: um só). Auditoria só com unidade e caráter. Um pedido que fica aberto depois da alta continua "pedido" (como os exames); a 5b.3 decide o acesso por ele.
 
 ### 5b.3 Agenda, equipe e acesso (ADR-0009)
 - Agenda da unidade por sala e dia; o centro cirúrgico agenda sala, início e duração e escala a equipe (cirurgião obrigatório).

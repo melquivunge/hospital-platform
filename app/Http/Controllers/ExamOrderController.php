@@ -94,7 +94,7 @@ class ExamOrderController extends Controller
 
     private function page(Request $request, ?Admission $admission, ?Visit $visit): Response
     {
-        [$patient] = $this->writer($request, $admission, $visit);
+        [$patient] = self::writer($request, $admission, $visit);
         ClinicalAccess::recordRead($request->user(), $patient, $admission ?? $visit);
         $orders = ExamOrder::query()->with('items')->where($admission !== null ? 'admission_id' : 'visit_id', $admission->id ?? $visit?->id)->orderByDesc('id')->get();
         $names = User::query()->whereKey($orders->pluck('author_user_id')->unique()->all())->pluck('name', 'id');
@@ -122,7 +122,7 @@ class ExamOrderController extends Controller
 
     private function store(Request $request, ?Admission $admission, ?Visit $visit): RedirectResponse
     {
-        [$patient, $professional] = $this->writer($request, $admission, $visit);
+        [$patient, $professional] = self::writer($request, $admission, $visit);
         $data = $request->validateWithBag('order', [
             'exam_ids' => ['required', 'array', 'min:1', 'max:50'],
             'exam_ids.*' => ['integer', 'distinct', Rule::exists('exams', 'id')->where('active', true)->where('tenant_id', $patient->tenant_id)],
@@ -141,7 +141,7 @@ class ExamOrderController extends Controller
         DB::transaction(function () use ($request, $admission, $visit, $patient, $professional, $data) {
             // A close or a discharge racing the order waits on this lock, then the access is checked again (ADR-0008).
             ($admission !== null ? Admission::query() : Visit::query())->lockForUpdate()->findOrFail($admission->id ?? $visit?->id);
-            $this->writer($request, $admission?->fresh(), $visit?->fresh());
+            self::writer($request, $admission?->fresh(), $visit?->fresh());
             $order = ExamOrder::query()->create([
                 'patient_id' => $patient->merged_into_id ?? $patient->id, 'unit_id' => $admission->unit_id ?? $visit?->unit_id,
                 'admission_id' => $admission?->id, 'visit_id' => $visit?->id, 'author_user_id' => $request->user()->id, 'professional_id' => $professional->id,
@@ -159,10 +159,11 @@ class ExamOrderController extends Controller
 
     /**
      * The patient and the professional, if the user attends this open encounter and may order; otherwise 403.
+     * Also the rule of the surgery order (step 5b.2).
      *
      * @return array{Patient, Professional}
      */
-    private function writer(Request $request, ?Admission $admission, ?Visit $visit): array
+    public static function writer(Request $request, ?Admission $admission, ?Visit $visit): array
     {
         $patient = Patient::query()->findOrFail($admission->patient_id ?? $visit?->patient_id);
         $allowed = $admission !== null
