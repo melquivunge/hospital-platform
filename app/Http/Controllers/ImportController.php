@@ -10,12 +10,14 @@ use App\Imports\MedicationInteractionCsvImporter;
 use App\Imports\ProfessionalCsvImporter;
 use App\Imports\ShiftCsvImporter;
 use App\Imports\StockCsvImporter;
+use App\Imports\SurgicalProcedureCsvImporter;
 use App\Jobs\ApplyImportBatch;
 use App\Models\AuditEvent;
 use App\Models\Exam;
 use App\Models\ImportBatch;
 use App\Models\ImportItem;
 use App\Models\Medication;
+use App\Models\SurgicalProcedure;
 use App\Models\Unit;
 use App\Policies\ImportBatchPolicy;
 use App\Policies\UnitPolicy;
@@ -168,6 +170,7 @@ class ImportController extends Controller
         // Step 4b.1b: the catalog is the network's; confirming needs the right to keep it.
         abort_if(in_array($batch->type, self::CATALOG, true) && $request->user()->cannot('manage', Medication::class), 403);
         abort_if(in_array($batch->type, ['exams', 'exam_analytes'], true) && $request->user()->cannot('manage', Exam::class), 403);
+        abort_if($batch->type === 'surgical_procedures' && $request->user()->cannot('manage', SurgicalProcedure::class), 403);
         // Step 4c.1b (ADR-0007): only the pharmacist who previewed it moves the stock, not a network admin.
         abort_if($batch->type === 'stock' && $batch->created_by_user_id !== $request->user()->id, 403);
 
@@ -215,13 +218,15 @@ class ImportController extends Controller
             ...($request->user()->can('manage', Medication::class) ? ['medications' => MedicationCsvImporter::class, 'medication_interactions' => MedicationInteractionCsvImporter::class] : []),
             // Step 5.1b: the exam catalog and its analytes, by who keeps the network catalog.
             ...($request->user()->can('manage', Exam::class) ? ['exams' => ExamCsvImporter::class, 'exam_analytes' => ExamAnalyteCsvImporter::class] : []),
+            // Step 5b.1b: the surgical procedures, by who keeps the network catalog.
+            ...($request->user()->can('manage', SurgicalProcedure::class) ? ['surgical_procedures' => SurgicalProcedureCsvImporter::class] : []),
             // Step 4c.1b: the initial stock balance, by the unit's pharmacy.
             ...(PharmacyController::unitIds($membership) !== [] ? ['stock' => StockCsvImporter::class] : []),
         ];
     }
 
     /**
-     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>|class-string<StockCsvImporter>|class-string<ExamCsvImporter>|class-string<ExamAnalyteCsvImporter>
+     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>|class-string<StockCsvImporter>|class-string<ExamCsvImporter>|class-string<ExamAnalyteCsvImporter>|class-string<SurgicalProcedureCsvImporter>
      */
     public static function importer(string $type): string
     {
@@ -232,6 +237,7 @@ class ImportController extends Controller
             'medication_interactions' => MedicationInteractionCsvImporter::class,
             'exams' => ExamCsvImporter::class,
             'exam_analytes' => ExamAnalyteCsvImporter::class,
+            'surgical_procedures' => SurgicalProcedureCsvImporter::class,
             default => ProfessionalCsvImporter::class,
         };
     }
