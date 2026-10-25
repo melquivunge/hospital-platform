@@ -16,6 +16,7 @@ use App\Models\SurgeryChecklistStep;
 use App\Models\SurgeryDescription;
 use App\Models\SurgeryTeamMember;
 use App\Models\SurgicalProcedure;
+use App\Models\Unit;
 use App\Models\Visit;
 use App\Professionals\QualificationStatus;
 use App\Tenancy\CurrentTenant;
@@ -49,6 +50,8 @@ class SurgeryDescriptionTest extends ClinicalTestCase
 
     private Visit $visit;
 
+    private Membership $stranger;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -66,6 +69,9 @@ class SurgeryDescriptionTest extends ClinicalTestCase
         $this->surgeon = $this->qualified($this->surgeonAccount, 'Dr. Bruno');
         $this->assistant = $this->qualified($this->assistantAccount, 'Dra. Carla');
         app(CurrentTenant::class)->set(null);
+        // A professional of another client, created before the first request.
+        $this->stranger = Membership::factory()->withRole(Role::NetworkAdmin)->create();
+        $this->stranger->grant(Role::Professional, Unit::factory()->for($this->stranger->tenant)->create());
 
         $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
@@ -172,7 +178,8 @@ class SurgeryDescriptionTest extends ClinicalTestCase
         (new DeliverNotifications)->handle();
         $this->assertSame(['Uma cirurgia que você pediu foi concluída', 'A descrição de uma cirurgia que você pediu recebeu um adendo'], DB::table('user_notifications')->orderBy('id')->pluck('title')->all());
         $this->actingAs($this->doctorAccount->user)->get(route('visits.show', $this->visit))
-            ->assertInertia(fn (Assert $page) => $page->where('surgeryDescriptions.0.addenda.0.body', 'Dreno retirado no fim.'));
+            ->assertInertia(fn (Assert $page) => $page->where('surgeryDescriptions.0.addenda.0.body', 'Dreno retirado no fim.')
+                ->where('surgeryDescriptions.0.author', $this->surgeonAccount->user->name)->where('surgeryDescriptions.0.addenda.0.author', $this->surgeonAccount->user->name));
 
         // Past 30 days, the surgery leaves the surgeon too.
         $this->travel(SurgeryDescription::ADDENDUM_DAYS + 1)->days();
@@ -184,6 +191,9 @@ class SurgeryDescriptionTest extends ClinicalTestCase
     public function test_only_a_surgeon_still_on_the_team_and_qualified_signs_and_the_addenda_have_a_bound(): void
     {
         $surgery = $this->started();
+        // Another client does not even find the surgery.
+        $this->actingAs($this->stranger->user)->post(route('surgery-description.store', $surgery), self::DESCRIPTION)->assertNotFound();
+        $this->post(route('surgery-description.addendum', $surgery), ['body' => 'Fora.', 'password' => 'password'])->assertNotFound();
         // Before the completion there is no addendum.
         $this->actingAs($this->surgeonAccount->user)->post(route('surgery-description.addendum', $surgery), ['body' => 'Cedo.', 'password' => 'password'])->assertForbidden();
         // A surgeon taken off the team no longer signs; the one who stays does.
@@ -221,6 +231,8 @@ class SurgeryDescriptionTest extends ClinicalTestCase
         app(CurrentTenant::class)->set($this->patient->tenant);
         // Before the last checklist step, no description.
         $this->assertRefused([$row()]);
+        // Nor a completed surgery without one.
+        $this->assertRefused([fn () => DB::table('surgeries')->where('id', $surgery->id)->update(['status' => 'completed', 'completed_at' => now()])]);
 
         $answers = collect(SurgeryChecklistStep::STEPS['sign_out']['items'])->map(fn (array $item) => $item[1][0])->all();
         $this->post(route('surgery-checklist.confirm', ['surgery' => $surgery, 'step' => 'sign_out']), ['answers' => $answers])->assertSessionHasNoErrors();
@@ -244,6 +256,10 @@ class SurgeryDescriptionTest extends ClinicalTestCase
             fn () => DB::statement('TRUNCATE surgery_descriptions'),
             // An addendum has only its text.
             $row(['body' => 'Adendo.', 'addendum_of_id' => $original]),
+            // The completed surgery stays as it was.
+            fn () => DB::table('surgeries')->where('id', $surgery->id)->update(['status' => 'in_progress', 'completed_at' => null]),
+            fn () => DB::table('surgeries')->where('id', $surgery->id)->update(['indication' => 'Outra.']),
+            fn () => DB::table('surgeries')->where('id', $surgery->id)->delete(),
         ]);
         DB::transaction($addendum($original));
         $this->assertSame(2, DB::table('surgery_descriptions')->count());
