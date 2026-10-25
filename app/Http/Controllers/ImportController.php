@@ -6,6 +6,7 @@ use App\Imports\CsvReader;
 use App\Imports\ExamAnalyteCsvImporter;
 use App\Imports\ExamCsvImporter;
 use App\Imports\MaterialCsvImporter;
+use App\Imports\MaterialStockCsvImporter;
 use App\Imports\MedicationCsvImporter;
 use App\Imports\MedicationInteractionCsvImporter;
 use App\Imports\ProfessionalCsvImporter;
@@ -173,7 +174,7 @@ class ImportController extends Controller
         abort_if(in_array($batch->type, ['exams', 'exam_analytes'], true) && $request->user()->cannot('manage', Exam::class), 403);
         abort_if(in_array($batch->type, ['surgical_procedures', 'materials'], true) && $request->user()->cannot('manage', SurgicalProcedure::class), 403);
         // Step 4c.1b (ADR-0007): only the pharmacist who previewed it moves the stock, not a network admin.
-        abort_if($batch->type === 'stock' && $batch->created_by_user_id !== $request->user()->id, 403);
+        abort_if(in_array($batch->type, ['stock', 'material_stock'], true) && $batch->created_by_user_id !== $request->user()->id, 403);
 
         $updated = ImportBatch::query()->whereKey($batch->id)->whereIn('status', ['previewed', 'applying'])
             ->update(['status' => 'applying', 'confirmed_at' => DB::raw('COALESCE(confirmed_at, now())')]);
@@ -222,17 +223,18 @@ class ImportController extends Controller
             // Step 5b.1b: the surgical procedures, by who keeps the network catalog.
             ...($request->user()->can('manage', SurgicalProcedure::class) ? ['surgical_procedures' => SurgicalProcedureCsvImporter::class, 'materials' => MaterialCsvImporter::class] : []),
             // Step 4c.1b: the initial stock balance, by the unit's pharmacy.
-            ...(PharmacyController::unitIds($membership) !== [] ? ['stock' => StockCsvImporter::class] : []),
+            ...(PharmacyController::unitIds($membership) !== [] ? ['stock' => StockCsvImporter::class, 'material_stock' => MaterialStockCsvImporter::class] : []),
         ];
     }
 
     /**
-     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>|class-string<StockCsvImporter>|class-string<ExamCsvImporter>|class-string<ExamAnalyteCsvImporter>|class-string<SurgicalProcedureCsvImporter>|class-string<MaterialCsvImporter>
+     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>|class-string<StockCsvImporter>|class-string<ExamCsvImporter>|class-string<ExamAnalyteCsvImporter>|class-string<SurgicalProcedureCsvImporter>|class-string<MaterialCsvImporter>|class-string<MaterialStockCsvImporter>
      */
     public static function importer(string $type): string
     {
         return match ($type) {
             'stock' => StockCsvImporter::class,
+            'material_stock' => MaterialStockCsvImporter::class,
             'shifts' => ShiftCsvImporter::class,
             'medications' => MedicationCsvImporter::class,
             'medication_interactions' => MedicationInteractionCsvImporter::class,

@@ -5,6 +5,7 @@ namespace Tests\Feature\Imports;
 use App\Jobs\ApplyImportBatch;
 use App\Models\ImportBatch;
 use App\Models\ImportItem;
+use App\Models\Material;
 use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\Unit;
@@ -21,7 +22,8 @@ use Tests\TestCase;
 
 /**
  * Step 4c.1b (ADR-0007): the initial stock balance imported by CSV by the unit's pharmacy, with the V1 flow
- * (preview without writes, confirmation, resumable apply) and no balance entered twice on reprocessing.
+ * (preview without writes, confirmation, resumable apply) and no balance entered twice on reprocessing; step 5b.6b2:
+ * the initial balance of materials, the same way.
  */
 class StockImportTest extends TestCase
 {
@@ -115,9 +117,10 @@ class StockImportTest extends TestCase
 
     public function test_only_the_pharmacist_who_previewed_it_moves_the_stock(): void
     {
-        // The pharmacy imports only the stock; the network admin does not import stock at all.
-        $this->actingAs($this->pharmacist->user)->get(route('imports.create'))->assertInertia(fn (Assert $page) => $page->has('columns', 1)->has('columns.stock'));
-        $this->actingAs($this->admin->user)->get(route('imports.create'))->assertInertia(fn (Assert $page) => $page->missing('columns.stock'));
+        // The pharmacy imports only the stock (medications and, since step 5b.6b2, materials); the network admin does
+        // not import stock at all.
+        $this->actingAs($this->pharmacist->user)->get(route('imports.create'))->assertInertia(fn (Assert $page) => $page->has('columns', 2)->has('columns.stock')->has('columns.material_stock'));
+        $this->actingAs($this->admin->user)->get(route('imports.create'))->assertInertia(fn (Assert $page) => $page->missing('columns.stock')->missing('columns.material_stock'));
         $this->upload(['1;Hospital Norte;Dipirona;Comprimido;500 mg;L1;2027-01-01;10;'], $this->admin)->assertSessionHasErrors('type');
 
         $this->upload(['1;Hospital Norte;Dipirona;Comprimido;500 mg;L1;2027-01-01;10;'])->assertRedirect();
@@ -197,5 +200,55 @@ class StockImportTest extends TestCase
         // The pharmacist's template is the stock one.
         $this->assertStringContainsString(self::HEADER, $this->actingAs($this->pharmacist->user)->get(route('imports.template'))->streamedContent());
         $this->assertSame(0, DB::table('import_batches')->count());
+    }
+
+    public function test_the_initial_balance_of_materials_is_imported_the_same_way(): void
+    {
+        app(CurrentTenant::class)->set($this->admin->tenant);
+        $gauze = Material::query()->create(['name' => 'Compressa cirúrgica', 'stock_unit' => 'pacote']);
+        $glove = Material::query()->create(['name' => 'Luva estéril', 'stock_unit' => 'par']);
+        Material::query()->create(['name' => 'Luva antiga', 'stock_unit' => 'par', 'active' => false]);
+        app(CurrentTenant::class)->set(null);
+        $upload = fn (array $lines, ?Membership $as = null) => $this->actingAs(($as ?? $this->pharmacist)->user)->post(route('imports.store'), [
+            'type' => 'material_stock', 'source_system' => 'Sistema antigo',
+            'file' => UploadedFile::fake()->createWithContent('materiais.csv', implode("\r\n", ['source_id;unit;material_name;lot_code;expires_on;quantity;manufacturer', ...$lines])),
+        ]);
+        // Only the pharmacy imports a balance: not even the network admin is offered the type.
+        $upload(['1;Hospital Norte;Compressa cirúrgica;C1;2027-05-31;10;'], $this->admin)->assertSessionHasErrors('type');
+        $upload([
+            '1;Hospital Norte;compressa  CIRÚRGICA;c 1;31/05/2027;10;Cremer',
+            '2;Hospital Norte;Luva estéril;L1;2027-05-31;50;',
+            '3;Hospital Norte;Luva antiga;L2;2027-05-31;5;',
+            '4;Hospital Norte;Dreno;D1;2027-05-31;5;',
+            '5;Hospital Sul;Luva estéril;L1;2027-05-31;5;',
+            '6;Hospital Norte;=Luva;L3;2027-05-31;5;',
+            '7;Hospital Norte;Luva estéril;L4;2026-11-01;5;',
+        ])->assertRedirect();
+        $batch = ImportBatch::withoutTenantScope()->sole();
+        $this->assertSame([2 => 'ready', 3 => 'ready', 4 => 'rejected', 5 => 'rejected', 6 => 'rejected', 7 => 'rejected', 8 => 'rejected'], $this->statuses($batch));
+        $this->assertSame(['Material fora do catálogo ativo (nome como no catálogo).'], ImportItem::withoutTenantScope()->where('line', 4)->sole()->messages);
+        $this->assertSame(0, DB::table('stock_lots')->count());
+
+        // Only the pharmacist who previewed it confirms, even another pharmacist of the same unit.
+        $colleague = Membership::factory()->for($this->admin->tenant)->create();
+        $colleague->grant(Role::Pharmacy, $this->unit);
+        $this->actingAs($colleague->user)->post(route('imports.confirm', $batch))->assertForbidden();
+        $this->actingAs($this->pharmacist->user);
+        // Deactivated between preview and apply: a conflict, nothing entered.
+        DB::table('materials')->where('id', $glove->id)->update(['active' => false]);
+        $this->confirm($batch);
+        $this->assertSame(['conflict', ['O material foi desativado depois da prévia.']], [ImportItem::withoutTenantScope()->where('line', 3)->sole()->status, ImportItem::withoutTenantScope()->where('line', 3)->sole()->messages]);
+        $lot = DB::table('stock_lots')->sole();
+        $this->assertSame([null, $gauze->id, 'C1', '2027-05-31', 'Cremer', 10], [$lot->medication_id, $lot->material_id, $lot->lot_code, $lot->expires_on, $lot->manufacturer, $lot->balance]);
+
+        // Reprocessing the same file: identical, nothing entered twice; the same source id in the medication import is
+        // another record (the entities are kept apart).
+        DB::table('import_items')->delete();
+        DB::table('import_batches')->delete();
+        $upload(['1;Hospital Norte;Compressa cirúrgica;C1;2027-05-31;10;', '1b;Hospital Norte;Compressa cirúrgica;C1;2027-05-31;3;Outra'])->assertRedirect();
+        $this->assertSame([2 => 'identical', 3 => 'conflict'], $this->statuses(ImportBatch::withoutTenantScope()->sole()));
+        $this->assertSame(['Este lote já está cadastrado com o fabricante Cremer.'], ImportItem::withoutTenantScope()->where('line', 3)->sole()->messages);
+        $this->upload(['1;Hospital Norte;Dipirona;Comprimido;500 mg;D1;2027-05-31;7;'])->assertRedirect();
+        $this->assertSame([2 => 'ready'], $this->statuses(ImportBatch::withoutTenantScope()->where('type', 'stock')->sole()));
     }
 }

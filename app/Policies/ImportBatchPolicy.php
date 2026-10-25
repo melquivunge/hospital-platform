@@ -34,13 +34,14 @@ class ImportBatchPolicy
     }
 
     /**
-     * The units a batch of this type may write to: the stock goes only to the units of the Pharmacy role.
+     * The units a batch of this type may write to: the stock (medications or materials) goes only to the units of the
+     * Pharmacy role.
      *
      * @return list<int>|null null means every unit of the tenant
      */
     public static function unitIdsFor(Membership $membership, string $type): ?array
     {
-        return $type === 'stock' ? PharmacyController::unitIds($membership) : self::importableUnitIds($membership);
+        return in_array($type, ['stock', 'material_stock'], true) ? PharmacyController::unitIds($membership) : self::importableUnitIds($membership);
     }
 
     /**
