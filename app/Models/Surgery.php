@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -62,7 +63,31 @@ class Surgery extends Model
     /** Security review 5b.3b: an unscheduled request gives the record until this many days after its wished date. */
     public const REQUESTED_ACCESS_DAYS = 7;
 
+    /** ADR-0009: a surgery still scheduled this many hours after its planned end reaches the manager (step 5b.3c). */
+    public const OVERDUE_HOURS = 24;
+
     public $timestamps = false;
+
+    /**
+     * Step 5b.3c: still scheduled more than OVERDUE_HOURS after the planned end (a long surgery still running is not
+     * stalled); it keeps the team's access to the record.
+     *
+     * @return Builder<Surgery>
+     */
+    public static function overdue(): Builder
+    {
+        return self::query()->where('status', 'scheduled')->where('scheduled_end', '<=', now()->subHours(self::OVERDUE_HOURS));
+    }
+
+    /**
+     * Step 5b.3c: requested and never scheduled, past the days it opens the record after the wished date.
+     *
+     * @return Builder<Surgery>
+     */
+    public static function stalled(): Builder
+    {
+        return self::query()->where('status', 'requested')->where('desired_date', '<', now()->subDays(self::REQUESTED_ACCESS_DAYS)->toDateString());
+    }
 
     /**
      * The active team, removed members excluded.

@@ -81,6 +81,7 @@ import { index as requests } from '@/routes/requests';
 import { index as schedules } from '@/routes/schedules';
 import { index as professionals } from '@/routes/professionals';
 import { index as shifts, mine as myShifts } from '@/routes/shifts';
+import { index as surgeryOverdue } from '@/routes/surgery-overdue';
 import { mine as mySurgeries } from '@/routes/surgery-record';
 import { index as surgerySchedule } from '@/routes/surgery-schedule';
 import { index as units } from '@/routes/units';
@@ -263,6 +264,16 @@ export function AppSidebar() {
                   {
                       title: 'Exames atrasados',
                       href: examOverdue(),
+                      icon: AlarmClock,
+                  },
+              ]
+            : []),
+        // Same viewers as the overdue exams: unit managers and network admins (SurgeryOverdueController).
+        ...(canViewExamOverdue
+            ? [
+                  {
+                      title: 'Cirurgias paradas',
+                      href: surgeryOverdue(),
                       icon: AlarmClock,
                   },
               ]
