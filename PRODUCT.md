@@ -704,7 +704,7 @@ Consequência para o recorte (questão 1): **entrega 5 = exames** (laboratório 
 
 ## Contrato da entrega 6 — faturamento
 
-Método: ECC Product Capability. Data: 25/10/2026. Estado: **proposta, aguardando as decisões do usuário nas questões abaixo.** Nada é implementado antes do contrato, da ADR e do plano aprovados. Origem: roteiro ("Faturamento: atendimentos e consumo → contas e recebimentos", mapa de capacidades) e as entregas 3 a 5b, que registram modalidade e convênio no atendimento e deixaram custo, preço e faturamento para esta entrega.
+Método: ECC Product Capability. Data: 25/10/2026. Estado: **aprovado; todas as propostas aceitas pelo usuário em 25/10/2026. [ADR-0010](docs/adr/0010-billing-access-and-item-origin.md) e plano `plans/web-v8-faturamento.md` propostos, aguardando aceite.** Nada é implementado antes da ADR e do plano aprovados. Origem: roteiro ("Faturamento: atendimentos e consumo → contas e recebimentos", mapa de capacidades) e as entregas 3 a 5b, que registram modalidade e convênio no atendimento e deixaram custo, preço e faturamento para esta entrega.
 
 ### Capacidade
 
@@ -749,7 +749,11 @@ Cada atendimento (consulta, urgência, internação) gera uma conta do paciente 
 - Contabilidade, contas a pagar, repasse médico e custo hospitalar.
 - Portal do paciente (entrega 7).
 
-### Questões (abertas, para o usuário decidir)
+### Decisões do usuário (25/10/2026)
+
+Todas as propostas aceitas: entrega 6 = particular e convênio, SUS na entrega 6b; itens automáticos com revisão; papel Faturamento sem acesso ao conteúdo clínico; tabela por convênio com preço congelado; diária automática por tipo de leito; autorização registrada à mão; lote em XML TISS; glosa por item com recurso; particular com recibo, sem nota fiscal; fechamento no fim do atendimento com conta complementar.
+
+### Questões (respondidas)
 
 1. **Recorte.** Proposta: **entrega 6 = particular e convênio** (conta, tabelas, autorização, lote TISS, retorno e glosa) e **entrega 6b = SUS** (BPA do ambulatório, AIH da internação, APAC), que tem regras e arquivos próprios do DATASUS. Alternativa: tudo numa entrega só (muito maior, mais demorada até o primeiro uso).
 2. **Origem dos itens.** Proposta: itens gerados automaticamente dos registros assistenciais (consulta, diária por dia de internação, exame liberado, cirurgia concluída, material consumido, medicamento dispensado menos devolvido); o faturamento revisa e pode incluir item manual com motivo. Alternativa: conta montada à mão pelo faturamento.
@@ -764,6 +768,7 @@ Cada atendimento (consulta, urgência, internação) gera uma conta do paciente 
 
 ### Encaminhamento ECC
 
-- **Esclarecimento de produto:** aguardando as respostas às questões acima.
-- **Arquitetura:** depois das respostas, uma ADR para o acesso do faturamento e para a origem dos itens (unicidade por registro assistencial), e o plano em etapas `plans/web-v8-faturamento.md`.
+- **Esclarecimento de produto:** concluído (decisões acima).
+- **Arquitetura:** [ADR-0010](docs/adr/0010-billing-access-and-item-origin.md) (acesso do faturamento e origem dos itens), proposta.
+- **Plano em etapas:** `plans/web-v8-faturamento.md` (6.1 a 6.7), proposto.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
