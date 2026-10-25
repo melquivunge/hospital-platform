@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -126,20 +127,24 @@ class SurgeryDescriptionController extends Controller
         $surgeries = Surgery::query()->whereIn('patient_id', $patientIds)->where('status', 'completed')->whereHas('description')
             ->with(['description.addenda'])->orderByDesc('completed_at')->get();
 
-        return array_values($surgeries->map(fn (Surgery $surgery) => self::present($surgery, $timezone))->all());
+        // One names query for the whole record.
+        $descriptions = $surgeries->pluck('description');
+        $names = User::query()->whereKey($descriptions->pluck('author_user_id')->merge($descriptions->pluck('addenda')->flatten()->pluck('author_user_id'))->unique()->values()->all())->pluck('name', 'id');
+
+        return array_values($surgeries->map(fn (Surgery $surgery) => self::present($surgery, $timezone, $names))->all());
     }
 
     /**
-     * One description with its addenda, the surgery's description loaded.
+     * One description with its addenda, the surgery's description loaded; the authors' names given or looked up.
      *
+     * @param  Collection<int, string>|null  $names
      * @return array<string, mixed>
      */
-    public static function present(Surgery $surgery, string $timezone): array
+    public static function present(Surgery $surgery, string $timezone, ?Collection $names = null): array
     {
-        // ponytail: one names query per description; batch it if a record grows many surgeries.
         /** @var SurgeryDescription $description */
         $description = $surgery->description;
-        $names = User::query()->whereKey([$description->author_user_id, ...$description->addenda->pluck('author_user_id')->all()])->pluck('name', 'id');
+        $names ??= User::query()->whereKey([$description->author_user_id, ...$description->addenda->pluck('author_user_id')->all()])->pluck('name', 'id');
         $signed = fn (SurgeryDescription $row) => ['author' => $names->get($row->author_user_id), 'signedAt' => $row->signed_at->timezone($timezone)->format('d/m/Y H:i')];
 
         return [
