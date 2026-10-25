@@ -18,7 +18,18 @@ type Item = {
     active: boolean;
 };
 
-type Table = { id: number; name: string; active: boolean };
+type Table = { id: number; name: string; active: boolean; private: boolean };
+
+type InsurerRow = {
+    id: number;
+    name: string;
+    contract: {
+        id: number;
+        tableId: number;
+        adjustmentBp: number;
+        authorizationItemIds: number[];
+    } | null;
+};
 
 type Price = {
     id: number;
@@ -48,6 +59,7 @@ export default function BillingPricesIndex({
     tableId,
     prices,
     references,
+    insurers,
 }: {
     kinds: Record<string, string>;
     bedTypes: Record<string, string>;
@@ -56,6 +68,7 @@ export default function BillingPricesIndex({
     tableId: number | null;
     prices: Price[];
     references: Record<string, Option[]>;
+    insurers: InsurerRow[];
 }) {
     const table = tables.find((option) => option.id === tableId);
     const itemName = (id: number) =>
@@ -133,6 +146,7 @@ export default function BillingPricesIndex({
                                         }
                                     >
                                         {option.name}
+                                        {option.private && ' · particular'}
                                         {!option.active && ' (inativa)'}
                                     </Link>
                                 </Button>
@@ -147,6 +161,32 @@ export default function BillingPricesIndex({
                             Preços da tabela {table.name}
                         </h2>
                         <TableEdit table={table} />
+                        {table.private ? (
+                            <p className="text-sm text-muted-foreground">
+                                Esta é a tabela particular: vale para os
+                                atendimentos sem convênio.
+                            </p>
+                        ) : (
+                            table.active && (
+                                <Form
+                                    {...BillingPriceController.setPrivate.form(
+                                        table.id,
+                                    )}
+                                    options={{ preserveScroll: true }}
+                                >
+                                    {({ processing }) => (
+                                        <Button
+                                            type="submit"
+                                            variant="outline"
+                                            disabled={processing}
+                                            className="min-h-11"
+                                        >
+                                            Tornar a tabela particular
+                                        </Button>
+                                    )}
+                                </Form>
+                            )
+                        )}
                         {items.length === 0 ? (
                             <p className="text-sm text-muted-foreground">
                                 Cadastre os itens cobráveis abaixo antes dos
@@ -185,6 +225,28 @@ export default function BillingPricesIndex({
                         )}
                     </section>
                 )}
+
+                <section className="mb-10 grid gap-3">
+                    <h2 className="text-lg font-semibold">Convênios</h2>
+                    {insurers.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                            Nenhum convênio ativo. Cadastre em Convênios.
+                        </p>
+                    ) : (
+                        <ul className="grid gap-3">
+                            {insurers.map((insurer) => (
+                                <InsurerContractItem
+                                    key={insurer.id}
+                                    insurer={insurer}
+                                    tables={tables.filter(
+                                        (option) => option.active,
+                                    )}
+                                    items={items.filter((item) => item.active)}
+                                />
+                            ))}
+                        </ul>
+                    )}
+                </section>
 
                 <section className="grid gap-3">
                     <h2 className="text-lg font-semibold">Itens cobráveis</h2>
@@ -541,5 +603,145 @@ function ActiveToggle({ active, label }: { active: boolean; label: string }) {
             />
             {label}
         </label>
+    );
+}
+
+function InsurerContractItem({
+    insurer,
+    tables,
+    items,
+}: {
+    insurer: InsurerRow;
+    tables: Table[];
+    items: Item[];
+}) {
+    const contract = insurer.contract;
+    const adjustment = contract
+        ? (contract.adjustmentBp / 100).toLocaleString('pt-BR', {
+              maximumFractionDigits: 2,
+              useGrouping: false,
+          })
+        : '';
+
+    return (
+        <li className="grid gap-3 rounded-xl border bg-card px-5 py-4">
+            <h3 className="font-medium">{insurer.name}</h3>
+            {tables.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                    Crie uma tabela de preço antes do contrato.
+                </p>
+            ) : (
+                <Form
+                    {...BillingPriceController.saveContract.form(insurer.id)}
+                    errorBag={`contract-${insurer.id}`}
+                    options={{ preserveScroll: true }}
+                    className="grid gap-3 sm:grid-cols-[2fr_1fr_auto] sm:items-end"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor={`contract-${insurer.id}-table`}>
+                                    Tabela de preço
+                                </Label>
+                                <select
+                                    id={`contract-${insurer.id}-table`}
+                                    name="price_table_id"
+                                    required
+                                    defaultValue={contract?.tableId ?? ''}
+                                    className={selectClassName}
+                                >
+                                    <option value="" disabled>
+                                        Selecione
+                                    </option>
+                                    {tables.map((option) => (
+                                        <option
+                                            key={option.id}
+                                            value={option.id}
+                                        >
+                                            {option.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError message={errors.price_table_id} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label
+                                    htmlFor={`contract-${insurer.id}-adjustment`}
+                                >
+                                    Ajuste (%)
+                                </Label>
+                                <Input
+                                    id={`contract-${insurer.id}-adjustment`}
+                                    name="adjustment"
+                                    inputMode="decimal"
+                                    placeholder="0"
+                                    defaultValue={adjustment}
+                                    className="h-11"
+                                />
+                                <InputError message={errors.adjustment} />
+                            </div>
+                            <Button
+                                type="submit"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Salvar contrato
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            )}
+            {contract && items.length > 0 && (
+                <details>
+                    <summary
+                        aria-label={`Itens que exigem autorização de ${insurer.name}`}
+                        className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary"
+                    >
+                        Itens que exigem autorização (
+                        {contract.authorizationItemIds.length})
+                    </summary>
+                    <Form
+                        {...BillingPriceController.saveAuthorizations.form(
+                            contract.id,
+                        )}
+                        errorBag={`authorizations-${contract.id}`}
+                        options={{ preserveScroll: true }}
+                        className="grid gap-1 pb-2"
+                    >
+                        {({ processing }) => (
+                            <>
+                                {items.map((item) => (
+                                    <label
+                                        key={item.id}
+                                        className="flex min-h-11 items-center gap-3 text-sm"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            name="billing_item_ids[]"
+                                            value={item.id}
+                                            defaultChecked={contract.authorizationItemIds.includes(
+                                                item.id,
+                                            )}
+                                            className="size-5 shrink-0"
+                                        />
+                                        {item.name}
+                                    </label>
+                                ))}
+                                <div className="pt-2">
+                                    <Button
+                                        type="submit"
+                                        variant="outline"
+                                        disabled={processing}
+                                        className="min-h-11"
+                                    >
+                                        Salvar itens
+                                    </Button>
+                                </div>
+                            </>
+                        )}
+                    </Form>
+                </details>
+            )}
+        </li>
     );
 }

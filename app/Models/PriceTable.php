@@ -14,8 +14,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $tenant_id
  * @property string $name
  * @property bool $active
+ * @property bool $private the network's private table (one at most, step 6.1b)
  */
-#[Fillable(['name', 'active'])]
+#[Fillable(['name', 'active', 'private'])]
 class PriceTable extends Model
 {
     use BelongsToTenant;
@@ -37,6 +38,6 @@ class PriceTable extends Model
      */
     protected function casts(): array
     {
-        return ['active' => 'boolean'];
+        return ['active' => 'boolean', 'private' => 'boolean'];
     }
 }
