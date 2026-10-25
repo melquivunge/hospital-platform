@@ -50,8 +50,8 @@ class BillingPriceTest extends TestCase
 
     public function test_prices_from_reais_in_cents(): void
     {
-        $this->assertSame([123456, 123450, 123400, 5, 99999999999999, null, null, null, null, null], array_map(fn (string $text) => PriceEntry::cents($text),
-            ['1.234,56', '1234,5', '1234', '0,05', '999.999.999.999,99', '12.34', '1,234', 'R$ 10', '99999999999999999999', '1.234.567.890.123']));
+        $this->assertSame([123456, 123450, 123400, 5, 100000000000, null, null, null, null, null, null], array_map(fn (string $text) => PriceEntry::cents($text),
+            ['1.234,56', '1234,5', '1234', '0,05', '1.000.000.000,00', '1.000.000.000,01', '12.34', '1,234', 'R$ 10', '99999999999999999999', '1.234.567.890.123']));
     }
 
     public function test_the_admin_keeps_items_tables_and_prices_with_periods_that_never_overlap(): void
@@ -222,9 +222,11 @@ class BillingPriceTest extends TestCase
             'CBHPM;99999;;1,00;2026-01-01',
             'CBHPM;10101012;;12.34;2026-01-01',
             'CBHPM;10101012;;150,00;2026-01-01',
+            'CBHPM;=10101012;;1,00;2026-01-01',
+            'CBHPM;10101012;;1.000.000.000,01;2026-02-01',
         ]))])->assertRedirect();
         $batch = ImportBatch::withoutTenantScope()->sole();
-        $this->assertSame([2 => 'ready', 3 => 'identical', 4 => 'conflict', 5 => 'rejected', 6 => 'rejected', 7 => 'rejected', 8 => 'rejected'], DB::table('import_items')->where('import_batch_id', $batch->id)->orderBy('line')->pluck('status', 'line')->all());
+        $this->assertSame([2 => 'ready', 3 => 'identical', 4 => 'conflict', 5 => 'rejected', 6 => 'rejected', 7 => 'rejected', 8 => 'rejected', 9 => 'rejected', 10 => 'rejected'], DB::table('import_items')->where('import_batch_id', $batch->id)->orderBy('line')->pluck('status', 'line')->all());
         Bus::fake();
         $this->post(route('imports.confirm', $batch))->assertSessionHasNoErrors();
         Bus::assertDispatched(ApplyImportBatch::class, fn (ApplyImportBatch $job) => $job->handle(app(CurrentTenant::class)) === null);

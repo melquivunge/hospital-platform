@@ -98,7 +98,7 @@ final class PriceCsvImporter
         $data['name'] = "{$data['item_name']} · {$data['price_table']} · {$data['valid_from']}";
         $validator = Validator::make($data, [
             'price_table' => ['required', 'string', 'max:100', 'not_regex:/^[=+\-@\t\r]/'],
-            'item_code' => ['nullable', 'string', 'max:20'],
+            'item_code' => ['nullable', 'string', 'max:20', 'not_regex:/^[=+\-@\t\r]/'],
             'item_name' => ['required_without:item_code', 'nullable', 'string', 'max:255', 'not_regex:/^[=+\-@\t\r]/'],
             'price' => ['required', 'string', 'max:20'],
             'valid_from' => ['required', 'date_format:Y-m-d', 'after_or_equal:2000-01-01', 'before_or_equal:'.now()->addYears(5)->toDateString()],

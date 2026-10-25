@@ -168,7 +168,7 @@ class BillingPriceController extends Controller
             throw ValidationException::withMessages(['billing_item_id' => 'Esta tabela está inativa. Reative-a antes de registrar preços.'])->errorBag('price');
         }
         $cents = PriceEntry::cents($data['price']);
-        if ($cents === null || $cents > 100000000000) {
+        if ($cents === null) {
             throw ValidationException::withMessages(['price' => 'Escreva o preço em reais, como 1.234,56.'])->errorBag('price');
         }
         self::enterPrice($table, (int) $data['billing_item_id'], $cents, $data['valid_from'], $request->user());
