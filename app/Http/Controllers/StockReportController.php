@@ -23,7 +23,7 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 /**
  * The stock movements of a unit by period and medication or material (step 4c.4b, ADR-0007; materials since step
  * 5b.6b), controlled medications first, to support the manual bookkeeping; a CSV of the same rows. For the unit's pharmacy and managers. No patient
- * data: a dispensing shows as its type only, never the id that leads to the patient.
+ * data: a dispensing or a surgery shows as its type only, never the id that leads to the patient.
  */
 class StockReportController extends Controller
 {
@@ -32,7 +32,7 @@ class StockReportController extends Controller
     // ponytail: built in memory; stream with lazyById if units need larger periods.
     private const CSV_MAX_ROWS = 20000;
 
-    public const TYPES = ['entry' => 'Entrada', 'dispensing' => 'Dispensação', 'return' => 'Devolução', 'discard' => 'Descarte', 'adjustment' => 'Ajuste de inventário'];
+    public const TYPES = ['entry' => 'Entrada', 'dispensing' => 'Dispensação', 'return' => 'Devolução', 'discard' => 'Descarte', 'adjustment' => 'Ajuste de inventário', 'surgery' => 'Consumo em cirurgia', 'surgery_return' => 'Estorno de cirurgia'];
 
     private const DISCARD_REASONS = ['expired' => 'Vencido', 'damage' => 'Avaria', 'loss' => 'Perda', 'other' => 'Outro'];
 

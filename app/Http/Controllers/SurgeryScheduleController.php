@@ -137,6 +137,9 @@ class SurgeryScheduleController extends Controller
             'lateralities' => Surgery::LATERALITIES,
             'urgencies' => Surgery::URGENCIES,
             'now' => CarbonImmutable::now($timezone)->format('Y-m-d\TH:i'),
+            // Step 5b.6c: the materials it used.
+            'canUseMaterials' => $canUseMaterials = SurgeryMaterialController::canUse($request->user(), $surgery),
+            'materials' => SurgeryMaterialController::present($surgery, $timezone, $canUseMaterials),
         ]);
     }
 

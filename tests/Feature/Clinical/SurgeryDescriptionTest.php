@@ -2,15 +2,19 @@
 
 namespace Tests\Feature\Clinical;
 
+use App\Http\Controllers\StockController;
 use App\Jobs\DeliverNotifications;
 use App\Models\AuditEvent;
 use App\Models\EmergencyEpisode;
 use App\Models\JobFunction;
+use App\Models\Material;
+use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\OperatingRoom;
 use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Sector;
+use App\Models\StockLot;
 use App\Models\Surgery;
 use App\Models\SurgeryChecklistStep;
 use App\Models\SurgeryDescription;
@@ -30,7 +34,8 @@ use Inertia\Testing\AssertableInertia as Assert;
 /**
  * The surgical description (step 5b.5, ADR-0009): a surgeon of the team signs it with the password after the three
  * checklist steps, which completes the surgery and tells who ordered it; the record closes for the center and the
- * team, the surgeons sign addenda for 30 days, and nothing signed changes.
+ * team, the surgeons sign addenda for 30 days, and nothing signed changes. Step 5b.6c: the surgical center records the
+ * materials the surgery used and gives back what it did not.
  */
 class SurgeryDescriptionTest extends ClinicalTestCase
 {
@@ -279,6 +284,81 @@ class SurgeryDescriptionTest extends ClinicalTestCase
                 // the row policy.
                 $this->assertSame(str_contains($e->getMessage(), 'TRUNCATE') ? '42501' : '23514', $e->getCode(), $e->getMessage());
             }
+        }
+    }
+
+    public function test_the_surgical_center_records_the_materials_used_and_gives_back_what_was_not(): void
+    {
+        app(CurrentTenant::class)->set($this->patient->tenant);
+        $gauze = Material::query()->create(['name' => 'Compressa cirúrgica', 'stock_unit' => 'pacote']);
+        $enter = fn (int $unitId, $item, string $code, string $expiresOn) => DB::transaction(fn () => StockController::enter($unitId, $item, $code, $expiresOn, null, 20, $this->center->user))->stock_lot_id;
+        $g1 = $enter($this->unit->id, $gauze, 'G1', '2027-06-30');
+        $old = $enter($this->unit->id, $gauze, 'OLD', '2026-01-31');
+        $soon = $enter($this->unit->id, $gauze, 'SOON', '2026-11-15');
+        $elsewhere = $enter($this->other->id, $gauze, 'G1', '2027-06-30');
+        $drug = $this->stockLot($this->unit->id, Medication::query()->create(['active_ingredient' => 'Cefazolina', 'form' => 'Frasco-ampola', 'strength' => '1 g', 'dose_unit' => 'g', 'routes' => ['iv']]), 20, 'C1', '2027-06-30')->id;
+        app(CurrentTenant::class)->set(null);
+        $surgery = $this->started();
+        $use = fn (int $lot, int $quantity) => $this->post(route('surgery-materials.store', $surgery), ['stock_lot_id' => $lot, 'quantity' => $quantity]);
+
+        // Only the surgical center of the unit: not the surgeon, not the center of another unit, not another client.
+        $elsewhereCenter = Membership::factory()->for($this->patient->tenant)->create();
+        $elsewhereCenter->grant(Role::SurgicalCenter, $this->other);
+        $this->actingAs($elsewhereCenter->user)->post(route('surgery-materials.store', $surgery), ['stock_lot_id' => $g1, 'quantity' => 1])->assertForbidden();
+        $this->actingAs($this->stranger->user)->post(route('surgery-materials.store', $surgery), ['stock_lot_id' => $g1, 'quantity' => 1])->assertNotFound();
+        $this->actingAs($this->surgeonAccount->user)->post(route('surgery-materials.store', $surgery), ['stock_lot_id' => $g1, 'quantity' => 1])->assertForbidden();
+        $this->actingAs($this->center->user)->get(route('surgery-schedule.show', $surgery))->assertInertia(fn (Assert $page) => $page->where('canUseMaterials', true)
+            ->where('materials.used', [])->where('materials.lots', fn ($lots) => collect($lots)->pluck('id')->all() === [$soon, $g1]));
+        $use($g1, 5)->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Consumo registrado.');
+        $use($g1, 16)->assertSessionHasErrorsIn('material', ['quantity' => 'O lote tem 15 em saldo.']);
+        foreach ([$old => 'Lote vencido não é consumido.', $elsewhere => 'Escolha um lote de material desta unidade.', $drug => 'Escolha um lote de material desta unidade.'] as $lot => $message) {
+            $use($lot, 1)->assertSessionHasErrorsIn('material', ['stock_lot_id' => $message]);
+        }
+        $this->assertSame(15, StockLot::withoutTenantScope()->find($g1)->balance);
+        $this->assertEquals(['unit_id' => $this->unit->id, 'surgery_id' => $surgery->id, 'material_id' => $gauze->id, 'stock_lot_id' => $g1, 'quantity' => 5], AuditEvent::where('action', 'stock.surgery_consumption')->sole()->context);
+
+        // A correction is a return, up to what the surgery took from the lot.
+        $back = fn (int $lot, int $quantity) => $this->post(route('surgery-materials.return', [$surgery, $lot]), ['quantity' => $quantity]);
+        $back($g1, 2)->assertSessionHasNoErrors();
+        $back($g1, 4)->assertSessionHasErrorsIn("materialReturn{$g1}", ['quantity' => 'O máximo a estornar deste lote é 3.']);
+        $back($elsewhere, 1)->assertSessionHasErrorsIn("materialReturn{$elsewhere}", ['quantity' => 'Não há consumo deste lote a estornar nesta cirurgia.']);
+        $this->assertSame(17, StockLot::withoutTenantScope()->find($g1)->balance);
+        $this->get(route('surgery-schedule.show', $surgery))->assertInertia(fn (Assert $page) => $page
+            ->where('materials.used.0.taken', 5)->where('materials.used.0.returned', 2)->where('materials.used.0.code', 'G1')->where('materials.used.0.name', 'Compressa cirúrgica'));
+
+        // What comes back to a lot that expired in the meantime is discarded at once.
+        $use($soon, 2)->assertSessionHasNoErrors();
+        $this->travel(5)->days();
+        $back($soon, 2)->assertSessionHasNoErrors();
+        $this->assertSame([18, [['surgery', -2], ['surgery_return', 2], ['discard', -2]]], [StockLot::withoutTenantScope()->find($soon)->balance,
+            DB::table('stock_movements')->where('stock_lot_id', $soon)->where('type', '<>', 'entry')->orderBy('id')->get()->map(fn ($row) => [$row->type, (int) $row->quantity])->all()]);
+        $this->assertEquals(['unit_id' => $this->unit->id, 'surgery_id' => $surgery->id, 'material_id' => $gauze->id, 'stock_lot_id' => $soon, 'quantity' => 2, 'discarded' => 2],
+            AuditEvent::where('action', 'stock.surgery_return')->latest('id')->firstOrFail()->context);
+        $this->assertSame('expired', DB::table('stock_movements')->where('stock_lot_id', $soon)->where('type', 'discard')->value('reason'));
+
+        // The database keeps it too: no surgery movement from a medication lot, no return beyond what was taken.
+        app(CurrentTenant::class)->set($this->patient->tenant);
+        foreach ([[$drug, 'surgery', -1], [$g1, 'surgery_return', 4]] as [$lot, $type, $quantity]) {
+            try {
+                DB::transaction(fn () => DB::table('stock_movements')->insert(['tenant_id' => $surgery->tenant_id, 'stock_lot_id' => $lot, 'type' => $type, 'quantity' => $quantity, 'surgery_id' => $surgery->id, 'user_id' => $this->center->user->id, 'created_at' => now()]));
+                $this->fail('The database accepted a surgery movement it must refuse.');
+            } catch (QueryException $e) {
+                $this->assertSame('P0001', $e->getCode(), $e->getMessage());
+            }
+        }
+        app(CurrentTenant::class)->set(null);
+
+        // After the completion, for the addendum's days, then no more.
+        $this->actingAs($this->surgeonAccount->user)->post(route('surgery-description.store', $surgery), self::DESCRIPTION)->assertSessionHasNoErrors();
+        $this->actingAs($this->center->user);
+        $use($g1, 1)->assertSessionHasNoErrors();
+        $this->travel(SurgeryDescription::ADDENDUM_DAYS + 1)->days();
+        $use($g1, 1)->assertForbidden();
+        $back($g1, 1)->assertForbidden();
+        $this->get(route('surgery-schedule.show', $surgery))->assertInertia(fn (Assert $page) => $page->where('canUseMaterials', false)->where('materials.lots', [])
+            ->where('materials.used', fn ($used) => collect($used)->firstWhere('code', 'G1')['taken'] === 6));
+        foreach (DB::table('stock_lots')->get() as $lot) {
+            $this->assertSame((int) DB::table('stock_movements')->where('stock_lot_id', $lot->id)->sum('quantity'), $lot->balance);
         }
     }
 }

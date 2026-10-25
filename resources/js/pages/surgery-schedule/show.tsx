@@ -1,4 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
+import SurgeryMaterialController from '@/actions/App/Http/Controllers/SurgeryMaterialController';
 import SurgeryRecordController from '@/actions/App/Http/Controllers/SurgeryRecordController';
 import SurgeryScheduleController from '@/actions/App/Http/Controllers/SurgeryScheduleController';
 import InputError from '@/components/input-error';
@@ -10,6 +11,19 @@ import { Label } from '@/components/ui/label';
 import { index } from '@/routes/surgery-schedule';
 
 type Option = { id: number; name: string };
+
+type MaterialLot = {
+    id: number;
+    name: string;
+    stockUnit: string;
+    code: string;
+    expiresOn: string;
+};
+
+type Materials = {
+    used: (MaterialLot & { taken: number; returned: number })[];
+    lots: (MaterialLot & { balance: number })[];
+};
 
 type Surgery = {
     id: number;
@@ -166,6 +180,8 @@ export default function SurgeryScheduleShow({
     lateralities,
     urgencies,
     now,
+    canUseMaterials,
+    materials,
 }: {
     surgery: Surgery;
     rooms: Option[];
@@ -174,6 +190,8 @@ export default function SurgeryScheduleShow({
     lateralities: Record<string, string>;
     urgencies: Record<string, string>;
     now: string;
+    canUseMaterials: boolean;
+    materials: Materials;
 }) {
     const people = professionals.map(
         (professional) =>
@@ -502,6 +520,14 @@ export default function SurgeryScheduleShow({
                     </section>
                 )}
 
+                {(canUseMaterials || materials.used.length > 0) && (
+                    <SurgeryMaterials
+                        surgeryId={surgery.id}
+                        canUse={canUseMaterials}
+                        materials={materials}
+                    />
+                )}
+
                 {surgery.reschedules.length > 0 && (
                     <section className="grid gap-3">
                         <h2 className="text-lg font-semibold">
@@ -527,5 +553,180 @@ export default function SurgeryScheduleShow({
                 )}
             </Page>
         </>
+    );
+}
+
+/**
+ * The materials the surgery used (step 5b.6c): consumption from the unit's valid material lots, and the return of
+ * what was not used, lot by lot. A correction is a return, never a change.
+ */
+function SurgeryMaterials({
+    surgeryId,
+    canUse,
+    materials,
+}: {
+    surgeryId: number;
+    canUse: boolean;
+    materials: Materials;
+}) {
+    return (
+        <section className="mb-8 grid gap-3">
+            <h2 className="text-lg font-semibold">Materiais</h2>
+            {materials.used.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                    Nenhum material registrado nesta cirurgia.
+                </p>
+            ) : (
+                <ul className="divide-y rounded-xl border bg-card">
+                    {materials.used.map((lot) => (
+                        <li
+                            key={lot.id}
+                            className="grid gap-2 px-5 py-3 text-sm"
+                        >
+                            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                <span>
+                                    <span className="font-medium">
+                                        {lot.name}
+                                    </span>{' '}
+                                    · lote {lot.code} · validade {lot.expiresOn}
+                                </span>
+                                <span className="tabular-nums">
+                                    {lot.taken - lot.returned} {lot.stockUnit}
+                                    {lot.returned > 0 &&
+                                        ` (${lot.taken} consumidos, ${lot.returned} estornados)`}
+                                </span>
+                            </div>
+                            {canUse && lot.taken > lot.returned && (
+                                <details>
+                                    <summary
+                                        aria-label={`Estornar ${lot.name}, lote ${lot.code}`}
+                                        className="inline-flex min-h-11 cursor-pointer items-center font-medium text-primary"
+                                    >
+                                        Estornar
+                                    </summary>
+                                    <Form
+                                        {...SurgeryMaterialController.giveBack.form(
+                                            { surgery: surgeryId, lot: lot.id },
+                                        )}
+                                        errorBag={`materialReturn${lot.id}`}
+                                        options={{ preserveScroll: true }}
+                                        resetOnSuccess
+                                        className="flex flex-wrap items-end gap-3 pb-2"
+                                    >
+                                        {({ processing, errors }) => (
+                                            <>
+                                                <div className="grid gap-2">
+                                                    <Label
+                                                        htmlFor={`material-return-${lot.id}`}
+                                                    >
+                                                        Quantidade (até{' '}
+                                                        {lot.taken -
+                                                            lot.returned}
+                                                        )
+                                                    </Label>
+                                                    <Input
+                                                        id={`material-return-${lot.id}`}
+                                                        name="quantity"
+                                                        type="number"
+                                                        inputMode="numeric"
+                                                        min={1}
+                                                        max={
+                                                            lot.taken -
+                                                            lot.returned
+                                                        }
+                                                        required
+                                                        className="h-11 w-32"
+                                                    />
+                                                    <InputError
+                                                        message={
+                                                            errors.quantity
+                                                        }
+                                                    />
+                                                </div>
+                                                <Button
+                                                    type="submit"
+                                                    variant="outline"
+                                                    disabled={processing}
+                                                    className="min-h-11"
+                                                >
+                                                    Registrar estorno
+                                                </Button>
+                                            </>
+                                        )}
+                                    </Form>
+                                </details>
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {canUse &&
+                (materials.lots.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        Nenhum lote de material válido com saldo nesta unidade.
+                        A farmácia registra as entradas.
+                    </p>
+                ) : (
+                    <Form
+                        {...SurgeryMaterialController.store.form(surgeryId)}
+                        errorBag="material"
+                        options={{ preserveScroll: true }}
+                        resetOnSuccess
+                        className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-[1fr_auto_auto] sm:items-end"
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="material-lot">
+                                        Material e lote
+                                    </Label>
+                                    <select
+                                        id="material-lot"
+                                        name="stock_lot_id"
+                                        required
+                                        defaultValue=""
+                                        className={selectClassName}
+                                    >
+                                        <option value="" disabled>
+                                            Selecione
+                                        </option>
+                                        {materials.lots.map((lot) => (
+                                            <option key={lot.id} value={lot.id}>
+                                                {lot.name} · lote {lot.code} ·
+                                                validade {lot.expiresOn} · saldo{' '}
+                                                {lot.balance} {lot.stockUnit}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <InputError message={errors.stock_lot_id} />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="material-quantity">
+                                        Quantidade
+                                    </Label>
+                                    <Input
+                                        id="material-quantity"
+                                        name="quantity"
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={1}
+                                        max={100000}
+                                        required
+                                        className="h-11 w-32"
+                                    />
+                                    <InputError message={errors.quantity} />
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={processing}
+                                    className="min-h-11"
+                                >
+                                    Registrar consumo
+                                </Button>
+                            </>
+                        )}
+                    </Form>
+                ))}
+        </section>
     );
 }

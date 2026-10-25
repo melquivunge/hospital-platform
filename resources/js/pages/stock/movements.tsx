@@ -25,6 +25,8 @@ type Summary = {
     return: number;
     discard: number;
     adjustment: number;
+    surgery: number;
+    surgery_return: number;
 };
 
 type Movement = {
@@ -111,7 +113,7 @@ export default function StockMovements({
                 <PageHeader
                     eyebrow={unit?.name}
                     title="Movimentos de estoque"
-                    description="Entradas, dispensações, devoluções, descartes e ajustes no período, no horário da unidade. Apoio à escrituração; sem dado de paciente."
+                    description="Entradas, dispensações, devoluções, descartes, ajustes e consumo em cirurgia no período, no horário da unidade. Apoio à escrituração; sem dado de paciente."
                     actions={
                         <Button asChild variant="outline" className="min-h-11">
                             <a href={csv({ query }).url} download>
@@ -228,7 +230,7 @@ export default function StockMovements({
                                         {row.name}
                                         {row.controlled && <Controlled />}
                                     </h3>
-                                    <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-5">
+                                    <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4 lg:grid-cols-7">
                                         {(
                                             [
                                                 ['Entradas', row.entry],
@@ -236,6 +238,14 @@ export default function StockMovements({
                                                 ['Devolvido', row.return],
                                                 ['Descartado', row.discard],
                                                 ['Ajustes', row.adjustment],
+                                                [
+                                                    'Consumo em cirurgia',
+                                                    row.surgery,
+                                                ],
+                                                [
+                                                    'Estorno de cirurgia',
+                                                    row.surgery_return,
+                                                ],
                                             ] as const
                                         ).map(([label, value]) => (
                                             <div key={label}>
