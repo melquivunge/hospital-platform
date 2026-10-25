@@ -275,6 +275,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('price-tables', [BillingPriceController::class, 'storeTable'])->middleware('throttle:60,1')->name('price-tables.store');
     Route::put('price-tables/{table}', [BillingPriceController::class, 'updateTable'])->middleware('throttle:60,1')->name('price-tables.update');
     Route::post('price-tables/{table}/prices', [BillingPriceController::class, 'storePrice'])->middleware('throttle:60,1')->name('price-tables.prices.store');
+    // Step 6.1b: the insurers' contracts and the private table.
+    Route::put('insurers/{insurer}/contract', [BillingPriceController::class, 'saveContract'])->middleware('throttle:60,1')->name('insurer-contracts.save');
+    Route::put('insurer-contracts/{contract}/authorizations', [BillingPriceController::class, 'saveAuthorizations'])->middleware('throttle:60,1')->name('insurer-contracts.authorizations');
+    Route::post('price-tables/{table}/private', [BillingPriceController::class, 'setPrivate'])->middleware('throttle:60,1')->name('price-tables.private');
     // Step 5b.6a: the network materials, on the same screen.
     Route::post('materials', [SurgeryCatalogController::class, 'storeMaterial'])->middleware('throttle:60,1')->name('materials.store');
     Route::put('materials/{material}', [SurgeryCatalogController::class, 'updateMaterial'])->middleware('throttle:60,1')->name('materials.update');

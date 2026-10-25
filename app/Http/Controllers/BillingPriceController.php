@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\AuditEvent;
 use App\Models\BillingItem;
 use App\Models\Exam;
+use App\Models\Insurer;
+use App\Models\InsurerContract;
 use App\Models\Material;
 use App\Models\Medication;
 use App\Models\PriceEntry;
@@ -36,7 +38,9 @@ class BillingPriceController extends Controller
     public function index(Request $request): Response
     {
         Gate::authorize('manage', Medication::class);
-        $tables = PriceTable::query()->orderByDesc('active')->orderBy('name')->get(['id', 'name', 'active']);
+        $tables = PriceTable::query()->orderByDesc('active')->orderBy('name')->get(['id', 'name', 'active', 'private']);
+        $contracts = InsurerContract::query()->get()->keyBy('insurer_id');
+        $authorizations = DB::table('insurer_contract_authorizations')->whereIn('insurer_contract_id', $contracts->pluck('id'))->get(['insurer_contract_id', 'billing_item_id'])->groupBy('insurer_contract_id');
         $table = $tables->firstWhere('id', $request->integer('table')) ?? $tables->first();
 
         return Inertia::render('billing-prices/index', [
@@ -48,6 +52,15 @@ class BillingPriceController extends Controller
             'prices' => $table === null ? [] : PriceEntry::query()->where('price_table_id', $table->id)->orderBy('billing_item_id')->orderByDesc('valid_from')->get()
                 ->map(fn (PriceEntry $entry) => ['id' => $entry->id, 'itemId' => $entry->billing_item_id, 'cents' => $entry->price_cents,
                     'from' => $entry->valid_from->format('d/m/Y'), 'until' => $entry->valid_until?->format('d/m/Y')])->values(),
+            // Step 6.1b: each active insurer with its contract.
+            'insurers' => Insurer::query()->where('active', true)->orderBy('name')->get(['id', 'name'])->map(fn (Insurer $insurer) => [
+                'id' => $insurer->id,
+                'name' => $insurer->name,
+                'contract' => ($contract = $contracts->get($insurer->id)) === null ? null : [
+                    'id' => $contract->id, 'tableId' => $contract->price_table_id, 'adjustmentBp' => $contract->adjustment_bp,
+                    'authorizationItemIds' => ($authorizations->get($contract->id) ?? collect())->pluck('billing_item_id')->map(fn ($id) => (int) $id)->values(),
+                ],
+            ])->values(),
             // What an item may be tied to, by kind (active catalog entries).
             'references' => [
                 'exam' => Exam::query()->where('active', true)->orderBy('name')->get(['id', 'name'])->map->only('id', 'name')->values(),
@@ -124,6 +137,9 @@ class BillingPriceController extends Controller
         Gate::authorize('manage', Medication::class);
         $bag = "table-{$table->id}";
         $data = $request->validateWithBag($bag, ['name' => ['required', 'string', 'max:100', 'not_regex:/^[=+\-@\t\r]/'], 'active' => ['required', 'boolean']], [], ['name' => 'nome']);
+        if ($table->private && ! $data['active']) {
+            throw ValidationException::withMessages(['active' => 'A tabela particular não é desativada. Defina outra tabela particular antes.'])->errorBag($bag);
+        }
         $table->fill(['name' => Medication::clean($data['name']), 'active' => $data['active']]);
         $changed = array_values(array_diff(array_keys($table->getDirty()), ['updated_at']));
         self::unique(fn () => $table->save(), $bag, 'name', 'Já existe uma tabela com este nome.');
@@ -174,6 +190,90 @@ class BillingPriceController extends Controller
             throw $exception->getCode() === '23P01' ? ValidationException::withMessages(['valid_from' => 'Este período se sobrepõe a outro preço do item.'])->errorBag('price') : $exception;
         }
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Preço registrado.']);
+
+        return back();
+    }
+
+    /**
+     * The contract of an insurer of the network (step 6.1b): its table and adjustment; created on the first save.
+     */
+    public function saveContract(Request $request, Insurer $insurer): RedirectResponse
+    {
+        Gate::authorize('manage', Medication::class);
+        $bag = "contract-{$insurer->id}";
+        $data = $request->validateWithBag($bag, [
+            'price_table_id' => ['required', 'integer', Rule::exists('price_tables', 'id')->where('tenant_id', $insurer->tenant_id)->where('active', true)],
+            'adjustment' => ['nullable', 'string', 'max:10'],
+        ], [], ['price_table_id' => 'tabela', 'adjustment' => 'ajuste']);
+        $points = ($data['adjustment'] ?? '') === '' ? 0 : InsurerContract::basisPoints($data['adjustment']);
+        if ($points === null || $points < -10000 || $points > 100000) {
+            throw ValidationException::withMessages(['adjustment' => 'Escreva o ajuste em porcentagem, de -100 a 1000, como 12,5.'])->errorBag($bag);
+        }
+        // The first save of two at once: one creates the contract, the other updates it (unique insurer_id, savepoint).
+        try {
+            DB::transaction(function () use ($insurer, $data, $points) {
+                $contract = InsurerContract::query()->firstOrCreate(['insurer_id' => $insurer->id], ['price_table_id' => (int) $data['price_table_id'], 'adjustment_bp' => $points]);
+                if ($contract->wasRecentlyCreated) {
+                    AuditEvent::record('insurer_contract.saved', $contract->tenant_id, $contract, ['insurer_id' => $insurer->id, 'fields' => ['insurer_id', 'price_table_id', 'adjustment_bp'], 'price_table_id' => $contract->price_table_id, 'adjustment_bp' => $points]);
+                }
+            });
+        } catch (UniqueConstraintViolationException) {
+        }
+        DB::transaction(function () use ($insurer, $data, $points) {
+            $contract = InsurerContract::query()->lockForUpdate()->where('insurer_id', $insurer->id)->firstOrFail();
+            $contract->fill(['price_table_id' => (int) $data['price_table_id'], 'adjustment_bp' => $points]);
+            $changed = array_values(array_diff(array_keys($contract->getDirty()), ['updated_at']));
+            $contract->save();
+            if ($changed !== []) {
+                AuditEvent::record('insurer_contract.saved', $contract->tenant_id, $contract, ['insurer_id' => $insurer->id, 'fields' => $changed, 'price_table_id' => $contract->price_table_id, 'adjustment_bp' => $points]);
+            }
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Contrato salvo.']);
+
+        return back();
+    }
+
+    /**
+     * The billable items that need the insurer's authorization: the list sent replaces the one before.
+     */
+    public function saveAuthorizations(Request $request, InsurerContract $contract): RedirectResponse
+    {
+        Gate::authorize('manage', Medication::class);
+        $data = $request->validateWithBag("authorizations-{$contract->id}", [
+            'billing_item_ids' => ['nullable', 'array', 'max:2000'],
+            'billing_item_ids.*' => ['integer', Rule::exists('billing_items', 'id')->where('tenant_id', $contract->tenant_id)],
+        ], [], ['billing_item_ids' => 'itens']);
+        $ids = array_values(array_unique(array_map('intval', $data['billing_item_ids'] ?? [])));
+        DB::transaction(function () use ($contract, $ids) {
+            InsurerContract::query()->lockForUpdate()->findOrFail($contract->id);
+            // Only active items are on the screen: the requirement on an inactive one stays as it was.
+            DB::table('insurer_contract_authorizations')->where('insurer_contract_id', $contract->id)->whereNotIn('billing_item_id', $ids)
+                ->whereIn('billing_item_id', BillingItem::query()->where('active', true)->select('id'))->delete();
+            DB::table('insurer_contract_authorizations')->insertOrIgnore(array_map(fn (int $id) => ['tenant_id' => $contract->tenant_id, 'insurer_contract_id' => $contract->id, 'billing_item_id' => $id], $ids));
+            AuditEvent::record('insurer_contract.authorizations_saved', $contract->tenant_id, $contract, ['insurer_id' => $contract->insurer_id, 'billing_item_ids' => $ids]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Itens que exigem autorização salvos.']);
+
+        return back();
+    }
+
+    /**
+     * Makes a table the network's private one (the one before stops being it).
+     */
+    public function setPrivate(Request $request, PriceTable $table): RedirectResponse
+    {
+        Gate::authorize('manage', Medication::class);
+        DB::transaction(function () use ($table) {
+            // One at a time: the tenant's tables locked, the old private one cleared before the new one is set.
+            PriceTable::query()->lockForUpdate()->get(['id']);
+            if (! PriceTable::query()->whereKey($table->id)->value('active')) {
+                throw ValidationException::withMessages(['private' => 'Uma tabela inativa não vira a tabela particular.'])->errorBag("table-{$table->id}");
+            }
+            PriceTable::query()->where('private', true)->whereKeyNot($table->id)->update(['private' => false]);
+            PriceTable::query()->whereKey($table->id)->update(['private' => true]);
+            AuditEvent::record('price_table.private_set', $table->tenant_id, $table);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Tabela particular definida.']);
 
         return back();
     }
