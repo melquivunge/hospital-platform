@@ -9,6 +9,7 @@ use App\Imports\MaterialCsvImporter;
 use App\Imports\MaterialStockCsvImporter;
 use App\Imports\MedicationCsvImporter;
 use App\Imports\MedicationInteractionCsvImporter;
+use App\Imports\PriceCsvImporter;
 use App\Imports\ProfessionalCsvImporter;
 use App\Imports\ShiftCsvImporter;
 use App\Imports\StockCsvImporter;
@@ -170,7 +171,7 @@ class ImportController extends Controller
     {
         Gate::authorize('view', $batch);
         // Step 4b.1b: the catalog is the network's; confirming needs the right to keep it.
-        abort_if(in_array($batch->type, self::CATALOG, true) && $request->user()->cannot('manage', Medication::class), 403);
+        abort_if(in_array($batch->type, [...self::CATALOG, 'prices'], true) && $request->user()->cannot('manage', Medication::class), 403);
         abort_if(in_array($batch->type, ['exams', 'exam_analytes'], true) && $request->user()->cannot('manage', Exam::class), 403);
         abort_if(in_array($batch->type, ['surgical_procedures', 'materials'], true) && $request->user()->cannot('manage', SurgicalProcedure::class), 403);
         // Step 4c.1b (ADR-0007): only the pharmacist who previewed it moves the stock, not a network admin.
@@ -217,7 +218,7 @@ class ImportController extends Controller
 
         return [
             ...(ImportBatchPolicy::importableUnitIds($membership) !== [] ? ['professionals' => ProfessionalCsvImporter::class, 'shifts' => ShiftCsvImporter::class] : []),
-            ...($request->user()->can('manage', Medication::class) ? ['medications' => MedicationCsvImporter::class, 'medication_interactions' => MedicationInteractionCsvImporter::class] : []),
+            ...($request->user()->can('manage', Medication::class) ? ['medications' => MedicationCsvImporter::class, 'medication_interactions' => MedicationInteractionCsvImporter::class, 'prices' => PriceCsvImporter::class] : []),
             // Step 5.1b: the exam catalog and its analytes, by who keeps the network catalog.
             ...($request->user()->can('manage', Exam::class) ? ['exams' => ExamCsvImporter::class, 'exam_analytes' => ExamAnalyteCsvImporter::class] : []),
             // Step 5b.1b: the surgical procedures, by who keeps the network catalog.
@@ -228,13 +229,14 @@ class ImportController extends Controller
     }
 
     /**
-     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>|class-string<StockCsvImporter>|class-string<ExamCsvImporter>|class-string<ExamAnalyteCsvImporter>|class-string<SurgicalProcedureCsvImporter>|class-string<MaterialCsvImporter>|class-string<MaterialStockCsvImporter>
+     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>|class-string<StockCsvImporter>|class-string<ExamCsvImporter>|class-string<ExamAnalyteCsvImporter>|class-string<SurgicalProcedureCsvImporter>|class-string<MaterialCsvImporter>|class-string<MaterialStockCsvImporter>|class-string<PriceCsvImporter>
      */
     public static function importer(string $type): string
     {
         return match ($type) {
             'stock' => StockCsvImporter::class,
             'material_stock' => MaterialStockCsvImporter::class,
+            'prices' => PriceCsvImporter::class,
             'shifts' => ShiftCsvImporter::class,
             'medications' => MedicationCsvImporter::class,
             'medication_interactions' => MedicationInteractionCsvImporter::class,

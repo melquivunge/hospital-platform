@@ -45,6 +45,7 @@ const createdLabels = {
     surgical_procedures: 'procedimentos cirúrgicos',
     materials: 'materiais no catálogo',
     material_stock: 'entradas de lote de material no estoque',
+    prices: 'preços nas tabelas',
 };
 
 export default function ImportShow({

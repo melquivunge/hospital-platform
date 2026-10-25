@@ -12,6 +12,7 @@ use App\Models\Medication;
 use App\Models\PriceEntry;
 use App\Models\PriceTable;
 use App\Models\SurgicalProcedure;
+use App\Models\User;
 use App\Stock\StockItem;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -170,28 +171,42 @@ class BillingPriceController extends Controller
         if ($cents === null || $cents > 100000000000) {
             throw ValidationException::withMessages(['price' => 'Escreva o preço em reais, como 1.234,56.'])->errorBag('price');
         }
+        self::enterPrice($table, (int) $data['billing_item_id'], $cents, $data['valid_from'], $request->user());
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Preço registrado.']);
+
+        return back();
+    }
+
+    /**
+     * Records a price from a day on (the screen and the CSV import, step 6.1c): the open price before it ends the day
+     * before; a price already starting on or after that day is refused (ValidationException on "valid_from", bag
+     * "price"). Its own transaction, with the table locked first.
+     *
+     * @param  array<string, mixed>  $audit  more audit context (ids only)
+     */
+    public static function enterPrice(PriceTable $table, int $itemId, int $cents, string $from, User $user, array $audit = []): PriceEntry
+    {
         try {
-            DB::transaction(function () use ($request, $table, $data, $cents) {
+            return DB::transaction(function () use ($table, $itemId, $cents, $from, $user, $audit) {
                 // The table first: two prices of the same table at once wait for each other.
                 PriceTable::query()->lockForUpdate()->findOrFail($table->id);
-                $entries = PriceEntry::query()->where('price_table_id', $table->id)->where('billing_item_id', (int) $data['billing_item_id']);
-                if ((clone $entries)->where('valid_from', '>=', $data['valid_from'])->exists()) {
+                $entries = PriceEntry::query()->where('price_table_id', $table->id)->where('billing_item_id', $itemId);
+                if ((clone $entries)->where('valid_from', '>=', $from)->exists()) {
                     throw ValidationException::withMessages(['valid_from' => 'Já há um preço deste item a partir desta data ou depois. Escolha um início posterior.'])->errorBag('price');
                 }
-                (clone $entries)->whereNull('valid_until')->first()?->update(['valid_until' => CarbonImmutable::parse($data['valid_from'])->subDay()->toDateString()]);
+                (clone $entries)->whereNull('valid_until')->first()?->update(['valid_until' => CarbonImmutable::parse($from)->subDay()->toDateString()]);
                 $entry = PriceEntry::create([
-                    'price_table_id' => $table->id, 'billing_item_id' => (int) $data['billing_item_id'], 'price_cents' => $cents,
-                    'valid_from' => $data['valid_from'], 'created_by_user_id' => $request->user()->id, 'created_at' => now(),
+                    'price_table_id' => $table->id, 'billing_item_id' => $itemId, 'price_cents' => $cents,
+                    'valid_from' => $from, 'created_by_user_id' => $user->id, 'created_at' => now(),
                 ]);
-                AuditEvent::record('price_entry.created', $table->tenant_id, $entry, ['price_table_id' => $table->id, 'billing_item_id' => $entry->billing_item_id, 'price_cents' => $cents, 'valid_from' => $data['valid_from']]);
+                AuditEvent::record('price_entry.created', $table->tenant_id, $entry, ['price_table_id' => $table->id, 'billing_item_id' => $itemId, 'price_cents' => $cents, 'valid_from' => $from, ...$audit]);
+
+                return $entry;
             });
         } catch (QueryException $exception) {
             // An overlap that slipped past the checks above: the exclusion constraint has the last word.
             throw $exception->getCode() === '23P01' ? ValidationException::withMessages(['valid_from' => 'Este período se sobrepõe a outro preço do item.'])->errorBag('price') : $exception;
         }
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Preço registrado.']);
-
-        return back();
     }
 
     /**
