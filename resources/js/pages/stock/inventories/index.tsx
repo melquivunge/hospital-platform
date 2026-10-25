@@ -11,7 +11,7 @@ import { show } from '@/routes/stock/inventories';
 type OpenUnit = {
     id: number;
     name: string;
-    medications: { id: number; name: string }[];
+    items: { key: string; name: string }[];
 };
 
 /**
@@ -134,20 +134,27 @@ function OpenForm({ units }: { units: OpenUnit[] }) {
                             </select>
                             <InputError message={errors.unit_id} />
                         </div>
-                        {unit.medications.length > 0 && (
+                        {unit.items.length > 0 && (
                             <fieldset key={unit.id} className="grid gap-1">
                                 <legend className="mb-2 text-sm font-medium">
-                                    Medicamentos (nenhum marcado conta todos)
+                                    Medicamentos e materiais (nenhum marcado
+                                    conta todos)
                                 </legend>
-                                {unit.medications.map((medication) => (
+                                {unit.items.map((medication) => (
                                     <label
-                                        key={medication.id}
+                                        key={medication.key}
                                         className="flex min-h-11 items-center gap-3 text-sm"
                                     >
                                         <input
                                             type="checkbox"
-                                            name="medication_ids[]"
-                                            value={medication.id}
+                                            name={
+                                                medication.key.startsWith(
+                                                    'material:',
+                                                )
+                                                    ? 'material_ids[]'
+                                                    : 'medication_ids[]'
+                                            }
+                                            value={medication.key.split(':')[1]}
                                             className="size-5 shrink-0"
                                         />
                                         {medication.name}

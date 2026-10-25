@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditEvent;
-use App\Models\Medication;
 use App\Models\RoleAssignment;
 use App\Models\StockInventory;
 use App\Models\StockInventoryLine;
@@ -12,6 +11,7 @@ use App\Models\StockMovement;
 use App\Models\Unit;
 use App\Models\User;
 use App\Policies\UnitPolicy;
+use App\Stock\StockItem;
 use App\Tenancy\Role;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -48,19 +48,18 @@ class StockInventoryController extends Controller
             ])->values(),
             'pages' => ['newer' => $inventories->previousPageUrl(), 'older' => $inventories->nextPageUrl()],
             'statuses' => self::STATUSES,
-            // Where this person may open one, and the medications with balance there.
+            // Where this person may open one, and the medications and materials with balance there.
             'openUnits' => $units->whereIn('id', $pharmacy)->map(fn (Unit $unit) => [
                 'id' => $unit->id,
                 'name' => $unit->name,
-                'medications' => Medication::query()->whereIn('id', StockLot::query()->where('unit_id', $unit->id)->where('balance', '>', 0)->select('medication_id'))
-                    ->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->get()
-                    ->map(fn (Medication $medication) => ['id' => $medication->id, 'name' => StockController::label($medication)])->values(),
+                'items' => StockItem::describe(StockLot::query()->where('unit_id', $unit->id)->where('balance', '>', 0)->get(['medication_id', 'material_id']))
+                    ->sortBy([['material', 'asc'], ['name', 'asc']])->map(fn (array $item, string $key) => ['key' => $key, 'name' => $item['name']])->values(),
             ])->values(),
         ]);
     }
 
     /**
-     * Opens the inventory of a unit: one line per lot with balance (all medications, or the chosen ones).
+     * Opens the inventory of a unit: one line per lot with balance (every item, or the chosen medications and materials).
      */
     public function store(Request $request): RedirectResponse
     {
@@ -68,17 +67,21 @@ class StockInventoryController extends Controller
             'unit_id' => ['required', 'integer', Rule::in(self::pharmacyUnitIds($request->user()))],
             'medication_ids' => ['nullable', 'array', 'max:500'],
             'medication_ids.*' => ['integer'],
-        ], [], ['unit_id' => 'unidade', 'medication_ids' => 'medicamentos']);
+            'material_ids' => ['nullable', 'array', 'max:500'],
+            'material_ids.*' => ['integer'],
+        ], [], ['unit_id' => 'unidade', 'medication_ids' => 'medicamentos', 'material_ids' => 'materiais']);
+        $medicationIds = $data['medication_ids'] ?? [];
+        $materialIds = $data['material_ids'] ?? [];
         $lots = StockLot::query()->where('unit_id', $data['unit_id'])->where('balance', '>', 0)
-            ->when(($data['medication_ids'] ?? []) !== [], fn ($query) => $query->whereIn('medication_id', $data['medication_ids']))
-            ->orderBy('id')->get(['id', 'medication_id']);
+            ->when($medicationIds !== [] || $materialIds !== [], fn ($query) => $query->where(fn ($chosen) => $chosen->whereIn('medication_id', $medicationIds)->orWhereIn('material_id', $materialIds)))
+            ->orderBy('id')->get(['id', 'medication_id', 'material_id']);
         if ($lots->isEmpty()) {
             throw ValidationException::withMessages(['medication_ids' => 'Nenhum lote com saldo para contar. Para um lote sem cadastro, use a entrada de lote.'])->errorBag('open');
         }
         try {
             $inventory = DB::transaction(function () use ($request, $data, $lots) {
                 $inventory = StockInventory::query()->create(['unit_id' => $data['unit_id'], 'opened_by_user_id' => $request->user()->id, 'opened_at' => now()]);
-                $inventory->lines()->createMany($lots->map(fn (StockLot $lot) => ['tenant_id' => $inventory->tenant_id, 'medication_id' => $lot->medication_id, 'stock_lot_id' => $lot->id])->all());
+                $inventory->lines()->createMany($lots->map(fn (StockLot $lot) => ['tenant_id' => $inventory->tenant_id, 'medication_id' => $lot->medication_id, 'material_id' => $lot->material_id, 'stock_lot_id' => $lot->id])->all());
                 AuditEvent::record('stock.inventory_opened', $inventory->tenant_id, $inventory, ['unit_id' => $inventory->unit_id, 'lines' => $lots->count()]);
 
                 return $inventory;
@@ -97,7 +100,7 @@ class StockInventoryController extends Controller
         abort_unless($counter || $manager, 403);
         $lines = $inventory->lines()->orderBy('id')->get();
         $lots = StockLot::query()->whereKey($lines->pluck('stock_lot_id')->filter()->all())->get()->keyBy('id');
-        $medications = Medication::query()->whereKey($lines->pluck('medication_id')->unique()->all())->get()->keyBy('id');
+        $items = StockItem::describe($lines);
         $names = User::query()->whereKey(array_filter([$inventory->opened_by_user_id, $inventory->submitted_by_user_id, $inventory->decided_by_user_id]))->pluck('name', 'id');
         $timezone = Unit::query()->whereKey($inventory->unit_id)->value('timezone') ?? 'UTC';
         // Blind count: nobody sees the balance while counting; then the manager does, and everyone once decided.
@@ -116,13 +119,14 @@ class StockInventoryController extends Controller
                 'refusalReason' => $inventory->refusal_reason,
             ],
             'statuses' => self::STATUSES,
-            'lines' => $lines->map(function (StockInventoryLine $line) use ($lots, $medications, $reveal, $timezone) {
+            'lines' => $lines->map(function (StockInventoryLine $line) use ($lots, $items, $reveal, $timezone) {
                 $lot = $line->stock_lot_id === null ? null : $lots->get($line->stock_lot_id);
+                $item = $items[StockItem::key($line)];
 
                 return [
                     'id' => $line->id,
-                    'medication' => StockController::label($medications[$line->medication_id]),
-                    'stockUnit' => $medications[$line->medication_id]->stock_unit,
+                    'medication' => $item['name'],
+                    'stockUnit' => $item['stockUnit'],
                     'lot' => $lot === null ? $line->lot_code : $lot->lot_code,
                     'expiresOn' => ($lot === null ? $line->expires_on : $lot->expires_on)?->format('d/m/Y'),
                     'found' => $line->stock_lot_id === null,
@@ -134,8 +138,7 @@ class StockInventoryController extends Controller
             })->values(),
             'canCount' => $counter && $inventory->status === 'counting',
             'canDecide' => $manager && $inventory->status === 'submitted' && ! in_array($request->user()->id, self::participants($inventory), true),
-            'catalog' => $counter && $inventory->status === 'counting' ? Medication::query()->where('active', true)->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->get()
-                ->map(fn (Medication $medication) => ['id' => $medication->id, 'name' => StockController::label($medication), 'stockUnit' => $medication->stock_unit])->values() : [],
+            'catalog' => $counter && $inventory->status === 'counting' ? StockItem::catalog() : [],
         ]);
     }
 
@@ -166,27 +169,26 @@ class StockInventoryController extends Controller
     {
         abort_unless(in_array($inventory->unit_id, self::pharmacyUnitIds($request->user()), true), 403);
         $data = $request->validateWithBag('found', [
-            'medication_id' => ['required', 'integer'],
+            ...StockItem::rules(),
             'lot_code' => ['required', 'string', 'max:50', 'regex:/^\s*[A-Za-z0-9][A-Za-z0-9.\/\- ]*$/'],
             'expires_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.now()->addYears(10)->toDateString()],
             'counted' => ['required', 'integer', 'min:1', 'max:100000'],
         ], ['lot_code.regex' => 'O lote aceita letras sem acento, números, ponto, barra e hífen.'], [
-            'medication_id' => 'medicamento', 'lot_code' => 'lote', 'expires_on' => 'validade', 'counted' => 'quantidade contada',
+            'medication_id' => 'medicamento ou material', 'material_id' => 'material', 'lot_code' => 'lote', 'expires_on' => 'validade', 'counted' => 'quantidade contada',
         ]);
-        $medication = Medication::query()->where('active', true)->whereKey((int) $data['medication_id'])->first()
-            ?? throw ValidationException::withMessages(['medication_id' => 'Escolha um medicamento ativo do catálogo.'])->errorBag('found');
+        $item = StockItem::columns(StockItem::chosen($data, 'found'));
         $code = StockLot::code($data['lot_code']);
 
         try {
-            DB::transaction(function () use ($request, $inventory, $data, $medication, $code) {
+            DB::transaction(function () use ($request, $inventory, $data, $item, $code) {
                 self::participate(self::lockCounting($request, $inventory, 'found'), $request->user());
-                $lot = StockLot::query()->where(['unit_id' => $inventory->unit_id, 'medication_id' => $medication->id, 'lot_code' => $code, 'expires_on' => $data['expires_on']])->lockForUpdate()->first();
+                $lot = StockLot::query()->where(['unit_id' => $inventory->unit_id, ...$item, 'lot_code' => $code, 'expires_on' => $data['expires_on']])->lockForUpdate()->first();
                 // Already listed as found (its lot recorded since, or not): the same lot twice is refused.
-                if ($inventory->lines()->where(['medication_id' => $medication->id, 'lot_code' => $code, 'expires_on' => $data['expires_on']])->exists()) {
+                if ($inventory->lines()->where([...$item, 'lot_code' => $code, 'expires_on' => $data['expires_on']])->exists()) {
                     throw ValidationException::withMessages(['lot_code' => 'Este lote já está na lista. Corrija a contagem dele.'])->errorBag('found');
                 }
                 $inventory->lines()->create([
-                    'tenant_id' => $inventory->tenant_id, 'medication_id' => $medication->id,
+                    'tenant_id' => $inventory->tenant_id, ...$item,
                     ...($lot === null ? ['lot_code' => $code, 'expires_on' => $data['expires_on']] : ['stock_lot_id' => $lot->id]),
                     'counted' => $data['counted'], 'expected' => $lot === null ? 0 : $lot->balance, 'counted_by_user_id' => $request->user()->id, 'counted_at' => now(),
                 ]);
@@ -238,7 +240,7 @@ class StockInventoryController extends Controller
             // meantime (an entry after the count) would be counted twice: a new count is asked for.
             foreach ($lines->whereNull('stock_lot_id')->where('counted', '>', 0) as $line) {
                 $lot = StockLot::query()->createOrFirst(
-                    ['unit_id' => $inventory->unit_id, 'medication_id' => $line->medication_id, 'lot_code' => $line->lot_code, 'expires_on' => $line->expires_on?->toDateString()],
+                    ['unit_id' => $inventory->unit_id, 'medication_id' => $line->medication_id, 'material_id' => $line->material_id, 'lot_code' => $line->lot_code, 'expires_on' => $line->expires_on?->toDateString()],
                     ['created_by_user_id' => $line->counted_by_user_id, 'created_at' => now()],
                 );
                 if (! $lot->wasRecentlyCreated) {

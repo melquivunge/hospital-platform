@@ -27,7 +27,7 @@ type LotRow = {
 
 type Detail = {
     below: {
-        id: number;
+        id: string;
         medication: string;
         stockUnit: string;
         valid: number;

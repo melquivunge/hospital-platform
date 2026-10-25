@@ -5,6 +5,10 @@ import StockController from '@/actions/App/Http/Controllers/StockController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
+import {
+    StockItemSelect,
+    type StockCatalogOption,
+} from '@/components/stock-item-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,18 +24,17 @@ type Lot = {
     state: 'valid' | 'expiring' | 'expired';
 };
 
-type StockMedication = {
-    id: number;
+type StockItem = {
+    key: string;
     name: string;
     stockUnit: string;
+    material: boolean;
     total: number;
     valid: number;
     minimum: number | null;
     below: boolean;
     lots: Lot[];
 };
-
-type CatalogOption = { id: number; name: string; stockUnit: string };
 
 type Discard = {
     id: number;
@@ -64,15 +67,15 @@ const lotState = {
 };
 
 /**
- * The unit's pharmacy stock (step 4c.1a, ADR-0007): balance by medication and lot, from the movements. Lot
- * entries and the minimum of each medication. No patient data.
+ * The unit's pharmacy stock (step 4c.1a, ADR-0007): balance by medication or material (step 5b.6b) and lot, from
+ * the movements. Lot entries and the minimum of each item. No patient data.
  */
 export default function StockIndex({
     units,
     unitId,
     canMove,
     today,
-    medications,
+    items,
     discards,
     discardPages,
     catalog,
@@ -81,10 +84,10 @@ export default function StockIndex({
     unitId: number;
     canMove: boolean;
     today: string;
-    medications: StockMedication[];
+    items: StockItem[];
     discards: Discard[];
     discardPages: { newer: string | null; older: string | null };
-    catalog: CatalogOption[];
+    catalog: StockCatalogOption[];
 }) {
     const unit = units.find((option) => option.id === unitId);
 
@@ -95,7 +98,7 @@ export default function StockIndex({
                 <PageHeader
                     eyebrow={unit?.name}
                     title="Estoque da farmácia"
-                    description="Saldo por medicamento e lote. O saldo só muda por movimentos registrados; lote vencido não é dispensado."
+                    description="Saldo por medicamento ou material e lote. O saldo só muda por movimentos registrados; lote vencido não é dispensado nem consumido."
                 />
                 {canMove ? (
                     <div className="mb-6">
@@ -136,20 +139,25 @@ export default function StockIndex({
                     </div>
                 )}
 
-                {medications.length === 0 ? (
+                {items.length === 0 ? (
                     <p className="rounded-xl border bg-card px-5 py-12 text-center text-muted-foreground">
-                        Nenhum medicamento em estoque nesta unidade.
+                        Nenhum medicamento ou material em estoque nesta unidade.
                     </p>
                 ) : (
                     <ul className="grid gap-3">
-                        {medications.map((medication) => (
+                        {items.map((medication) => (
                             <li
-                                key={medication.id}
+                                key={medication.key}
                                 className="rounded-xl border bg-card px-5 py-4"
                             >
                                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                                     <h2 className="font-medium">
                                         {medication.name}
+                                        {medication.material && (
+                                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                                material
+                                            </span>
+                                        )}
                                     </h2>
                                     <p className="text-sm">
                                         <span className="font-semibold">
@@ -385,33 +393,6 @@ function DiscardForm({ lot }: { lot: Lot }) {
     );
 }
 
-function MedicationSelect({
-    id,
-    catalog,
-}: {
-    id: string;
-    catalog: CatalogOption[];
-}) {
-    return (
-        <select
-            id={id}
-            name="medication_id"
-            required
-            defaultValue=""
-            className={selectClassName}
-        >
-            <option value="" disabled>
-                Selecione
-            </option>
-            {catalog.map((option) => (
-                <option key={option.id} value={option.id}>
-                    {option.name} — {option.stockUnit}
-                </option>
-            ))}
-        </select>
-    );
-}
-
 function EntryForm({
     unitId,
     today,
@@ -419,7 +400,7 @@ function EntryForm({
 }: {
     unitId: number;
     today: string;
-    catalog: CatalogOption[];
+    catalog: StockCatalogOption[];
 }) {
     return (
         <section className="grid content-start gap-3">
@@ -436,14 +417,18 @@ function EntryForm({
                         <input type="hidden" name="unit_id" value={unitId} />
                         <div className="grid gap-2">
                             <Label htmlFor="entry-medication">
-                                Medicamento
+                                Medicamento ou material
                             </Label>
-                            <MedicationSelect
+                            <StockItemSelect
                                 id="entry-medication"
                                 catalog={catalog}
                             />
                             <InputError
-                                message={errors.medication_id ?? errors.unit_id}
+                                message={
+                                    errors.medication_id ??
+                                    errors.material_id ??
+                                    errors.unit_id
+                                }
                             />
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -521,7 +506,7 @@ function MinimumForm({
     catalog,
 }: {
     unitId: number;
-    catalog: CatalogOption[];
+    catalog: StockCatalogOption[];
 }) {
     return (
         <section className="grid content-start gap-3">
@@ -538,13 +523,17 @@ function MinimumForm({
                         <input type="hidden" name="unit_id" value={unitId} />
                         <div className="grid gap-2">
                             <Label htmlFor="minimum-medication">
-                                Medicamento
+                                Medicamento ou material
                             </Label>
-                            <MedicationSelect
+                            <StockItemSelect
                                 id="minimum-medication"
                                 catalog={catalog}
                             />
-                            <InputError message={errors.medication_id} />
+                            <InputError
+                                message={
+                                    errors.medication_id ?? errors.material_id
+                                }
+                            />
                         </div>
                         <div className="grid max-w-xs gap-2">
                             <Label htmlFor="minimum-value">

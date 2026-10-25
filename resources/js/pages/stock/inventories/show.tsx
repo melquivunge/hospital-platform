@@ -1,8 +1,11 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import StockInventoryController from '@/actions/App/Http/Controllers/StockInventoryController';
 import InputError from '@/components/input-error';
+import {
+    StockItemSelect,
+    type StockCatalogOption,
+} from '@/components/stock-item-select';
 import { Page, PageHeader } from '@/components/page';
-import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,7 +53,7 @@ export default function InventoryShow({
     lines: Line[];
     canCount: boolean;
     canDecide: boolean;
-    catalog: { id: number; name: string; stockUnit: string }[];
+    catalog: StockCatalogOption[];
 }) {
     const pending = lines.filter((line) => line.counted === null).length;
 
@@ -252,7 +255,7 @@ function FoundForm({
     catalog,
 }: {
     inventoryId: number;
-    catalog: { id: number; name: string; stockUnit: string }[];
+    catalog: StockCatalogOption[];
 }) {
     return (
         <section className="grid content-start gap-3">
@@ -270,26 +273,18 @@ function FoundForm({
                     <>
                         <div className="grid gap-2">
                             <Label htmlFor="found-medication">
-                                Medicamento
+                                Medicamento ou material
                             </Label>
-                            <select
+                            <StockItemSelect
                                 id="found-medication"
-                                name="medication_id"
-                                required
-                                defaultValue=""
-                                className={selectClassName}
-                            >
-                                <option value="" disabled>
-                                    Selecione
-                                </option>
-                                {catalog.map((option) => (
-                                    <option key={option.id} value={option.id}>
-                                        {option.name} — {option.stockUnit}
-                                    </option>
-                                ))}
-                            </select>
+                                catalog={catalog}
+                            />
                             <InputError
-                                message={errors.medication_id ?? errors.status}
+                                message={
+                                    errors.medication_id ??
+                                    errors.material_id ??
+                                    errors.status
+                                }
                             />
                         </div>
                         <div className="grid gap-4 sm:grid-cols-3">

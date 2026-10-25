@@ -9,6 +9,7 @@ use App\Models\StockMovement;
 use App\Models\Unit;
 use App\Models\User;
 use App\Policies\UnitPolicy;
+use App\Stock\StockItem;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -20,8 +21,8 @@ use Inertia\Response;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
- * The stock movements of a unit by period and medication (step 4c.4b, ADR-0007), controlled medications first,
- * to support the manual bookkeeping; a CSV of the same rows. For the unit's pharmacy and managers. No patient
+ * The stock movements of a unit by period and medication or material (step 4c.4b, ADR-0007; materials since step
+ * 5b.6b), controlled medications first, to support the manual bookkeeping; a CSV of the same rows. For the unit's pharmacy and managers. No patient
  * data: a dispensing shows as its type only, never the id that leads to the patient.
  */
 class StockReportController extends Controller
@@ -37,88 +38,86 @@ class StockReportController extends Controller
 
     public function index(Request $request): Response
     {
-        [$units, $unit, $from, $to, $medicationId, $controlled] = $this->scope($request);
-        $movements = self::movements($unit, $from, $to, $medicationId, $controlled)->orderByDesc('stock_movements.id')->paginate(50)->withQueryString();
-        $totals = self::movements($unit, $from, $to, $medicationId, $controlled)->toBase()
-            ->select(DB::raw('stock_lots.medication_id, stock_movements.type, sum(stock_movements.quantity) as total'))
-            ->groupBy('stock_lots.medication_id', 'stock_movements.type')->get();
-        $medications = Medication::query()->whereKey([...$totals->pluck('medication_id')->all(), ...$movements->getCollection()->pluck('medication_id')->all()])->get()->keyBy('id');
+        [$units, $unit, $from, $to, $item, $controlled] = $this->scope($request);
+        $movements = self::movements($unit, $from, $to, $item, $controlled)->orderByDesc('stock_movements.id')->paginate(50)->withQueryString();
+        $totals = self::movements($unit, $from, $to, $item, $controlled)->toBase()
+            ->select(DB::raw('stock_lots.medication_id, stock_lots.material_id, stock_movements.type, sum(stock_movements.quantity) as total'))
+            ->groupBy('stock_lots.medication_id', 'stock_lots.material_id', 'stock_movements.type')->get();
+        $items = StockItem::describe($totals->concat($movements->getCollection()));
 
         return Inertia::render('stock/movements', [
             'units' => $units->map->only('id', 'name')->values(),
             'unitId' => $unit->id,
-            'filters' => ['from' => $from->toDateString(), 'to' => $to->subDay()->toDateString(), 'medication' => $medicationId, 'controlled' => $controlled],
-            'options' => Medication::query()->whereIn('id', StockLot::query()->where('unit_id', $unit->id)->select('medication_id'))
-                ->orderBy('ingredient_key')->orderBy('form')->orderBy('strength')->get()
-                ->map(fn (Medication $medication) => ['id' => $medication->id, 'name' => StockController::label($medication), 'controlled' => $medication->controlled])->values(),
+            'filters' => ['from' => $from->toDateString(), 'to' => $to->subDay()->toDateString(), 'item' => $item === null ? null : StockItem::key((object) $item), 'controlled' => $controlled],
+            'options' => StockItem::describe(StockLot::query()->where('unit_id', $unit->id)->distinct()->get(['medication_id', 'material_id']))
+                ->sortBy([['material', 'asc'], ['name', 'asc']])->map(fn (array $option, string $key) => ['key' => $key, 'name' => $option['name'], 'controlled' => $option['controlled']])->values(),
             // Controlled first, then by name.
-            'summary' => $totals->groupBy('medication_id')->map(function (Collection $byType, int|string $id) use ($medications) {
-                $medication = $medications[(int) $id];
-
+            'summary' => $totals->groupBy(fn (\stdClass $row) => StockItem::key($row))->map(function (Collection $byType, string $key) use ($items) {
                 return [
-                    'id' => $medication->id,
-                    'name' => StockController::label($medication),
-                    'stockUnit' => $medication->stock_unit,
-                    'controlled' => $medication->controlled,
+                    'key' => $key,
+                    'name' => $items[$key]['name'],
+                    'stockUnit' => $items[$key]['stockUnit'],
+                    'controlled' => $items[$key]['controlled'],
                     ...collect(self::TYPES)->mapWithKeys(fn (string $label, string $type) => [$type => (int) ($byType->firstWhere('type', $type)->total ?? 0)])->all(),
                 ];
             })->sortBy([['controlled', 'desc'], ['name', 'asc']])->values(),
-            'movements' => self::rows($movements->getCollection(), $medications, $unit->timezone ?? 'UTC'),
+            'movements' => self::rows($movements->getCollection(), $items, $unit->timezone ?? 'UTC'),
             'pages' => ['newer' => $movements->previousPageUrl(), 'older' => $movements->nextPageUrl(), 'total' => $movements->total()],
         ]);
     }
 
     public function csv(Request $request): SymfonyResponse
     {
-        [, $unit, $from, $to, $medicationId, $controlled] = $this->scope($request);
-        $query = self::movements($unit, $from, $to, $medicationId, $controlled);
+        [, $unit, $from, $to, $item, $controlled] = $this->scope($request);
+        $query = self::movements($unit, $from, $to, $item, $controlled);
         abort_if((clone $query)->count() > self::CSV_MAX_ROWS, 422, 'Período grande demais para a planilha. Escolha um período menor.');
         $movements = $query->orderBy('stock_movements.id')->get();
-        $medications = Medication::query()->whereKey($movements->pluck('medication_id')->unique()->all())->get()->keyBy('id');
         $rows = array_map(fn (array $row) => [$row['at'], $row['medication'], $row['controlled'] ? 'sim' : 'não', $row['lot'], $row['expiresOn'], $row['type'], (string) $row['in'], (string) $row['out'], $row['reason'], $row['user']],
-            self::rows($movements, $medications, $unit->timezone ?? 'UTC'));
+            self::rows($movements, StockItem::describe($movements), $unit->timezone ?? 'UTC'));
         $last = $to->subDay();
         AuditEvent::record('stock.movements_exported', $unit->tenant_id, $unit, [
-            'unit_id' => $unit->id, 'from' => $from->toDateString(), 'to' => $last->toDateString(), 'medication_id' => $medicationId, 'controlled' => $controlled, 'rows' => count($rows),
+            'unit_id' => $unit->id, 'from' => $from->toDateString(), 'to' => $last->toDateString(), 'medication_id' => $item['medication_id'] ?? null, ...(isset($item['material_id']) ? ['material_id' => $item['material_id']] : []), 'controlled' => $controlled, 'rows' => count($rows),
         ]);
 
         // The unit in the file name: a CSV asked for another unit falls back to the person's first one (L2, 4c.5).
         return ReportController::csv('movimentos-estoque-'.Str::slug($unit->name)."-{$from->toDateString()}-a-{$last->toDateString()}.csv",
-            ['Data e hora', 'Medicamento', 'Controlado', 'Lote', 'Validade', 'Tipo', 'Entrada', 'Saída', 'Motivo', 'Responsável'], $rows);
+            ['Data e hora', 'Medicamento ou material', 'Controlado', 'Lote', 'Validade', 'Tipo', 'Entrada', 'Saída', 'Motivo', 'Responsável'], $rows);
     }
 
     /**
+     * @param  array{medication_id: int|null, material_id: int|null}|null  $item
      * @return Builder<StockMovement>
      */
-    private static function movements(Unit $unit, CarbonImmutable $from, CarbonImmutable $to, ?int $medicationId, bool $controlled): Builder
+    private static function movements(Unit $unit, CarbonImmutable $from, CarbonImmutable $to, ?array $item, bool $controlled): Builder
     {
         return StockMovement::query()->join('stock_lots', 'stock_lots.id', '=', 'stock_movements.stock_lot_id')
             ->where('stock_lots.unit_id', $unit->id)
             // The unit's days, bound in UTC (a zoned date would be bound as its wall-clock time).
             ->where('stock_movements.created_at', '>=', $from->utc())->where('stock_movements.created_at', '<', $to->utc())
-            ->when($medicationId !== null, fn (Builder $query) => $query->where('stock_lots.medication_id', $medicationId))
+            ->when($item !== null, fn (Builder $query) => $item['medication_id'] !== null ? $query->where('stock_lots.medication_id', $item['medication_id']) : $query->where('stock_lots.material_id', $item['material_id']))
             ->when($controlled, fn (Builder $query) => $query->whereIn('stock_lots.medication_id', Medication::query()->where('controlled', true)->select('id')))
             ->select(['stock_movements.id', 'stock_movements.type', 'stock_movements.quantity', 'stock_movements.reason', 'stock_movements.note', 'stock_movements.stock_inventory_id',
-                'stock_movements.user_id', 'stock_movements.created_at', 'stock_lots.lot_code', 'stock_lots.expires_on', 'stock_lots.medication_id']);
+                'stock_movements.user_id', 'stock_movements.created_at', 'stock_lots.lot_code', 'stock_lots.expires_on', 'stock_lots.medication_id', 'stock_lots.material_id']);
     }
 
     /**
      * @param  Collection<int, StockMovement>  $movements
-     * @param  Collection<int, Medication>  $medications
+     * @param  Collection<string, array{name: string, stockUnit: string, controlled: bool, material: bool}>  $items
      * @return list<array{id: int, at: string, medication: string, controlled: bool, lot: string, expiresOn: string, type: string, in: int|string, out: int|string, reason: string, user: string}>
      */
-    private static function rows(Collection $movements, Collection $medications, string $timezone): array
+    private static function rows(Collection $movements, Collection $items, string $timezone): array
     {
         $users = User::query()->whereKey($movements->pluck('user_id')->unique()->all())->pluck('name', 'id');
 
-        return array_values($movements->map(function (StockMovement $movement) use ($medications, $users, $timezone) {
-            $medication = $medications[(int) $movement->getAttribute('medication_id')];
+        return array_values($movements->map(function (StockMovement $movement) use ($items, $users, $timezone) {
+            $item = $items[StockItem::key($movement)];
 
             return [
                 'id' => $movement->id,
                 'at' => $movement->created_at->timezone($timezone)->format('d/m/Y H:i'),
-                'medication' => StockController::label($medication),
-                'controlled' => $medication->controlled,
+                // The medication's or the material's name.
+                'medication' => $item['name'],
+                'controlled' => $item['controlled'],
                 'lot' => (string) $movement->getAttribute('lot_code'),
                 'expiresOn' => CarbonImmutable::parse((string) $movement->getAttribute('expires_on'))->format('d/m/Y'),
                 'type' => self::TYPES[$movement->type] ?? $movement->type,
@@ -161,7 +160,7 @@ class StockReportController extends Controller
      * The person's units (pharmacy or manager), the chosen one, and the period in the unit's time zone: an invalid
      * or too long period falls back to the last 30 days.
      *
-     * @return array{Collection<int, Unit>, Unit, CarbonImmutable, CarbonImmutable, int|null, bool}
+     * @return array{Collection<int, Unit>, Unit, CarbonImmutable, CarbonImmutable, array{medication_id: int|null, material_id: int|null}|null, bool}
      */
     private function scope(Request $request): array
     {
@@ -171,8 +170,11 @@ class StockReportController extends Controller
         abort_if($units->isEmpty(), 403);
         $unit = $units->firstWhere('id', $request->integer('unit')) ?? $units->first();
         [$from, $to] = self::period($request, $unit->timezone ?? 'UTC');
-        $medication = $request->integer('medication');
+        // "medication:5" or "material:3"; a bare medication id (links before step 5b.6b) still works.
+        $chosen = preg_match('/^(medication|material):([1-9][0-9]{0,15})$/', $request->string('item')->value(), $parts) === 1 ? [$parts[1], (int) $parts[2]]
+            : ($request->integer('medication') > 0 ? ['medication', $request->integer('medication')] : null);
+        $item = $chosen === null ? null : ['medication_id' => $chosen[0] === 'medication' ? $chosen[1] : null, 'material_id' => $chosen[0] === 'material' ? $chosen[1] : null];
 
-        return [$units, $unit, $from, $to, $medication > 0 ? $medication : null, $request->boolean('controlled')];
+        return [$units, $unit, $from, $to, $item, $request->boolean('controlled')];
     }
 }

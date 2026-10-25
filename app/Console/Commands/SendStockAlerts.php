@@ -7,6 +7,7 @@ use App\Models\StockLot;
 use App\Models\StockMinimum;
 use App\Models\Tenant;
 use App\Models\Unit;
+use App\Stock\StockItem;
 use App\Tenancy\CurrentTenant;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -14,8 +15,8 @@ use Throwable;
 
 /**
  * Step 4c.4a (ADR-0007): once per day of each unit (from 7 h in its time zone), the pharmacy and the unit manager
- * hear of lots expiring within 30 days, expired lots still with balance and medications below the minimum (valid
- * lots only). Scheduled hourly: a run that missed 7 h catches up, and a second run the same day sends nothing.
+ * hear of lots expiring within 30 days, expired lots still with balance and medications or materials below the
+ * minimum (valid lots only). Scheduled hourly: a run that missed 7 h catches up, and a second run the same day sends nothing.
  * Counts only: no patient data.
  */
 class SendStockAlerts extends Command
@@ -57,13 +58,14 @@ class SendStockAlerts extends Command
             return false;
         }
         $today = $now->toDateString();
-        $lots = StockLot::query()->where('unit_id', $unit->id)->where('balance', '>', 0)->get(['medication_id', 'expires_on', 'balance']);
+        $lots = StockLot::query()->where('unit_id', $unit->id)->where('balance', '>', 0)->get(['medication_id', 'material_id', 'expires_on', 'balance']);
         $valid = $lots->filter(fn (StockLot $lot) => $lot->expires_on->toDateString() >= $today);
+        $validByItem = $valid->groupBy(fn (StockLot $lot) => StockItem::key($lot))->map->sum('balance');
         $counts = [
             'expiring' => $valid->filter(fn (StockLot $lot) => $lot->expires_on->toDateString() <= $now->copy()->addDays(StockLot::EXPIRING_DAYS)->toDateString())->count(),
             'expired' => $lots->count() - $valid->count(),
             'below_minimum' => StockMinimum::query()->where('unit_id', $unit->id)->get()
-                ->filter(fn (StockMinimum $minimum) => $valid->where('medication_id', $minimum->medication_id)->sum('balance') < $minimum->minimum)->count(),
+                ->filter(fn (StockMinimum $minimum) => $validByItem->get(StockItem::key($minimum), 0) < $minimum->minimum)->count(),
         ];
         if (array_sum($counts) === 0) {
             return false;

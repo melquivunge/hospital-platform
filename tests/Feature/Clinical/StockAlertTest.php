@@ -69,7 +69,7 @@ class StockAlertTest extends TestCase
         // 30 valid against a minimum of 40 (the expired lot does not count, on the screen either).
         $this->actingAs($this->pharmacist->user)->put(route('stock.minimums.update'), ['unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'minimum' => 40])->assertSessionHasNoErrors();
 
-        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('medications.0.total', 34)->where('medications.0.valid', 30)->where('medications.0.below', true));
+        $this->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('items.0.total', 34)->where('items.0.valid', 30)->where('items.0.below', true));
 
         // Before 7 h in the unit, nothing.
         $this->travelTo('2026-11-13 09:30:00');
@@ -154,7 +154,7 @@ class StockAlertTest extends TestCase
         $this->assertSame([$this->manager->user_id => ['Inventário de estoque aguardando aprovação']], $this->inbox());
         $this->assertSame("/stock/inventories/{$inventory->id}", DB::table('user_notifications')->value('url'));
 
-        $this->actingAs($this->manager->user)->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('canMove', false)->where('medications.0.total', 50));
+        $this->actingAs($this->manager->user)->get(route('stock.index'))->assertInertia(fn (Assert $page) => $page->where('canMove', false)->where('items.0.total', 50));
         $this->post(route('stock.entries.store'), ['unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'lot_code' => 'X', 'expires_on' => '2027-06-30', 'quantity' => 1])->assertSessionHasErrorsIn('entry', ['unit_id']);
         $this->post(route('stock.discards.store', $lot), ['reason' => 'loss', 'quantity' => 1])->assertForbidden();
         $this->put(route('stock.minimums.update'), ['unit_id' => $this->unit->id, 'medication_id' => $this->medication->id, 'minimum' => 5])->assertSessionHasErrorsIn('minimum', ['unit_id']);

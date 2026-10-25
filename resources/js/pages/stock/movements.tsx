@@ -11,12 +11,12 @@ import { csv, index } from '@/routes/stock/movements';
 type Filters = {
     from: string;
     to: string;
-    medication: number | null;
+    item: string | null;
     controlled: boolean;
 };
 
 type Summary = {
-    id: number;
+    key: string;
     name: string;
     stockUnit: string;
     controlled: boolean;
@@ -53,7 +53,7 @@ function Controlled() {
 }
 
 /**
- * The stock movements of a unit by period and medication (step 4c.4b, ADR-0007), controlled medications first,
+ * The stock movements of a unit by period and medication or material (step 4c.4b, ADR-0007; step 5b.6b), controlled first,
  * for the manual bookkeeping; the CSV has the same rows. No patient data.
  */
 export default function StockMovements({
@@ -68,7 +68,7 @@ export default function StockMovements({
     units: { id: number; name: string }[];
     unitId: number;
     filters: Filters;
-    options: { id: number; name: string; controlled: boolean }[];
+    options: { key: string; name: string; controlled: boolean }[];
     summary: Summary[];
     movements: Movement[];
     pages: { newer: string | null; older: string | null; total: number };
@@ -78,7 +78,7 @@ export default function StockMovements({
         unit: unitId,
         from: filters.from,
         to: filters.to,
-        ...(filters.medication ? { medication: filters.medication } : {}),
+        ...(filters.item ? { item: filters.item } : {}),
         ...(filters.controlled ? { controlled: 1 } : {}),
     };
     const apply = (event: FormEvent<HTMLFormElement>) => {
@@ -95,9 +95,7 @@ export default function StockMovements({
                     unit: field('unit') || unitId,
                     from: field('from'),
                     to: field('to'),
-                    ...(field('medication')
-                        ? { medication: field('medication') }
-                        : {}),
+                    ...(field('item') ? { item: field('item') } : {}),
                     ...(field('controlled') ? { controlled: 1 } : {}),
                 },
             }).url,
@@ -178,16 +176,16 @@ export default function StockMovements({
                         />
                     </div>
                     <div className="grid gap-2">
-                        <Label htmlFor="medication">Medicamento</Label>
+                        <Label htmlFor="item">Medicamento ou material</Label>
                         <select
-                            id="medication"
-                            name="medication"
-                            defaultValue={filters.medication ?? ''}
+                            id="item"
+                            name="item"
+                            defaultValue={filters.item ?? ''}
                             className={selectClassName}
                         >
                             <option value="">Todos</option>
                             {options.map((option) => (
-                                <option key={option.id} value={option.id}>
+                                <option key={option.key} value={option.key}>
                                     {option.name}
                                     {option.controlled ? ' (controlado)' : ''}
                                 </option>
@@ -223,7 +221,7 @@ export default function StockMovements({
                         <ul className="grid gap-3">
                             {summary.map((row) => (
                                 <li
-                                    key={row.id}
+                                    key={row.key}
                                     className="rounded-xl border bg-card px-5 py-4"
                                 >
                                     <h3 className="font-medium">
