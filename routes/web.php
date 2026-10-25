@@ -45,6 +45,7 @@ use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\SurgeryCatalogController;
 use App\Http\Controllers\SurgeryChecklistController;
 use App\Http\Controllers\SurgeryDescriptionController;
+use App\Http\Controllers\SurgeryMaterialController;
 use App\Http\Controllers\SurgeryOrderController;
 use App\Http\Controllers\SurgeryOverdueController;
 use App\Http\Controllers\SurgeryRecordController;
@@ -245,6 +246,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Step 5b.5: the surgical description and its addenda.
     Route::post('surgeries/{surgery}/description', [SurgeryDescriptionController::class, 'store'])->middleware('throttle:30,1')->name('surgery-description.store');
     Route::post('surgeries/{surgery}/description/addenda', [SurgeryDescriptionController::class, 'addendum'])->middleware('throttle:30,1')->name('surgery-description.addendum');
+    // Step 5b.6c: the materials a surgery used, recorded and given back by the surgical center.
+    Route::post('surgeries/{surgery}/materials', [SurgeryMaterialController::class, 'store'])->middleware('throttle:60,1')->name('surgery-materials.store');
+    Route::post('surgeries/{surgery}/materials/{lot}/return', [SurgeryMaterialController::class, 'giveBack'])->middleware('throttle:60,1')->name('surgery-materials.return');
     Route::get('surgery-consents/{consent}/download', [SurgeryChecklistController::class, 'downloadConsent'])->middleware('throttle:60,1')->name('surgery-checklist.consent.download');
     // Step 5b.3a: the surgical agenda of the Surgical center role.
     Route::get('surgery-schedule', [SurgeryScheduleController::class, 'index'])->middleware('throttle:120,1')->name('surgery-schedule.index');
