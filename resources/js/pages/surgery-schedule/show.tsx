@@ -1,4 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
+import SurgeryRecordController from '@/actions/App/Http/Controllers/SurgeryRecordController';
 import SurgeryScheduleController from '@/actions/App/Http/Controllers/SurgeryScheduleController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -197,9 +198,32 @@ export default function SurgeryScheduleShow({
                         .filter(Boolean)
                         .join(' · ')}
                     actions={
-                        <Button asChild variant="outline" className="min-h-11">
-                            <Link href={index().url}>Voltar à agenda</Link>
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                            {['requested', 'scheduled'].includes(
+                                surgery.status,
+                            ) && (
+                                <Button
+                                    asChild
+                                    variant="outline"
+                                    className="min-h-11"
+                                >
+                                    <Link
+                                        href={SurgeryRecordController.show.url(
+                                            surgery.id,
+                                        )}
+                                    >
+                                        Abrir prontuário
+                                    </Link>
+                                </Button>
+                            )}
+                            <Button
+                                asChild
+                                variant="outline"
+                                className="min-h-11"
+                            >
+                                <Link href={index().url}>Voltar à agenda</Link>
+                            </Button>
+                        </div>
                     }
                 />
 

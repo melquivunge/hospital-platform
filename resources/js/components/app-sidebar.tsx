@@ -81,6 +81,7 @@ import { index as requests } from '@/routes/requests';
 import { index as schedules } from '@/routes/schedules';
 import { index as professionals } from '@/routes/professionals';
 import { index as shifts, mine as myShifts } from '@/routes/shifts';
+import { mine as mySurgeries } from '@/routes/surgery-record';
 import { index as surgerySchedule } from '@/routes/surgery-schedule';
 import { index as units } from '@/routes/units';
 import { index as vacancies } from '@/routes/vacancies';
@@ -126,6 +127,7 @@ export function AppSidebar() {
         canUsePharmacy,
         canUseExamQueue,
         canUseSurgerySchedule,
+        canUseMySurgeries,
         canViewExamOverdue,
         canUseInventory,
         canViewStockIndicators,
@@ -244,6 +246,15 @@ export function AppSidebar() {
                       title: 'Agenda cirúrgica',
                       href: surgerySchedule(),
                       icon: CalendarClock,
+                  },
+              ]
+            : []),
+        ...(canUseMySurgeries
+            ? [
+                  {
+                      title: 'Minhas cirurgias',
+                      href: mySurgeries(),
+                      icon: Scissors,
                   },
               ]
             : []),

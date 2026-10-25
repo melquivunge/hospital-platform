@@ -36,6 +36,7 @@ declare module '@inertiajs/core' {
             canUsePharmacy: boolean;
             canUseExamQueue: boolean;
             canUseSurgerySchedule: boolean;
+            canUseMySurgeries: boolean;
             canViewExamOverdue: boolean;
             canUseInventory: boolean;
             canViewStockIndicators: boolean;

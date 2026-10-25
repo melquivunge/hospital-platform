@@ -44,6 +44,7 @@ use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\SurgeryCatalogController;
 use App\Http\Controllers\SurgeryOrderController;
+use App\Http\Controllers\SurgeryRecordController;
 use App\Http\Controllers\SurgeryScheduleController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\TriageLevelController;
@@ -229,6 +230,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('visits/{visit}/surgeries', [SurgeryOrderController::class, 'forVisit'])->middleware('throttle:120,1')->name('surgery-orders.visit');
     Route::post('visits/{visit}/surgeries', [SurgeryOrderController::class, 'storeForVisit'])->middleware('throttle:30,1')->name('surgery-orders.visit.store');
     Route::post('surgeries/{surgery}/cancel', [SurgeryOrderController::class, 'cancel'])->middleware('throttle:30,1')->name('surgery-orders.cancel');
+    // Step 5b.3b: the record for the surgery, by the surgical center and the scheduled team.
+    Route::get('surgeries/mine', [SurgeryRecordController::class, 'mine'])->middleware('throttle:120,1')->name('surgery-record.mine');
+    Route::get('surgeries/{surgery}/record', [SurgeryRecordController::class, 'show'])->middleware('throttle:120,1')->name('surgery-record.show');
     // Step 5b.3a: the surgical agenda of the Surgical center role.
     Route::get('surgery-schedule', [SurgeryScheduleController::class, 'index'])->middleware('throttle:120,1')->name('surgery-schedule.index');
     Route::get('surgery-schedule/{surgery}', [SurgeryScheduleController::class, 'show'])->middleware('throttle:120,1')->name('surgery-schedule.show');

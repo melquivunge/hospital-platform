@@ -168,11 +168,12 @@ class ExamQueueController extends Controller
     }
 
     /**
-     * The prescriptions of the order's encounter with every action off, even for a user who also prescribes.
+     * The prescriptions of the order's encounter with every action off, even for a user who also prescribes. Also
+     * for the surgical team (step 5b.3b).
      *
      * @return array<string, mixed>
      */
-    private static function readOnlyPrescriptions(User $user, ExamOrder $order, string $timezone): array
+    public static function readOnlyPrescriptions(User $user, ExamOrder|Surgery $order, string $timezone): array
     {
         $panel = PrescriptionController::panel($user, $order->admission_id === null ? null : Admission::query()->findOrFail($order->admission_id),
             $order->visit_id === null ? null : Visit::query()->findOrFail($order->visit_id), $timezone);

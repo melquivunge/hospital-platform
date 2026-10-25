@@ -9,6 +9,7 @@ use App\Models\ClinicalDocument;
 use App\Models\ExamOrder;
 use App\Models\Patient;
 use App\Models\Professional;
+use App\Models\Surgery;
 use App\Models\Visit;
 use Carbon\CarbonInterface;
 use finfo;
@@ -119,7 +120,9 @@ class ClinicalDocumentController extends Controller
         $basis = ClinicalAccess::activeVisit($request->user(), $patient) ?? ClinicalAccess::activeAdmission($request->user(), $patient)
             ?? ClinicalAccess::activeEmergency($request->user(), $patient)
             // ADR-0008: the exam team while an order of its type is open; members without a linked professional too.
-            ?? ClinicalAccess::activeExamOrder($request->user(), $patient) ?? abort(403);
+            ?? ClinicalAccess::activeExamOrder($request->user(), $patient)
+            // ADR-0009: the surgical center and the scheduled team while the surgery is open.
+            ?? ClinicalAccess::activeSurgery($request->user(), $patient) ?? abort(403);
         abort_if($document->withdrawn_at !== null, 410);
         // Never trust a stored path blindly: it must sit under this client's own prefix.
         abort_unless(str_starts_with($document->path, "clinical/{$document->tenant_id}/") && ! str_contains($document->path, '..'), 404);
@@ -131,6 +134,7 @@ class ClinicalDocumentController extends Controller
             $basis instanceof Visit => 'visit',
             $basis instanceof Admission => 'admission',
             $basis instanceof ExamOrder => 'exam',
+            $basis instanceof Surgery => 'surgery',
             default => 'emergency',
         }]);
 
