@@ -701,3 +701,69 @@ Consequência para o recorte (questão 1): **entrega 5 = exames** (laboratório 
 - **Arquitetura:** [ADR-0008](docs/adr/0008-exam-team-record-access.md), aceita (acesso das equipes de laboratório e imagem). Materiais no livro de estoque e acesso do centro cirúrgico ficam em ADR da entrega 5b.
 - **Plano em etapas:** `plans/web-v6-exames.md` (entrega 5), aceito, implementado e mesclado (5.1 a 5.6, 24/10/2026). `plans/web-v7-cirurgia.md` (entrega 5b) e [ADR-0009](docs/adr/0009-surgical-center-access-and-materials.md): aceitos e implementação autorizada em 24/10/2026, uma etapa por vez.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
+
+## Contrato da entrega 6 — faturamento
+
+Método: ECC Product Capability. Data: 25/10/2026. Estado: **proposta, aguardando as decisões do usuário nas questões abaixo.** Nada é implementado antes do contrato, da ADR e do plano aprovados. Origem: roteiro ("Faturamento: atendimentos e consumo → contas e recebimentos", mapa de capacidades) e as entregas 3 a 5b, que registram modalidade e convênio no atendimento e deixaram custo, preço e faturamento para esta entrega.
+
+### Capacidade
+
+Cada atendimento (consulta, urgência, internação) gera uma conta do paciente com o que foi feito: consulta, diárias, exames liberados, cirurgias concluídas, materiais consumidos e medicamentos dispensados (menos o devolvido), cada item com o código e o preço da tabela que vale para a modalidade do atendimento. O faturamento da unidade revisa a conta, registra autorizações do convênio, fecha a conta e, para convênio, monta o lote de envio da competência; depois registra o que foi pago e o que foi glosado. No particular, registra o recebimento e emite o recibo. Resultado esperado: do atendimento ao recebimento, cada valor cobrado rastreável até o registro assistencial que o originou, sem cobrança em dobro e sem item esquecido.
+
+### Restrições e invariantes (fixas, herdadas das entregas 3 a 5b)
+
+- **Dado protegido:** a conta liga paciente a procedimentos, exames e cirurgias, então é dado clínico (RLS forçado, ADR-0003). Auditoria, notificações e logs só com ids e valores, nunca nome de paciente ou procedimento ligado a ele.
+- **Origem rastreável:** todo item automático aponta para o registro assistencial que o gerou (exame liberado, cirurgia concluída, movimento de estoque, dia de internação); um registro gera no máximo um item (unicidade no banco). Item manual exige motivo e autor.
+- **Histórico preservado:** conta fechada não muda; correção por conta complementar ou estorno, com o anterior visível (como adendo e retificação).
+- **Dinheiro:** valores em centavos inteiros, nunca ponto flutuante; preço do item congelado no momento em que entra na conta (mudar a tabela depois não altera conta existente).
+- **Por unidade e por rede:** tabelas de preço e contratos são da rede; contas e lotes, da unidade do atendimento.
+- **Concorrência:** fechar a mesma conta duas vezes, incluir a mesma conta em dois lotes ou gerar o mesmo item duas vezes resultam num só registro (verificado com corrida real).
+
+### Atores e superfícies (proposta)
+
+| Ator | Superfície | Limite |
+|---|---|---|
+| Faturamento (papel novo, por unidade) | Contas da unidade, revisão, autorização, fechamento, lotes, retorno do convênio, recebimento particular | Lê o necessário para a conta (itens, datas, códigos, carteira, nome do paciente); não lê evolução, resultados nem descrições |
+| Administrador de rede | Tabelas de preço, convênios e contratos (qual tabela vale para cada convênio), códigos | Sem dado de paciente |
+| Gestor da unidade | Relatórios de faturamento (produção, glosas, recebido) | Só números agregados |
+| Recepção | Modalidade e carteira no atendimento (já existe, entrega 3) | Sem acesso à conta |
+
+### Estados e transições (proposta)
+
+- **Conta:** aberta (recebe itens enquanto o atendimento corre) → em revisão (atendimento encerrado ou alta) → fechada (imutável) → enviada (no lote, convênio) ou recebida (particular) → paga, paga parcialmente (com glosa) ou glosada; recurso de glosa gera um novo envio. Item que chega depois do fechamento (resultado liberado tarde) vai para uma conta complementar.
+- **Lote de convênio:** em montagem → fechado (arquivo gerado) → enviado → retorno registrado.
+- **Autorização:** pedida → autorizada (número e validade) ou negada; item que exige autorização não fecha sem ela, salvo urgência com motivo.
+
+### Interface e dados (proposta)
+
+- **Tabelas da rede:** itens cobráveis com código (TUSS para convênio, SIGTAP para SUS, código próprio para particular), preço em centavos e vigência; importação por CSV pelo mecanismo existente.
+- **Contratos:** cada convênio aponta para uma tabela (com percentual de ajuste opcional) e diz quais itens exigem autorização.
+- **Entidades novas:** conta, item da conta (com origem), autorização, lote, retorno (pago e glosa por item com código de motivo), recebimento particular e recibo.
+- **Arquivo do convênio:** XML no padrão TISS da ANS, gerado por lote, baixado para envio manual no portal da operadora.
+
+### Não objetivos desta entrega (proposta)
+
+- Integração online com operadoras (WebService TISS, elegibilidade e autorização automáticas).
+- Nota fiscal de serviço (NFS-e), que depende do município, e gateway de pagamento.
+- Tabelas licenciadas de preço de materiais e medicamentos (Brasíndice, Simpro): o preço é cadastrado pela rede.
+- Contabilidade, contas a pagar, repasse médico e custo hospitalar.
+- Portal do paciente (entrega 7).
+
+### Questões (abertas, para o usuário decidir)
+
+1. **Recorte.** Proposta: **entrega 6 = particular e convênio** (conta, tabelas, autorização, lote TISS, retorno e glosa) e **entrega 6b = SUS** (BPA do ambulatório, AIH da internação, APAC), que tem regras e arquivos próprios do DATASUS. Alternativa: tudo numa entrega só (muito maior, mais demorada até o primeiro uso).
+2. **Origem dos itens.** Proposta: itens gerados automaticamente dos registros assistenciais (consulta, diária por dia de internação, exame liberado, cirurgia concluída, material consumido, medicamento dispensado menos devolvido); o faturamento revisa e pode incluir item manual com motivo. Alternativa: conta montada à mão pelo faturamento.
+3. **Quem fatura e o que lê.** Proposta: papel novo "Faturamento" por unidade, que vê a conta (itens, datas, códigos, carteira e nome do paciente), mas não a evolução, os resultados nem as descrições (exige ADR). Alternativa: o faturamento lê o prontuário durante a revisão da conta, com trilha.
+4. **Preços.** Proposta: tabela da rede por item, com vigência; cada convênio usa uma tabela, com ajuste percentual opcional; o preço fica congelado no item. Alternativa: uma tabela única para tudo.
+5. **Diária.** Proposta: uma diária por dia de internação, pelo tipo do leito (enfermaria, apartamento, UTI), contada pela permanência registrada nos movimentos da internação. Alternativa: diárias lançadas à mão.
+6. **Autorização de convênio.** Proposta: registro manual do número de autorização (e validade) por item ou guia; itens marcados no contrato como "exige autorização" não fecham sem ela, salvo urgência com motivo. Alternativa: sem controle de autorização.
+7. **Envio ao convênio.** Proposta: lote por convênio e competência, com o XML TISS gerado pelo sistema para envio no portal da operadora. Alternativa: só relatório (PDF/CSV) para digitação no portal.
+8. **Glosa e recurso.** Proposta: registrar o retorno por item (pago, glosado, código e motivo da glosa) e permitir recurso, que gera um novo envio. Alternativa: só o valor total pago por conta.
+9. **Particular.** Proposta: conta com recebimento registrado (forma: dinheiro, cartão, PIX, informativa, sem integração) e recibo em PDF; sem nota fiscal nesta entrega. Alternativa: incluir NFS-e (depende do município e de credenciais).
+10. **Fechamento.** Proposta: a conta vai para revisão quando o atendimento encerra ou na alta; o que chega depois entra em conta complementar. Alternativa: conta parcial periódica para internações longas (por exemplo, a cada 10 dias), comum em convênios.
+
+### Encaminhamento ECC
+
+- **Esclarecimento de produto:** aguardando as respostas às questões acima.
+- **Arquitetura:** depois das respostas, uma ADR para o acesso do faturamento e para a origem dos itens (unicidade por registro assistencial), e o plano em etapas `plans/web-v8-faturamento.md`.
+- **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
