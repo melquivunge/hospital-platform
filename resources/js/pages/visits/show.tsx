@@ -1,6 +1,7 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import ExamOrderController from '@/actions/App/Http/Controllers/ExamOrderController';
+import SurgeryOrderController from '@/actions/App/Http/Controllers/SurgeryOrderController';
 import ClinicalDocumentController from '@/actions/App/Http/Controllers/ClinicalDocumentController';
 import VisitController from '@/actions/App/Http/Controllers/VisitController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
@@ -38,7 +39,7 @@ export default function VisitShow({
     documents,
     examResults,
     admissionOptions,
-    canOrderExams,
+    canOrder,
 }: {
     visit: { id: number; openedAt: string | null; emergency: boolean };
     patient: RecordPatient;
@@ -50,7 +51,7 @@ export default function VisitShow({
     documents: ClinicalDocument[];
     examResults: ExamResultItem[];
     admissionOptions: AdmissionOptions | null;
-    canOrderExams: boolean;
+    canOrder: boolean;
 }) {
     const { errors } = usePage().props;
 
@@ -64,7 +65,7 @@ export default function VisitShow({
                     description={patientDescription(patient)}
                     actions={
                         <div className="flex flex-wrap gap-2">
-                            {canOrderExams && (
+                            {canOrder && (
                                 <Button
                                     asChild
                                     variant="outline"
@@ -76,6 +77,21 @@ export default function VisitShow({
                                         )}
                                     >
                                         Exames
+                                    </Link>
+                                </Button>
+                            )}
+                            {canOrder && (
+                                <Button
+                                    asChild
+                                    variant="outline"
+                                    className="min-h-11"
+                                >
+                                    <Link
+                                        href={SurgeryOrderController.forVisit(
+                                            visit.id,
+                                        )}
+                                    >
+                                        Cirurgias
                                     </Link>
                                 </Button>
                             )}
