@@ -99,7 +99,7 @@ class HandleInertiaRequests extends Middleware
             // Step 5b.3b: on the team of an open surgery.
             'canUseMySurgeries' => fn () => $request->user() !== null
                 && ($professional = ClinicalAccess::professional($request->user())) !== null
-                && Surgery::query()->whereIn('status', Surgery::OPEN)->whereHas('team', fn ($team) => $team->where('professional_id', $professional->id))->exists(),
+                && Surgery::query()->whereIn('status', Surgery::LIVE)->whereHas('team', fn ($team) => $team->where('professional_id', $professional->id))->exists(),
             'canViewExamOverdue' => fn () => $request->user() !== null
                 && ((UnitPolicy::currentMembership($request->user())?->hasRole(Role::NetworkAdmin) ?? false) || StockInventoryController::managerUnitIds($request->user()) !== []),
             // Pharmacy or unit manager: stock (read-only for the manager) and inventories.

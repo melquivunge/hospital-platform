@@ -162,7 +162,7 @@ final class ClinicalAccess
     }
 
     /**
-     * ADR-0009: the surgeries still open (requested or scheduled) whose record the user reads: as the Surgical center
+     * ADR-0009: the surgeries still open (requested, scheduled or in progress) whose record the user reads: as the Surgical center
      * of the unit, or as a member of the active team qualified in the unit. A request still unscheduled counts only
      * until REQUESTED_ACCESS_DAYS after its wished date.
      *
@@ -178,7 +178,7 @@ final class ClinicalAccess
 
         return Surgery::query()
             // A request nobody schedules does not open the record for ever (security review 5b.3b).
-            ->where(fn (Builder $open) => $open->where('status', 'scheduled')
+            ->where(fn (Builder $open) => $open->whereIn('status', Surgery::ACTIVE)
                 ->orWhere(fn (Builder $requested) => $requested->where('status', 'requested')->where('desired_date', '>=', now()->subDays(Surgery::REQUESTED_ACCESS_DAYS)->toDateString())))
             ->where(function (Builder $query) use ($units, $professional, $today) {
                 $query->whereIn('unit_id', $units);

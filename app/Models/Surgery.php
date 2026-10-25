@@ -28,7 +28,7 @@ use Illuminate\Support\Carbon;
  * @property string $urgency elective | urgent
  * @property Carbon $desired_date
  * @property string $indication
- * @property string $status requested | scheduled | cancelled
+ * @property string $status requested | scheduled | in_progress | cancelled
  * @property string $signature_method
  * @property Carbon $created_at
  * @property Carbon|null $cancelled_at
@@ -40,8 +40,9 @@ use Illuminate\Support\Carbon;
  * @property int|null $scheduled_by_user_id
  * @property Carbon|null $scheduled_at
  * @property string|null $urgent_reason
+ * @property Carbon|null $started_at step 5b.4: the first checklist step
  */
-#[Fillable(['patient_id', 'unit_id', 'admission_id', 'visit_id', 'author_user_id', 'professional_id', 'surgical_procedure_id', 'procedure_name', 'laterality', 'urgency', 'desired_date', 'indication', 'status', 'signature_method', 'created_at', 'cancelled_at', 'cancelled_by_user_id', 'cancellation_reason', 'operating_room_id', 'scheduled_start', 'scheduled_end', 'scheduled_by_user_id', 'scheduled_at', 'urgent_reason'])]
+#[Fillable(['patient_id', 'unit_id', 'admission_id', 'visit_id', 'author_user_id', 'professional_id', 'surgical_procedure_id', 'procedure_name', 'laterality', 'urgency', 'desired_date', 'indication', 'status', 'signature_method', 'created_at', 'cancelled_at', 'cancelled_by_user_id', 'cancellation_reason', 'operating_room_id', 'scheduled_start', 'scheduled_end', 'scheduled_by_user_id', 'scheduled_at', 'urgent_reason', 'started_at'])]
 class Surgery extends Model
 {
     use BelongsToTenant;
@@ -60,6 +61,12 @@ class Surgery extends Model
      */
     public const OPEN = ['requested', 'scheduled'];
 
+    /** Step 5b.4: booked in a room, before or after the start; the team works on it and reads the record. */
+    public const ACTIVE = ['scheduled', 'in_progress'];
+
+    /** Not yet over: what "Minhas cirurgias" lists. */
+    public const LIVE = ['requested', 'scheduled', 'in_progress'];
+
     /** Security review 5b.3b: an unscheduled request gives the record until this many days after its wished date. */
     public const REQUESTED_ACCESS_DAYS = 7;
 
@@ -76,7 +83,7 @@ class Surgery extends Model
      */
     public static function overdue(): Builder
     {
-        return self::query()->where('status', 'scheduled')->where('scheduled_end', '<=', now()->subHours(self::OVERDUE_HOURS));
+        return self::query()->whereIn('status', self::ACTIVE)->where('scheduled_end', '<=', now()->subHours(self::OVERDUE_HOURS));
     }
 
     /**
@@ -100,6 +107,22 @@ class Surgery extends Model
     }
 
     /**
+     * @return HasMany<SurgeryChecklistStep, $this>
+     */
+    public function checklist(): HasMany
+    {
+        return $this->hasMany(SurgeryChecklistStep::class)->orderBy('id');
+    }
+
+    /**
+     * @return HasMany<SurgeryConsent, $this>
+     */
+    public function consents(): HasMany
+    {
+        return $this->hasMany(SurgeryConsent::class)->orderBy('id');
+    }
+
+    /**
      * @return HasMany<SurgeryReschedule, $this>
      */
     public function reschedules(): HasMany
@@ -120,6 +143,6 @@ class Surgery extends Model
      */
     protected function casts(): array
     {
-        return ['desired_date' => 'date', 'created_at' => 'datetime', 'cancelled_at' => 'datetime', 'scheduled_start' => 'datetime', 'scheduled_end' => 'datetime', 'scheduled_at' => 'datetime'];
+        return ['desired_date' => 'date', 'created_at' => 'datetime', 'cancelled_at' => 'datetime', 'scheduled_start' => 'datetime', 'scheduled_end' => 'datetime', 'scheduled_at' => 'datetime', 'started_at' => 'datetime'];
     }
 }
