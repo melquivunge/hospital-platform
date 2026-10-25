@@ -2,6 +2,7 @@
 
 namespace App\Clinical;
 
+use App\Http\Controllers\SurgeryScheduleController;
 use App\Models\Admission;
 use App\Models\EmergencyAccess;
 use App\Models\ExamOrder;
@@ -10,6 +11,7 @@ use App\Models\Patient;
 use App\Models\Prescription;
 use App\Models\Professional;
 use App\Models\RoleAssignment;
+use App\Models\Surgery;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Visit;
@@ -159,7 +161,47 @@ final class ClinicalAccess
         return self::openExamOrders($user)->whereIn('patient_id', self::recordIds($patient))->orderBy('id')->first();
     }
 
-    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission|Prescription|ExamOrder $basis): void
+    /**
+     * ADR-0009: the surgeries still open (requested or scheduled) whose record the user reads: as the Surgical center
+     * of the unit, or as a member of the active team qualified in the unit. A request still unscheduled counts only
+     * until REQUESTED_ACCESS_DAYS after its wished date.
+     *
+     * @return Builder<Surgery>
+     */
+    public static function openSurgeries(User $user): Builder
+    {
+        $membership = UnitPolicy::currentMembership($user);
+        $units = SurgeryScheduleController::unitIds($membership);
+        $professional = self::professional($user);
+
+        $today = now()->toDateString();
+
+        return Surgery::query()
+            // A request nobody schedules does not open the record for ever (security review 5b.3b).
+            ->where(fn (Builder $open) => $open->where('status', 'scheduled')
+                ->orWhere(fn (Builder $requested) => $requested->where('status', 'requested')->where('desired_date', '>=', now()->subDays(Surgery::REQUESTED_ACCESS_DAYS)->toDateString())))
+            ->where(function (Builder $query) use ($units, $professional, $today) {
+                $query->whereIn('unit_id', $units);
+                if ($professional !== null) {
+                    // On the active team and still qualified in the surgery's unit.
+                    $query->orWhere(fn (Builder $team) => $team->whereHas('team', fn (Builder $members) => $members->where('professional_id', $professional->id))
+                        ->whereExists(fn ($qualification) => $qualification->selectRaw('1')->from('qualifications')
+                            ->where('qualifications.professional_id', $professional->id)->whereColumn('qualifications.unit_id', 'surgeries.unit_id')
+                            ->where('qualifications.status', QualificationStatus::Approved->value)->whereDate('qualifications.valid_from', '<=', $today)
+                            ->where(fn ($valid) => $valid->whereNull('qualifications.valid_until')->orWhereDate('qualifications.valid_until', '>=', $today))));
+                }
+            });
+    }
+
+    /**
+     * The open surgery that lets this user read the patient's record, if any (ADR-0009).
+     */
+    public static function activeSurgery(User $user, Patient $patient): ?Surgery
+    {
+        return self::openSurgeries($user)->whereIn('patient_id', self::recordIds($patient))->orderBy('id')->first();
+    }
+
+    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission|Prescription|ExamOrder|Surgery $basis): void
     {
         DB::table('clinical_reads')->insert([
             'tenant_id' => $patient->tenant_id, 'user_id' => $user->id, 'patient_id' => $patient->merged_into_id ?? $patient->id,
@@ -170,6 +212,8 @@ final class ClinicalAccess
                 $basis instanceof Prescription => 'pharmacy',
                 // ADR-0008: the exam team, while the order is open.
                 $basis instanceof ExamOrder => 'exam',
+                // ADR-0009: the surgical center and the scheduled team, while the surgery is open.
+                $basis instanceof Surgery => 'surgery',
                 default => 'emergency',
             },
             'visit_id' => $basis instanceof Visit ? $basis->id : null,
@@ -177,6 +221,7 @@ final class ClinicalAccess
             'admission_id' => $basis instanceof Admission ? $basis->id : null,
             'prescription_id' => $basis instanceof Prescription ? $basis->id : null,
             'exam_order_id' => $basis instanceof ExamOrder ? $basis->id : null,
+            'surgery_id' => $basis instanceof Surgery ? $basis->id : null,
             'read_at' => now(),
         ]);
     }

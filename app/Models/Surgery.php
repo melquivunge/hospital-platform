@@ -59,6 +59,9 @@ class Surgery extends Model
      */
     public const OPEN = ['requested', 'scheduled'];
 
+    /** Security review 5b.3b: an unscheduled request gives the record until this many days after its wished date. */
+    public const REQUESTED_ACCESS_DAYS = 7;
+
     public $timestamps = false;
 
     /**

@@ -14,6 +14,7 @@ use App\Models\ExamResultValue;
 use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\Qualification;
+use App\Models\Surgery;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Visit;
@@ -204,6 +205,7 @@ class ExamResultController extends Controller
         // Whoever reads the record; and the team of the item's type in the unit, which may rectify it (ADR-0008).
         $basis = ClinicalAccess::activeVisit($request->user(), $patient) ?? ClinicalAccess::activeAdmission($request->user(), $patient)
             ?? ClinicalAccess::activeEmergency($request->user(), $patient) ?? ClinicalAccess::activeExamOrder($request->user(), $patient)
+            ?? ClinicalAccess::activeSurgery($request->user(), $patient)
             ?? (in_array($item->exam_type, ExamQueueController::typesIn(ClinicalAccess::examScopes(UnitPolicy::currentMembership($request->user())), $order->unit_id), true) ? $order : abort(403));
         abort_if($result->attachment_path === null, 404);
         abort_unless(str_starts_with($result->attachment_path, "clinical/{$result->tenant_id}/") && ! str_contains($result->attachment_path, '..'), 404);
@@ -214,6 +216,7 @@ class ExamResultController extends Controller
             $basis instanceof Visit => 'visit',
             $basis instanceof Admission => 'admission',
             $basis instanceof ExamOrder => 'exam',
+            $basis instanceof Surgery => 'surgery',
             default => 'emergency',
         }]);
 
