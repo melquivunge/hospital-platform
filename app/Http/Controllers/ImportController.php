@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Imports\CsvReader;
 use App\Imports\ExamAnalyteCsvImporter;
 use App\Imports\ExamCsvImporter;
+use App\Imports\MaterialCsvImporter;
 use App\Imports\MedicationCsvImporter;
 use App\Imports\MedicationInteractionCsvImporter;
 use App\Imports\ProfessionalCsvImporter;
@@ -170,7 +171,7 @@ class ImportController extends Controller
         // Step 4b.1b: the catalog is the network's; confirming needs the right to keep it.
         abort_if(in_array($batch->type, self::CATALOG, true) && $request->user()->cannot('manage', Medication::class), 403);
         abort_if(in_array($batch->type, ['exams', 'exam_analytes'], true) && $request->user()->cannot('manage', Exam::class), 403);
-        abort_if($batch->type === 'surgical_procedures' && $request->user()->cannot('manage', SurgicalProcedure::class), 403);
+        abort_if(in_array($batch->type, ['surgical_procedures', 'materials'], true) && $request->user()->cannot('manage', SurgicalProcedure::class), 403);
         // Step 4c.1b (ADR-0007): only the pharmacist who previewed it moves the stock, not a network admin.
         abort_if($batch->type === 'stock' && $batch->created_by_user_id !== $request->user()->id, 403);
 
@@ -219,14 +220,14 @@ class ImportController extends Controller
             // Step 5.1b: the exam catalog and its analytes, by who keeps the network catalog.
             ...($request->user()->can('manage', Exam::class) ? ['exams' => ExamCsvImporter::class, 'exam_analytes' => ExamAnalyteCsvImporter::class] : []),
             // Step 5b.1b: the surgical procedures, by who keeps the network catalog.
-            ...($request->user()->can('manage', SurgicalProcedure::class) ? ['surgical_procedures' => SurgicalProcedureCsvImporter::class] : []),
+            ...($request->user()->can('manage', SurgicalProcedure::class) ? ['surgical_procedures' => SurgicalProcedureCsvImporter::class, 'materials' => MaterialCsvImporter::class] : []),
             // Step 4c.1b: the initial stock balance, by the unit's pharmacy.
             ...(PharmacyController::unitIds($membership) !== [] ? ['stock' => StockCsvImporter::class] : []),
         ];
     }
 
     /**
-     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>|class-string<StockCsvImporter>|class-string<ExamCsvImporter>|class-string<ExamAnalyteCsvImporter>|class-string<SurgicalProcedureCsvImporter>
+     * @return class-string<ProfessionalCsvImporter>|class-string<ShiftCsvImporter>|class-string<MedicationCsvImporter>|class-string<MedicationInteractionCsvImporter>|class-string<StockCsvImporter>|class-string<ExamCsvImporter>|class-string<ExamAnalyteCsvImporter>|class-string<SurgicalProcedureCsvImporter>|class-string<MaterialCsvImporter>
      */
     public static function importer(string $type): string
     {
@@ -238,6 +239,7 @@ class ImportController extends Controller
             'exams' => ExamCsvImporter::class,
             'exam_analytes' => ExamAnalyteCsvImporter::class,
             'surgical_procedures' => SurgicalProcedureCsvImporter::class,
+            'materials' => MaterialCsvImporter::class,
             default => ProfessionalCsvImporter::class,
         };
     }

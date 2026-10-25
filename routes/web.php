@@ -263,6 +263,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('surgery-catalog', [SurgeryCatalogController::class, 'index'])->name('surgery-catalog.index');
     Route::post('surgical-procedures', [SurgeryCatalogController::class, 'storeProcedure'])->middleware('throttle:60,1')->name('surgical-procedures.store');
     Route::put('surgical-procedures/{procedure}', [SurgeryCatalogController::class, 'updateProcedure'])->middleware('throttle:60,1')->name('surgical-procedures.update');
+    // Step 5b.6a: the network materials, on the same screen.
+    Route::post('materials', [SurgeryCatalogController::class, 'storeMaterial'])->middleware('throttle:60,1')->name('materials.store');
+    Route::put('materials/{material}', [SurgeryCatalogController::class, 'updateMaterial'])->middleware('throttle:60,1')->name('materials.update');
     Route::post('operating-rooms', [SurgeryCatalogController::class, 'storeRoom'])->middleware('throttle:60,1')->name('operating-rooms.store');
     Route::put('operating-rooms/{room}', [SurgeryCatalogController::class, 'updateRoom'])->middleware('throttle:60,1')->name('operating-rooms.update');
     Route::get('medications', [MedicationController::class, 'index'])->name('medications.index');

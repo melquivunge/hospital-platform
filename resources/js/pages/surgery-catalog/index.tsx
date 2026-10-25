@@ -22,9 +22,17 @@ type Room = { id: number; name: string; active: boolean };
 
 type UnitRooms = { id: number; name: string; rooms: Room[] };
 
+type Material = {
+    id: number;
+    name: string;
+    code: string | null;
+    stock_unit: string;
+    active: boolean;
+};
+
 /**
- * The network surgical procedures and the operating rooms of each unit (step 5b.1a, delivery 5b), kept by the
- * network admin. Deactivated, never deleted. No patient data.
+ * The network surgical procedures and the operating rooms of each unit (step 5b.1a, delivery 5b), and the network
+ * materials (step 5b.6a), kept by the network admin. Deactivated, never deleted. No patient data.
  */
 export default function SurgeryCatalogIndex({
     q,
@@ -33,6 +41,10 @@ export default function SurgeryCatalogIndex({
     procedures,
     sizes,
     units,
+    m,
+    materialTotal,
+    materials,
+    stockUnits,
 }: {
     q: string;
     total: number;
@@ -40,26 +52,39 @@ export default function SurgeryCatalogIndex({
     procedures: Procedure[];
     sizes: Record<string, string>;
     units: UnitRooms[];
+    m: string;
+    materialTotal: number;
+    materials: Material[];
+    stockUnits: string[];
 }) {
-    const search = (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        const value = new FormData(event.currentTarget).get('q');
-        router.get(
-            index({
-                query: typeof value === 'string' && value ? { q: value } : {},
-            }).url,
-            {},
-            { preserveState: true },
-        );
-    };
+    // Each list keeps the other's search in the address.
+    const searchBy =
+        (field: 'q' | 'm') => (event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            const value = new FormData(event.currentTarget).get(field);
+            const query = {
+                q,
+                m,
+                [field]: typeof value === 'string' ? value : '',
+            };
+            router.get(
+                index({
+                    query: Object.fromEntries(
+                        Object.entries(query).filter(([, text]) => text),
+                    ),
+                }).url,
+                {},
+                { preserveState: true, preserveScroll: true },
+            );
+        };
 
     return (
         <>
-            <Head title="Procedimentos e salas" />
+            <Head title="Procedimentos, salas e materiais" />
             <Page>
                 <PageHeader
-                    title="Procedimentos e salas"
-                    description="Procedimentos cirúrgicos da rede e salas do centro cirúrgico de cada unidade. São desativados, nunca apagados."
+                    title="Procedimentos, salas e materiais"
+                    description="Procedimentos cirúrgicos e materiais da rede e salas do centro cirúrgico de cada unidade. São desativados, nunca apagados."
                 />
 
                 <section className="mb-8 grid gap-3">
@@ -107,12 +132,13 @@ export default function SurgeryCatalogIndex({
                 </section>
 
                 <form
-                    onSubmit={search}
+                    onSubmit={searchBy('q')}
                     role="search"
+                    aria-label="Buscar procedimentos"
                     className="mb-4 flex flex-wrap items-end gap-3"
                 >
                     <div className="grid gap-2">
-                        <Label htmlFor="q">Buscar pelo nome</Label>
+                        <Label htmlFor="q">Buscar procedimento pelo nome</Label>
                         <Input
                             id="q"
                             name="q"
@@ -174,6 +200,82 @@ export default function SurgeryCatalogIndex({
                         ))}
                     </ul>
                 )}
+
+                <section className="mt-10 grid gap-3">
+                    <h2 className="text-lg font-semibold">Materiais</h2>
+                    <p className="text-sm text-muted-foreground">
+                        O estoque e o consumo na cirurgia contam cada material
+                        na sua unidade de estoque.
+                    </p>
+                    <MaterialForm stockUnits={stockUnits} />
+                    <form
+                        onSubmit={searchBy('m')}
+                        role="search"
+                        aria-label="Buscar materiais"
+                        className="flex flex-wrap items-end gap-3"
+                    >
+                        <div className="grid gap-2">
+                            <Label htmlFor="m">Buscar material pelo nome</Label>
+                            <Input
+                                id="m"
+                                name="m"
+                                defaultValue={m}
+                                className="h-11 w-72 max-w-full"
+                            />
+                        </div>
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            className="min-h-11"
+                        >
+                            Buscar
+                        </Button>
+                    </form>
+                    <p className="text-sm text-muted-foreground">
+                        {materialTotal} material(is) no catálogo
+                        {materials.length >= limit &&
+                            `; mostrando os primeiros ${limit}`}
+                        .
+                    </p>
+                    {materials.length === 0 ? (
+                        <p className="rounded-xl border bg-card px-5 py-12 text-center text-muted-foreground">
+                            Nenhum material encontrado.
+                        </p>
+                    ) : (
+                        <ul className="grid gap-3">
+                            {materials.map((material) => (
+                                <li
+                                    key={material.id}
+                                    className="rounded-xl border bg-card px-5 py-4"
+                                >
+                                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                        <h3 className="font-medium">
+                                            {material.name}
+                                        </h3>
+                                        <span className="text-sm text-muted-foreground">
+                                            {material.stock_unit}
+                                            {material.code &&
+                                                ` · ${material.code}`}
+                                            {!material.active && ' · inativo'}
+                                        </span>
+                                    </div>
+                                    <details className="mt-2">
+                                        <summary
+                                            aria-label={`Alterar ${material.name}`}
+                                            className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary"
+                                        >
+                                            Alterar
+                                        </summary>
+                                        <MaterialForm
+                                            stockUnits={stockUnits}
+                                            material={material}
+                                        />
+                                    </details>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </section>
             </Page>
         </>
     );
@@ -275,6 +377,96 @@ function ProcedureForm({
                             {procedure
                                 ? 'Salvar procedimento'
                                 : 'Cadastrar procedimento'}
+                        </Button>
+                    </div>
+                </>
+            )}
+        </Form>
+    );
+}
+
+function MaterialForm({
+    stockUnits,
+    material,
+}: {
+    stockUnits: string[];
+    material?: Material;
+}) {
+    const prefix = material ? `material-${material.id}` : 'new-material';
+    const action = material
+        ? SurgeryCatalogController.updateMaterial.form(material.id)
+        : SurgeryCatalogController.storeMaterial.form();
+
+    return (
+        <Form
+            {...action}
+            errorBag={material ? prefix : 'newMaterial'}
+            options={{ preserveScroll: true }}
+            resetOnSuccess={!material}
+            className="mt-2 grid gap-4 rounded-xl border bg-card p-5"
+        >
+            {({ processing, errors }) => (
+                <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-2 sm:col-span-2">
+                            <Label htmlFor={`${prefix}-name`}>Nome</Label>
+                            <Input
+                                id={`${prefix}-name`}
+                                name="name"
+                                required
+                                maxLength={255}
+                                defaultValue={material?.name}
+                                className="h-11"
+                            />
+                            <InputError message={errors.name} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor={`${prefix}-unit`}>
+                                Unidade de estoque
+                            </Label>
+                            <select
+                                id={`${prefix}-unit`}
+                                name="stock_unit"
+                                defaultValue={material?.stock_unit ?? 'unidade'}
+                                className={selectClassName}
+                            >
+                                {stockUnits.map((unit) => (
+                                    <option key={unit} value={unit}>
+                                        {unit}
+                                    </option>
+                                ))}
+                            </select>
+                            <InputError message={errors.stock_unit} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor={`${prefix}-code`}>
+                                Código (opcional)
+                            </Label>
+                            <Input
+                                id={`${prefix}-code`}
+                                name="code"
+                                maxLength={30}
+                                defaultValue={material?.code ?? ''}
+                                className="h-11"
+                            />
+                            <InputError message={errors.code} />
+                        </div>
+                    </div>
+                    {material && (
+                        <ActiveToggle
+                            active={material.active}
+                            label="Ativo (material inativo não recebe entrada nem consumo)"
+                        />
+                    )}
+                    <div>
+                        <Button
+                            type="submit"
+                            disabled={processing}
+                            className="min-h-11"
+                        >
+                            {material
+                                ? 'Salvar material'
+                                : 'Cadastrar material'}
                         </Button>
                     </div>
                 </>

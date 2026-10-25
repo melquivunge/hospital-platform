@@ -61,6 +61,8 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 5" (decisões do usuário 
 - `stock_lots` com medicamento ou material; entradas, descarte, inventário, avisos e relatório da farmácia passam a incluir materiais.
 - Consumo na cirurgia pelo centro cirúrgico (movimento `surgery`) e estorno (`surgery_return`) até o consumido.
 - **Saída:** saldo nunca negativo sob corrida real; consumo só de lote válido da unidade da cirurgia.
+- Divisão (25/10/2026): 5b.6a catálogo de materiais e importação CSV; 5b.6b lotes de material na farmácia (entradas, descarte, inventário, avisos, relatório e importação de saldo); 5b.6c consumo e estorno na cirurgia.
+- **Feito na 5b.6a:** na tela "Procedimentos, salas e materiais", o administrador da rede cadastra materiais (nome único na rede sem distinção de maiúsculas, unidade de estoque de uma lista fixa, código opcional), com busca própria; desativados, nunca apagados; o banco confere os valores. Importação CSV pelo mecanismo existente (`material_name;stock_unit;code`), só pelo administrador da rede: prévia sem gravar, confirmação, aplicação retomável; material existente nunca muda (idêntico ou conflito). Auditoria `material.*` só com ids, unidade de estoque e campos alterados.
 
 ### 5b.7 Revisão integrada
 - **Jornada num cliente novo:** pedido eletivo na internação → agenda e equipe → termo → checklist → descrição → materiais; urgência sem termo, com motivo; acesso encerrado depois da conclusão.

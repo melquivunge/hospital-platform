@@ -71,7 +71,8 @@ type ImportType =
     | 'stock'
     | 'exams'
     | 'exam_analytes'
-    | 'surgical_procedures';
+    | 'surgical_procedures'
+    | 'materials';
 
 const typeLabels: Record<ImportType, string> = {
     professionals: 'Profissionais',
@@ -83,6 +84,7 @@ const typeLabels: Record<ImportType, string> = {
     exams: 'Catálogo de exames',
     exam_analytes: 'Analitos dos exames de laboratório (depois do catálogo)',
     surgical_procedures: 'Procedimentos cirúrgicos',
+    materials: 'Catálogo de materiais cirúrgicos',
 };
 
 export default function ImportCreate({
