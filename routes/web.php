@@ -6,6 +6,7 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AttendanceOccurrenceController;
 use App\Http\Controllers\AttendancePointController;
 use App\Http\Controllers\BedController;
+use App\Http\Controllers\BillingPriceController;
 use App\Http\Controllers\CensusController;
 use App\Http\Controllers\ClinicalDocumentController;
 use App\Http\Controllers\ClinicalRecordController;
@@ -267,6 +268,13 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('surgery-catalog', [SurgeryCatalogController::class, 'index'])->name('surgery-catalog.index');
     Route::post('surgical-procedures', [SurgeryCatalogController::class, 'storeProcedure'])->middleware('throttle:60,1')->name('surgical-procedures.store');
     Route::put('surgical-procedures/{procedure}', [SurgeryCatalogController::class, 'updateProcedure'])->middleware('throttle:60,1')->name('surgical-procedures.update');
+    // Step 6.1a: the network's billable items, price tables and prices.
+    Route::get('billing-prices', [BillingPriceController::class, 'index'])->name('billing-prices.index');
+    Route::post('billing-items', [BillingPriceController::class, 'storeItem'])->middleware('throttle:60,1')->name('billing-items.store');
+    Route::put('billing-items/{item}', [BillingPriceController::class, 'updateItem'])->middleware('throttle:60,1')->name('billing-items.update');
+    Route::post('price-tables', [BillingPriceController::class, 'storeTable'])->middleware('throttle:60,1')->name('price-tables.store');
+    Route::put('price-tables/{table}', [BillingPriceController::class, 'updateTable'])->middleware('throttle:60,1')->name('price-tables.update');
+    Route::post('price-tables/{table}/prices', [BillingPriceController::class, 'storePrice'])->middleware('throttle:60,1')->name('price-tables.prices.store');
     // Step 5b.6a: the network materials, on the same screen.
     Route::post('materials', [SurgeryCatalogController::class, 'storeMaterial'])->middleware('throttle:60,1')->name('materials.store');
     Route::put('materials/{material}', [SurgeryCatalogController::class, 'updateMaterial'])->middleware('throttle:60,1')->name('materials.update');

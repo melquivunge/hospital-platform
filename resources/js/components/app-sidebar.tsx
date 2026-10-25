@@ -5,38 +5,39 @@ import {
     BedDouble,
     BedSingle,
     Boxes,
-    TestTube,
     BriefcaseMedical,
+    Building2,
     CalendarCheck,
-    CalendarPlus,
-    ClipboardCheck,
-    ClipboardPlus,
     CalendarClock,
     CalendarDays,
-    GitMerge,
-    History,
+    CalendarPlus,
     ChartColumn,
     ChartLine,
     ChartPie,
+    ClipboardCheck,
+    ClipboardPlus,
     FileUp,
-    Gauge,
-    Hospital,
-    Siren,
-    Building2,
-    Landmark,
-    Pill,
     FlaskConical,
+    Gauge,
+    GitMerge,
+    History,
+    Hospital,
+    Landmark,
     LayoutGrid,
     ListOrdered,
     Megaphone,
+    Pill,
+    Receipt,
     Repeat,
+    Scissors,
     ShieldCheck,
+    Siren,
     SlidersHorizontal,
     Stethoscope,
-    UsersRound,
-    Scissors,
+    TestTube,
     TestTubeDiagonal,
     Users,
+    UsersRound,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
@@ -60,6 +61,7 @@ import { index as pharmacy } from '@/routes/pharmacy';
 import { index as examQueue } from '@/routes/exam-queue';
 import { index as examOverdue } from '@/routes/exam-overdue';
 import { index as exams } from '@/routes/exams';
+import { index as billingPrices } from '@/routes/billing-prices';
 import { index as surgeryCatalog } from '@/routes/surgery-catalog';
 import { index as stock } from '@/routes/stock';
 import { index as inventories } from '@/routes/stock/inventories';
@@ -316,6 +318,9 @@ export function AppSidebar() {
             : []),
         ...(canManageMedications
             ? [{ title: 'Medicamentos', href: medications(), icon: Pill }]
+            : []),
+        ...(canManageMedications
+            ? [{ title: 'Preços', href: billingPrices(), icon: Receipt }]
             : []),
         ...(canManageExams
             ? [{ title: 'Exames', href: exams(), icon: TestTubeDiagonal }]
