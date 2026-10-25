@@ -11,6 +11,7 @@ export default function MySurgeries({
     roles,
     lateralities,
     urgencies,
+    addendumDays,
 }: {
     surgeries: {
         id: number;
@@ -22,10 +23,12 @@ export default function MySurgeries({
         room: string | null;
         start: string | null;
         role: string | null;
+        status: string;
     }[];
     roles: Record<string, string>;
     lateralities: Record<string, string>;
     urgencies: Record<string, string>;
+    addendumDays: number;
 }) {
     return (
         <>
@@ -63,6 +66,8 @@ export default function MySurgeries({
                                                 : 'aguardando agendamento'}
                                             {surgery.role &&
                                                 ` · ${roles[surgery.role]}`}
+                                            {surgery.status === 'completed' &&
+                                                ` · concluída: adendo por ${addendumDays} dias`}
                                         </span>
                                     </span>
                                     <span

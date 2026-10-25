@@ -6,6 +6,8 @@ import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
 import type { ExamResultItem } from '@/components/exam-results';
 import { ExamResults } from '@/components/exam-results';
+import { SurgeryDescriptions } from '@/components/surgery-descriptions';
+import type { SurgeryDescriptionData } from '@/components/surgery-descriptions';
 import { Page, PageHeader } from '@/components/page';
 import type { PatientAllergy } from '@/components/patient-allergies';
 import { PatientAllergies } from '@/components/patient-allergies';
@@ -18,6 +20,7 @@ export default function ClinicalRecord({
     record,
     documents,
     examResults,
+    surgeryDescriptions,
 }: {
     patient: RecordPatient;
     allergies: PatientAllergy[];
@@ -25,6 +28,7 @@ export default function ClinicalRecord({
     record: RecordNote[];
     documents: ClinicalDocument[];
     examResults: ExamResultItem[];
+    surgeryDescriptions: SurgeryDescriptionData[];
 }) {
     return (
         <>
@@ -64,6 +68,7 @@ export default function ClinicalRecord({
                         )}
                     </section>
                     <ExamResults results={examResults} />
+                    <SurgeryDescriptions descriptions={surgeryDescriptions} />
                     <ClinicalDocuments documents={documents} />
                 </div>
             </Page>

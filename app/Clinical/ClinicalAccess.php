@@ -174,23 +174,33 @@ final class ClinicalAccess
         $units = SurgeryScheduleController::unitIds($membership);
         $professional = self::professional($user);
 
-        $today = now()->toDateString();
-
         return Surgery::query()
             // A request nobody schedules does not open the record for ever (security review 5b.3b).
             ->where(fn (Builder $open) => $open->whereIn('status', Surgery::ACTIVE)
                 ->orWhere(fn (Builder $requested) => $requested->where('status', 'requested')->where('desired_date', '>=', now()->subDays(Surgery::REQUESTED_ACCESS_DAYS)->toDateString())))
-            ->where(function (Builder $query) use ($units, $professional, $today) {
+            ->where(function (Builder $query) use ($units, $professional) {
                 $query->whereIn('unit_id', $units);
                 if ($professional !== null) {
                     // On the active team and still qualified in the surgery's unit.
-                    $query->orWhere(fn (Builder $team) => $team->whereHas('team', fn (Builder $members) => $members->where('professional_id', $professional->id))
-                        ->whereExists(fn ($qualification) => $qualification->selectRaw('1')->from('qualifications')
-                            ->where('qualifications.professional_id', $professional->id)->whereColumn('qualifications.unit_id', 'surgeries.unit_id')
-                            ->where('qualifications.status', QualificationStatus::Approved->value)->whereDate('qualifications.valid_from', '<=', $today)
-                            ->where(fn ($valid) => $valid->whereNull('qualifications.valid_until')->orWhereDate('qualifications.valid_until', '>=', $today))));
+                    $query->orWhere(fn (Builder $team) => self::qualifiedInSurgeryUnit($team->whereHas('team', fn (Builder $members) => $members->where('professional_id', $professional->id)), $professional->id));
                 }
             });
+    }
+
+    /**
+     * Surgeries whose unit the professional holds a valid qualification in today.
+     *
+     * @param  Builder<Surgery>  $query
+     * @return Builder<Surgery>
+     */
+    public static function qualifiedInSurgeryUnit(Builder $query, int $professionalId): Builder
+    {
+        $today = now()->toDateString();
+
+        return $query->whereExists(fn ($qualification) => $qualification->selectRaw('1')->from('qualifications')
+            ->where('qualifications.professional_id', $professionalId)->whereColumn('qualifications.unit_id', 'surgeries.unit_id')
+            ->where('qualifications.status', QualificationStatus::Approved->value)->whereDate('qualifications.valid_from', '<=', $today)
+            ->where(fn ($valid) => $valid->whereNull('qualifications.valid_until')->orWhereDate('qualifications.valid_until', '>=', $today)));
     }
 
     /**

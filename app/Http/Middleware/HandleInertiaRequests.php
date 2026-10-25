@@ -8,6 +8,7 @@ use App\Http\Controllers\BedController;
 use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\StockInventoryController;
+use App\Http\Controllers\SurgeryRecordController;
 use App\Http\Controllers\SurgeryScheduleController;
 use App\Models\Exam;
 use App\Models\ImportBatch;
@@ -20,7 +21,6 @@ use App\Models\PatientMerge;
 use App\Models\PolicyVersion;
 use App\Models\Professional;
 use App\Models\Shift;
-use App\Models\Surgery;
 use App\Models\SurgicalProcedure;
 use App\Models\UserNotification;
 use App\Policies\ShiftPolicy;
@@ -96,10 +96,10 @@ class HandleInertiaRequests extends Middleware
             // Step 5b.3a (ADR-0009): the Surgical center role in some unit.
             'canUseSurgerySchedule' => fn () => $request->user() !== null
                 && SurgeryScheduleController::unitIds(UnitPolicy::currentMembership($request->user())) !== [],
-            // Step 5b.3b: on the team of an open surgery.
+            // Step 5b.3b: on the team of an open surgery; step 5b.5: or a surgeon of a recently completed one.
             'canUseMySurgeries' => fn () => $request->user() !== null
                 && ($professional = ClinicalAccess::professional($request->user())) !== null
-                && Surgery::query()->whereIn('status', Surgery::LIVE)->whereHas('team', fn ($team) => $team->where('professional_id', $professional->id))->exists(),
+                && SurgeryRecordController::mineQuery($professional->id)->exists(),
             'canViewExamOverdue' => fn () => $request->user() !== null
                 && ((UnitPolicy::currentMembership($request->user())?->hasRole(Role::NetworkAdmin) ?? false) || StockInventoryController::managerUnitIds($request->user()) !== []),
             // Pharmacy or unit manager: stock (read-only for the manager) and inventories.

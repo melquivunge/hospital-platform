@@ -127,6 +127,7 @@ class VisitController extends Controller
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
             // Step 5.4: the released exam results of the record.
             'examResults' => ExamResultController::listing($ids, $timezone, $request->user(), attends: true),
+            'surgeryDescriptions' => SurgeryDescriptionController::listing($ids, $timezone),
             // Step 5.2: the links to the exam (5.2) and surgery (5b.2) orders of this visit.
             'canOrder' => ExamOrderController::orderer($request->user(), $visit->unit_id) !== null,
             // Drafts are seen only by their author.

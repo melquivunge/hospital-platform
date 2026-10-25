@@ -51,7 +51,8 @@ class SurgeryScheduleController extends Controller
 
         $requested = Surgery::query()->where('unit_id', $unit->id)->where('status', 'requested')
             ->orderByRaw("urgency = 'urgent' DESC")->orderBy('desired_date')->orderBy('id')->get();
-        $booked = Surgery::query()->where('unit_id', $unit->id)->whereIn('status', Surgery::ACTIVE)
+        // Step 5b.5: the completed ones stay in the day, marked.
+        $booked = Surgery::query()->where('unit_id', $unit->id)->whereIn('status', [...Surgery::ACTIVE, 'completed'])
             ->where('scheduled_start', '<', $day->addDay()->utc())->where('scheduled_end', '>', $day->utc())
             ->with('team.professional:id,name')->orderBy('scheduled_start')->get();
         $rooms = OperatingRoom::query()->where('unit_id', $unit->id)
@@ -79,6 +80,7 @@ class SurgeryScheduleController extends Controller
                     'start' => $surgery->scheduled_start?->timezone($unit->timezone)->format('d/m H:i'),
                     'end' => $surgery->scheduled_end?->timezone($unit->timezone)->format('d/m H:i'),
                     'surgeons' => $surgery->team->where('role', 'surgeon')->map(fn (SurgeryTeamMember $member) => $member->professional->name)->values(),
+                    'status' => $surgery->status,
                 ])->values(),
             ])->values(),
         ]);
@@ -110,6 +112,7 @@ class SurgeryScheduleController extends Controller
                 'durationMinutes' => $surgery->scheduled_start === null ? $duration : (int) $surgery->scheduled_start->diffInMinutes($surgery->scheduled_end),
                 'scheduledBy' => $users->get((int) $surgery->scheduled_by_user_id),
                 'startedAt' => $format($surgery->started_at),
+                'completedAt' => $format($surgery->completed_at),
                 'urgentReason' => $surgery->urgent_reason,
                 'cancellationReason' => $surgery->cancellation_reason,
                 'cancelledBy' => $users->get((int) $surgery->cancelled_by_user_id),

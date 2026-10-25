@@ -8,6 +8,8 @@ import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
 import type { ExamResultItem } from '@/components/exam-results';
 import { ExamResults } from '@/components/exam-results';
+import { SurgeryDescriptions } from '@/components/surgery-descriptions';
+import type { SurgeryDescriptionData } from '@/components/surgery-descriptions';
 import type { Draft } from '@/components/clinical-notes';
 import { NotesWorkspace } from '@/components/clinical-notes';
 import type { RecordNote, RecordPatient } from '@/components/clinical-record';
@@ -38,6 +40,7 @@ export default function VisitShow({
     drafts,
     documents,
     examResults,
+    surgeryDescriptions,
     admissionOptions,
     canOrder,
 }: {
@@ -50,6 +53,7 @@ export default function VisitShow({
     drafts: Draft[];
     documents: ClinicalDocument[];
     examResults: ExamResultItem[];
+    surgeryDescriptions: SurgeryDescriptionData[];
     admissionOptions: AdmissionOptions | null;
     canOrder: boolean;
 }) {
@@ -138,6 +142,7 @@ export default function VisitShow({
                     record={record}
                 >
                     <ExamResults results={examResults} />
+                    <SurgeryDescriptions descriptions={surgeryDescriptions} />
                     <ClinicalDocuments
                         documents={documents}
                         attach={ClinicalDocumentController.store.form(visit.id)}

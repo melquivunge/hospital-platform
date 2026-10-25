@@ -11,6 +11,8 @@ import type {
     ExamResultVersion,
 } from '@/components/exam-results';
 import { ExamResults, ResultVersions } from '@/components/exam-results';
+import { SurgeryDescriptions } from '@/components/surgery-descriptions';
+import type { SurgeryDescriptionData } from '@/components/surgery-descriptions';
 import InputError from '@/components/input-error';
 import type { PrescriptionPanelData } from '@/components/prescription-panel';
 import { PrescriptionPanel } from '@/components/prescription-panel';
@@ -51,6 +53,7 @@ export default function ExamExecution({
     prescriptions,
     documents,
     examResults,
+    surgeryDescriptions,
 }: {
     order: {
         id: number;
@@ -71,6 +74,7 @@ export default function ExamExecution({
     prescriptions: PrescriptionPanelData | null;
     documents: ClinicalDocument[];
     examResults: ExamResultItem[];
+    surgeryDescriptions: SurgeryDescriptionData[];
 }) {
     const { errors } = usePage().props;
 
@@ -174,6 +178,9 @@ export default function ExamExecution({
                             <PrescriptionPanel data={prescriptions} />
                         )}
                         <ExamResults results={examResults} />
+                        <SurgeryDescriptions
+                            descriptions={surgeryDescriptions}
+                        />
                         <section className="grid gap-4 rounded-xl border bg-card p-5 sm:p-6">
                             <h2 className="font-semibold">
                                 Evoluções assinadas

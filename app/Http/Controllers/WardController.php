@@ -113,6 +113,7 @@ class WardController extends Controller
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
             // Step 5.4: the released exam results of the record.
             'examResults' => ExamResultController::listing($ids, $timezone, $request->user(), attends: true),
+            'surgeryDescriptions' => SurgeryDescriptionController::listing($ids, $timezone),
             // Drafts are seen only by their author: the admission note and addenda to the record.
             'drafts' => ClinicalNote::query()->where('author_user_id', $request->user()->id)->where('status', 'draft')
                 ->where(fn (Builder $query) => $query->where('admission_id', $admission->id)

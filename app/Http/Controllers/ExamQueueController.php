@@ -143,6 +143,7 @@ class ExamQueueController extends Controller
             'prescriptions' => $open ? self::readOnlyPrescriptions($request->user(), $order, $timezone) : null,
             'documents' => $open ? ClinicalDocumentController::listing($ids, $timezone, $request->user()->id) : [],
             'examResults' => $open ? ExamResultController::listing($ids, $timezone, $request->user()) : [],
+            'surgeryDescriptions' => $open ? SurgeryDescriptionController::listing($ids, $timezone) : [],
         ]);
     }
 
