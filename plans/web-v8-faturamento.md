@@ -1,6 +1,6 @@
 # Plano — entrega 6: faturamento (particular e convênio)
 
-Data: 25/10/2026. Estado: **proposto, aguardando aceite do usuário.** Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
+Data: 25/10/2026. Estado: **aceito; implementação autorizada pelo usuário em 25/10/2026, uma etapa por vez.** Uma etapa por PR, com CI verde e revisão; o merge só acontece com autorização do usuário.
 Contrato: ../PRODUCT.md, seção "Contrato da entrega 6" (todas as propostas aceitas pelo usuário em 25/10/2026). Arquitetura: ../docs/adr/0010-billing-access-and-item-origin.md. Regras de trabalho: ../AGENTS.md. O SUS (BPA, AIH, APAC) fica na entrega 6b, com contrato próprio.
 
 ## Princípios herdados
@@ -20,6 +20,8 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6" (todas as propostas ace
 - **Tabelas de preço** com vigência e preço em centavos; importação CSV pelo mecanismo existente.
 - **Contratos:** cada convênio da rede aponta para uma tabela, com ajuste percentual opcional, e marca os itens que exigem autorização; o particular usa a tabela particular.
 - **Saída:** preço vigente resolvido por data e modalidade; vigências que se sobrepõem recusadas no banco.
+- Divisão (25/10/2026): 6.1a papel, itens cobráveis, tabelas e preços; 6.1b contratos dos convênios e tabela particular; 6.1c importação CSV de preços.
+- **Feito na 6.1a:** papel Faturamento por unidade; tela "Preços" do administrador da rede: itens cobráveis (consulta, consulta de urgência, diária por tipo de leito, exame, procedimento, material, medicamento, ligados ao catálogo; um item por coisa cobrada), tabelas de preço e preços em centavos com vigência ("1.234,56"); um preço novo encerra o anterior no dia anterior; o banco recusa sobreposição (exclusão), alteração e exclusão de preço (só a data de fim, uma vez). Auditoria só com ids e valores. Corrida real: dois preços do mesmo item ao mesmo tempo, um só registrado, vigências contíguas.
 
 ### 6.2 Conta e itens automáticos
 - Conta por atendimento (consulta, urgência, internação), aberta na chegada ou admissão, com a modalidade e a carteira do atendimento.

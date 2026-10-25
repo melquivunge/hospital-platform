@@ -1,7 +1,7 @@
 # ADR-0010: acesso do faturamento e origem dos itens da conta
 
 Data: 25/10/2026
-Estado: proposta, aguardando aceite do usuário
+Estado: aceita pelo usuário (25/10/2026)
 
 ## Contexto
 
