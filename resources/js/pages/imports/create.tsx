@@ -72,7 +72,8 @@ type ImportType =
     | 'exams'
     | 'exam_analytes'
     | 'surgical_procedures'
-    | 'materials';
+    | 'materials'
+    | 'material_stock';
 
 const typeLabels: Record<ImportType, string> = {
     professionals: 'Profissionais',
@@ -80,11 +81,12 @@ const typeLabels: Record<ImportType, string> = {
     medications: 'Catálogo de medicamentos',
     medication_interactions:
         'Interações entre princípios ativos (depois do catálogo)',
-    stock: 'Saldo inicial do estoque da farmácia',
+    stock: 'Saldo inicial de medicamentos no estoque da farmácia',
     exams: 'Catálogo de exames',
     exam_analytes: 'Analitos dos exames de laboratório (depois do catálogo)',
     surgical_procedures: 'Procedimentos cirúrgicos',
     materials: 'Catálogo de materiais cirúrgicos',
+    material_stock: 'Saldo inicial de materiais no estoque da farmácia',
 };
 
 export default function ImportCreate({
