@@ -18,7 +18,8 @@ type Surgery = {
     procedure: string;
     laterality: string;
     urgency: string;
-    status: 'requested' | 'scheduled' | 'cancelled';
+    status: 'requested' | 'scheduled' | 'in_progress' | 'cancelled';
+    startedAt: string | null;
     desiredDate: string;
     author: string | null;
     room: string | null;
@@ -175,6 +176,7 @@ export default function SurgeryScheduleShow({
     const statusText = {
         requested: 'Aguardando agendamento',
         scheduled: `Agendada: ${surgery.room}, ${surgery.start} – ${surgery.end}`,
+        in_progress: `Em andamento desde ${surgery.startedAt}: ${surgery.room}, ${surgery.start} – ${surgery.end}`,
         cancelled: `Cancelada: ${surgery.cancellationReason}`,
     }[surgery.status];
 
@@ -199,7 +201,7 @@ export default function SurgeryScheduleShow({
                         .join(' · ')}
                     actions={
                         <div className="flex flex-wrap gap-2">
-                            {['requested', 'scheduled'].includes(
+                            {['requested', 'scheduled', 'in_progress'].includes(
                                 surgery.status,
                             ) && (
                                 <Button
@@ -310,7 +312,8 @@ export default function SurgeryScheduleShow({
                     </section>
                 )}
 
-                {surgery.status === 'scheduled' && (
+                {(surgery.status === 'scheduled' ||
+                    surgery.status === 'in_progress') && (
                     <>
                         <section className="mb-8 grid gap-3">
                             <h2 className="text-lg font-semibold">Equipe</h2>
@@ -396,58 +399,63 @@ export default function SurgeryScheduleShow({
                             </Form>
                         </section>
 
-                        <section className="mb-8 grid gap-3">
-                            <h2 className="text-lg font-semibold">Reagendar</h2>
-                            <Form
-                                {...SurgeryScheduleController.reschedule.form(
-                                    surgery.id,
-                                )}
-                                errorBag="reschedule"
-                                options={{ preserveScroll: true }}
-                                className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-2"
-                            >
-                                {({ processing, errors }) => (
-                                    <>
-                                        <BookingFields
-                                            prefix="reschedule"
-                                            surgery={surgery}
-                                            rooms={rooms}
-                                            now={now}
-                                            errors={errors}
-                                        />
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="reschedule-reason">
-                                                Motivo
-                                            </Label>
-                                            <Input
-                                                id="reschedule-reason"
-                                                name="reason"
-                                                required
-                                                maxLength={500}
-                                                className="h-11"
+                        {surgery.status === 'scheduled' && (
+                            <section className="mb-8 grid gap-3">
+                                <h2 className="text-lg font-semibold">
+                                    Reagendar
+                                </h2>
+                                <Form
+                                    {...SurgeryScheduleController.reschedule.form(
+                                        surgery.id,
+                                    )}
+                                    errorBag="reschedule"
+                                    options={{ preserveScroll: true }}
+                                    className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-2"
+                                >
+                                    {({ processing, errors }) => (
+                                        <>
+                                            <BookingFields
+                                                prefix="reschedule"
+                                                surgery={surgery}
+                                                rooms={rooms}
+                                                now={now}
+                                                errors={errors}
                                             />
-                                            <InputError
-                                                message={errors.reason}
-                                            />
-                                        </div>
-                                        <div className="sm:col-span-2">
-                                            <Button
-                                                type="submit"
-                                                variant="outline"
-                                                disabled={processing}
-                                                className="min-h-11"
-                                            >
-                                                Reagendar
-                                            </Button>
-                                        </div>
-                                    </>
-                                )}
-                            </Form>
-                        </section>
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="reschedule-reason">
+                                                    Motivo
+                                                </Label>
+                                                <Input
+                                                    id="reschedule-reason"
+                                                    name="reason"
+                                                    required
+                                                    maxLength={500}
+                                                    className="h-11"
+                                                />
+                                                <InputError
+                                                    message={errors.reason}
+                                                />
+                                            </div>
+                                            <div className="sm:col-span-2">
+                                                <Button
+                                                    type="submit"
+                                                    variant="outline"
+                                                    disabled={processing}
+                                                    className="min-h-11"
+                                                >
+                                                    Reagendar
+                                                </Button>
+                                            </div>
+                                        </>
+                                    )}
+                                </Form>
+                            </section>
+                        )}
                     </>
                 )}
 
-                {surgery.status !== 'cancelled' && (
+                {(surgery.status === 'requested' ||
+                    surgery.status === 'scheduled') && (
                     <section className="mb-8 grid gap-3">
                         <h2 className="text-lg font-semibold">Cancelar</h2>
                         <Form

@@ -6,6 +6,7 @@ use App\Clinical\ClinicalAccess;
 use App\Models\OperatingRoom;
 use App\Models\Patient;
 use App\Models\Surgery;
+use App\Models\SurgeryChecklistStep;
 use App\Models\SurgeryTeamMember;
 use App\Models\Unit;
 use App\Models\User;
@@ -26,7 +27,7 @@ class SurgeryRecordController extends Controller
     {
         $professional = ClinicalAccess::professional($request->user());
         abort_if($professional === null, 403);
-        $surgeries = Surgery::query()->whereIn('status', Surgery::OPEN)
+        $surgeries = Surgery::query()->whereIn('status', Surgery::LIVE)
             ->whereHas('team', fn ($team) => $team->where('professional_id', $professional->id))
             ->with(['team' => fn ($team) => $team->where('professional_id', $professional->id)])
             ->orderByRaw('scheduled_start IS NULL')->orderBy('scheduled_start')->orderBy('id')->limit(100)->get();
@@ -62,7 +63,9 @@ class SurgeryRecordController extends Controller
         Inertia::encryptHistory();
         $timezone = Unit::query()->whereKey($surgery->unit_id)->value('timezone') ?? 'UTC';
         $ids = ClinicalAccess::recordIds($patient);
-        $surgery->load(['team.professional:id,name', 'room:id,name']);
+        $surgery->load(['team.professional:id,name', 'room:id,name', 'checklist', 'consents']);
+        $users = User::query()->whereKey([...$surgery->checklist->pluck('confirmed_by_user_id')->all(), ...$surgery->consents->pluck('created_by_user_id')->all()])->pluck('name', 'id');
+        $consent = $surgery->consents->last();
         $author = User::query()->whereKey($surgery->author_user_id)->value('name');
 
         return Inertia::render('surgery-record/show', [
@@ -81,9 +84,27 @@ class SurgeryRecordController extends Controller
                 'urgentReason' => $surgery->urgent_reason,
                 'team' => $surgery->team->map(fn (SurgeryTeamMember $member) => ['id' => $member->id, 'name' => $member->professional->name, 'role' => $member->role])->values(),
                 'place' => ExamQueueController::places([$surgery])[$surgery->id],
+                'startedAt' => $surgery->started_at?->timezone($timezone)->format('d/m/Y H:i'),
+                // Step 5b.4: the term that counts (the last one) and the checklist.
+                'consent' => $consent === null ? null : [
+                    'id' => $consent->id,
+                    'kind' => $consent->kind,
+                    'name' => $consent->original_name,
+                    'waiverReason' => $consent->waiver_reason,
+                    'by' => $users->get($consent->created_by_user_id),
+                    'at' => $consent->created_at->timezone($timezone)->format('d/m/Y H:i'),
+                ],
+                'checklist' => $surgery->checklist->mapWithKeys(fn (SurgeryChecklistStep $step) => [$step->step => [
+                    'answers' => $step->answers,
+                    'by' => $users->get($step->confirmed_by_user_id),
+                    'at' => $step->confirmed_at->timezone($timezone)->format('d/m/Y H:i'),
+                ]]),
+                'canConfirm' => SurgeryChecklistController::canConfirm($request->user(), $surgery),
                 'canManage' => in_array($surgery->unit_id, SurgeryScheduleController::unitIds(UnitPolicy::currentMembership($request->user())), true),
             ],
             'roles' => SurgeryTeamMember::ROLES,
+            'steps' => SurgeryChecklistStep::STEPS,
+            'answers' => SurgeryChecklistStep::ANSWERS,
             'lateralities' => Surgery::LATERALITIES,
             'urgencies' => Surgery::URGENCIES,
             'patient' => VisitController::patientHeader($patient),

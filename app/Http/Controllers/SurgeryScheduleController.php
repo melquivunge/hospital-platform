@@ -51,7 +51,7 @@ class SurgeryScheduleController extends Controller
 
         $requested = Surgery::query()->where('unit_id', $unit->id)->where('status', 'requested')
             ->orderByRaw("urgency = 'urgent' DESC")->orderBy('desired_date')->orderBy('id')->get();
-        $booked = Surgery::query()->where('unit_id', $unit->id)->where('status', 'scheduled')
+        $booked = Surgery::query()->where('unit_id', $unit->id)->whereIn('status', Surgery::ACTIVE)
             ->where('scheduled_start', '<', $day->addDay()->utc())->where('scheduled_end', '>', $day->utc())
             ->with('team.professional:id,name')->orderBy('scheduled_start')->get();
         $rooms = OperatingRoom::query()->where('unit_id', $unit->id)
@@ -109,6 +109,7 @@ class SurgeryScheduleController extends Controller
                 'startInput' => $surgery->scheduled_start?->timezone($timezone)->format('Y-m-d\TH:i'),
                 'durationMinutes' => $surgery->scheduled_start === null ? $duration : (int) $surgery->scheduled_start->diffInMinutes($surgery->scheduled_end),
                 'scheduledBy' => $users->get((int) $surgery->scheduled_by_user_id),
+                'startedAt' => $format($surgery->started_at),
                 'urgentReason' => $surgery->urgent_reason,
                 'cancellationReason' => $surgery->cancellation_reason,
                 'cancelledBy' => $users->get((int) $surgery->cancelled_by_user_id),
@@ -198,8 +199,8 @@ class SurgeryScheduleController extends Controller
         try {
             DB::transaction(function () use ($request, $surgery, $data) {
                 $locked = Surgery::query()->lockForUpdate()->findOrFail($surgery->id);
-                if ($locked->status !== 'scheduled') {
-                    throw ValidationException::withMessages(['professional_id' => 'A equipe só muda numa cirurgia agendada.'])->errorBag('team');
+                if (! in_array($locked->status, Surgery::ACTIVE, true)) {
+                    throw ValidationException::withMessages(['professional_id' => 'A equipe só muda numa cirurgia agendada ou em andamento.'])->errorBag('team');
                 }
                 $member = $locked->team()->create(['tenant_id' => $locked->tenant_id, 'professional_id' => (int) $data['professional_id'], 'role' => $data['role'], 'added_by_user_id' => $request->user()->id, 'added_at' => now()]);
                 AuditEvent::record('surgery.team_added', $locked->tenant_id, $locked, ['member_id' => $member->id, 'professional_id' => $member->professional_id, 'role' => $member->role]);
@@ -220,7 +221,7 @@ class SurgeryScheduleController extends Controller
         DB::transaction(function () use ($request, $surgery, $member, $bag) {
             $locked = Surgery::query()->lockForUpdate()->findOrFail($surgery->id);
             $active = $locked->team()->get();
-            if ($locked->status !== 'scheduled' || ! $active->contains('id', $member->id)) {
+            if (! in_array($locked->status, Surgery::ACTIVE, true) || ! $active->contains('id', $member->id)) {
                 throw ValidationException::withMessages(['member' => 'A equipe mudou nesse meio-tempo. Recarregue a página.'])->errorBag($bag);
             }
             if ($member->role === 'surgeon' && $active->where('role', 'surgeon')->count() === 1) {

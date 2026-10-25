@@ -43,6 +43,7 @@ use App\Http\Controllers\StockIndicatorController;
 use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\SurgeryCatalogController;
+use App\Http\Controllers\SurgeryChecklistController;
 use App\Http\Controllers\SurgeryOrderController;
 use App\Http\Controllers\SurgeryOverdueController;
 use App\Http\Controllers\SurgeryRecordController;
@@ -236,6 +237,11 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Step 5b.3b: the record for the surgery, by the surgical center and the scheduled team.
     Route::get('surgeries/mine', [SurgeryRecordController::class, 'mine'])->middleware('throttle:120,1')->name('surgery-record.mine');
     Route::get('surgeries/{surgery}/record', [SurgeryRecordController::class, 'show'])->middleware('throttle:120,1')->name('surgery-record.show');
+    // Step 5b.4: the consent term and the WHO safe surgery checklist.
+    Route::post('surgeries/{surgery}/consent', [SurgeryChecklistController::class, 'storeConsent'])->middleware('throttle:30,1')->name('surgery-checklist.consent');
+    Route::post('surgeries/{surgery}/consent-waiver', [SurgeryChecklistController::class, 'waiveConsent'])->middleware('throttle:30,1')->name('surgery-checklist.waiver');
+    Route::post('surgeries/{surgery}/checklist/{step}', [SurgeryChecklistController::class, 'confirm'])->middleware('throttle:60,1')->whereIn('step', ['sign_in', 'time_out', 'sign_out'])->name('surgery-checklist.confirm');
+    Route::get('surgery-consents/{consent}/download', [SurgeryChecklistController::class, 'downloadConsent'])->middleware('throttle:60,1')->name('surgery-checklist.consent.download');
     // Step 5b.3a: the surgical agenda of the Surgical center role.
     Route::get('surgery-schedule', [SurgeryScheduleController::class, 'index'])->middleware('throttle:120,1')->name('surgery-schedule.index');
     Route::get('surgery-schedule/{surgery}', [SurgeryScheduleController::class, 'show'])->middleware('throttle:120,1')->name('surgery-schedule.show');
