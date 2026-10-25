@@ -5,6 +5,7 @@ namespace Tests\Feature\Imports;
 use App\Jobs\ApplyImportBatch;
 use App\Models\AuditEvent;
 use App\Models\ImportBatch;
+use App\Models\Material;
 use App\Models\Membership;
 use App\Models\SurgicalProcedure;
 use App\Models\Unit;
@@ -20,7 +21,7 @@ use Tests\TestCase;
 
 /**
  * Step 5b.1b: the surgical procedures imported by CSV, with the V1 flow (preview without writes, confirmation,
- * resumable apply, nothing existing ever changed).
+ * resumable apply, nothing existing ever changed); step 5b.6a: the materials, the same way.
  */
 class SurgicalProcedureImportTest extends TestCase
 {
@@ -113,5 +114,42 @@ class SurgicalProcedureImportTest extends TestCase
         (new ApplyImportBatch($batch->tenant_id, $batch->id))->handle(app(CurrentTenant::class));
         $this->assertSame([2 => 'conflict'], $this->statuses($batch));
         $this->assertSame(0, DB::table('surgical_procedures')->count());
+    }
+
+    public function test_materials_are_imported_the_same_way_by_the_network_admin_only(): void
+    {
+        $this->actingAs($this->admin->user)->post(route('materials.store'), ['name' => 'Fio de sutura nylon 3-0', 'stock_unit' => 'envelope'])->assertSessionHasNoErrors();
+        $this->post(route('materials.store'), ['name' => 'Luva estéril', 'stock_unit' => 'par'])->assertSessionHasNoErrors();
+        $this->post(route('imports.store'), [
+            'type' => 'materials', 'source_system' => 'Sistema antigo',
+            'file' => UploadedFile::fake()->createWithContent('materiais.csv', implode("\r\n", [
+                'material_name;stock_unit;code',
+                'Compressa cirúrgica 45x50;Pacote;CMP-45',
+                'fio de sutura NYLON 3-0;envelope;',
+                'Luva estéril;unidade;',
+                'Bisturi;caixinha;',
+                '=Luva;par;',
+                'Compressa cirúrgica 45x50;pacote;',
+                'Dreno de Penrose;unidade;a b',
+            ])),
+        ])->assertRedirect();
+        $batch = ImportBatch::withoutTenantScope()->sole();
+        $this->assertSame([2 => 'ready', 3 => 'identical', 4 => 'conflict', 5 => 'rejected', 6 => 'rejected', 7 => 'rejected', 8 => 'rejected'], $this->statuses($batch));
+        $this->assertSame(['Material já cadastrado com valores diferentes (unidade de estoque). Nada foi alterado.'], json_decode((string) DB::table('import_items')->where('line', 4)->value('messages'), true));
+
+        $manager = Membership::factory()->for($this->admin->tenant)->create();
+        $manager->grant(Role::UnitManager, Unit::factory()->for($this->admin->tenant)->create());
+        $this->actingAs($manager->user)->post(route('imports.confirm', $batch))->assertForbidden();
+        $this->post(route('imports.store'), ['type' => 'materials', 'source_system' => 'X', 'file' => UploadedFile::fake()->createWithContent('m.csv', "material_name;stock_unit;code\r\nGaze;pacote;")])->assertForbidden();
+        $this->assertSame(1, DB::table('import_batches')->count());
+
+        Bus::fake();
+        $this->actingAs($this->admin->user)->post(route('imports.confirm', $batch))->assertSessionHasNoErrors();
+        Bus::assertDispatched(ApplyImportBatch::class, fn (ApplyImportBatch $job) => $job->handle(app(CurrentTenant::class)) === null);
+        $material = Material::withoutTenantScope()->where('name_key', 'compressa cirúrgica 45x50')->sole();
+        $this->assertSame(['pacote', 'CMP-45', true], [$material->stock_unit, $material->code, $material->active]);
+        $this->assertSame('envelope', Material::withoutTenantScope()->where('name_key', 'fio de sutura nylon 3-0')->value('stock_unit'));
+        $this->assertEquals(['stock_unit' => 'pacote', 'import_batch_id' => $batch->id, 'line' => 2], AuditEvent::where('action', 'material.created')->where('subject_id', $material->id)->sole()->context);
+        $this->assertSame('applied', $batch->fresh()->status);
     }
 }

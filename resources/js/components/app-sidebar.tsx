@@ -323,7 +323,7 @@ export function AppSidebar() {
         ...(canManageSurgeryCatalog
             ? [
                   {
-                      title: 'Procedimentos e salas',
+                      title: 'Procedimentos, salas e materiais',
                       href: surgeryCatalog(),
                       icon: Scissors,
                   },

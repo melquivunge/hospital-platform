@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditEvent;
+use App\Models\Material;
 use App\Models\Medication;
 use App\Models\OperatingRoom;
 use App\Models\SurgicalProcedure;
@@ -20,9 +21,9 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * The network surgical procedures and the operating rooms of each unit (step 5b.1a, delivery 5b), kept by the
- * network admin. Deactivated, never deleted; a room never changes unit, since surgeries will be booked in it.
- * No patient data.
+ * The network surgical procedures and the operating rooms of each unit (step 5b.1a, delivery 5b), and the network
+ * materials (step 5b.6a), kept by the network admin. Deactivated, never deleted; a room never changes unit, since
+ * surgeries will be booked in it. No patient data.
  */
 class SurgeryCatalogController extends Controller
 {
@@ -32,6 +33,7 @@ class SurgeryCatalogController extends Controller
     {
         Gate::authorize('manage', SurgicalProcedure::class);
         $search = is_string($q = $request->query('q')) ? Medication::key(mb_substr($q, 0, 255)) : '';
+        $materialSearch = is_string($m = $request->query('m')) ? Medication::key(mb_substr($m, 0, 255)) : '';
 
         return Inertia::render('surgery-catalog/index', [
             'q' => $search,
@@ -43,6 +45,13 @@ class SurgeryCatalogController extends Controller
                 ->get(['id', 'name', 'code', 'duration_minutes', 'size', 'active']),
             'sizes' => SurgicalProcedure::SIZES,
             'units' => self::units(),
+            'm' => $materialSearch,
+            'materialTotal' => Material::query()->count(),
+            'materials' => Material::query()
+                ->when($materialSearch !== '', fn (Builder $query) => $query->where('name_key', 'like', '%'.addcslashes($materialSearch, '%_\\').'%'))
+                ->orderByDesc('active')->orderBy('name_key')->limit(self::LIMIT)
+                ->get(['id', 'name', 'code', 'stock_unit', 'active']),
+            'stockUnits' => Material::STOCK_UNITS,
         ]);
     }
 
@@ -91,6 +100,36 @@ class SurgeryCatalogController extends Controller
         return back();
     }
 
+    public function storeMaterial(Request $request): RedirectResponse
+    {
+        Gate::authorize('manage', SurgicalProcedure::class);
+        $data = self::material($request, 'newMaterial');
+        self::unique(function () use ($data) {
+            $material = Material::create($data);
+            AuditEvent::record('material.created', $material->tenant_id, $material, ['stock_unit' => $material->stock_unit]);
+        }, 'newMaterial', 'Já existe um material com este nome.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Material cadastrado.']);
+
+        return back();
+    }
+
+    public function updateMaterial(Request $request, Material $material): RedirectResponse
+    {
+        Gate::authorize('manage', SurgicalProcedure::class);
+        $bag = "material-{$material->id}";
+        $material->fill(self::material($request, $bag, true));
+        $changed = array_values(array_diff(array_keys($material->getDirty()), ['updated_at', 'name_key']));
+        self::unique(function () use ($material, $changed) {
+            $material->save();
+            if ($changed !== []) {
+                AuditEvent::record('material.updated', $material->tenant_id, $material, ['fields' => $changed, 'active' => $material->active]);
+            }
+        }, $bag, 'Já existe um material com este nome.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Material atualizado.']);
+
+        return back();
+    }
+
     public function storeRoom(Request $request): RedirectResponse
     {
         Gate::authorize('manage', SurgicalProcedure::class);
@@ -135,12 +174,28 @@ class SurgeryCatalogController extends Controller
     private static function procedure(Request $request, string $bag, bool $existing = false): array
     {
         $data = $request->validateWithBag($bag, [
-            'name' => ['required', 'string', 'max:255'],
-            'code' => ['nullable', 'string', 'max:20', 'regex:/^[0-9A-Za-z.-]+$/'],
+            // Nothing a spreadsheet would run as a formula, as in the CSV import.
+            'name' => ['required', 'string', 'max:255', 'not_regex:/^[=+\-@\t\r]/'],
+            'code' => ['nullable', 'string', 'max:20', 'regex:/^[0-9A-Za-z.-]+$/', 'not_regex:/^-/'],
             'duration_minutes' => ['required', 'integer', 'between:5,1440'],
             'size' => ['required', Rule::in(array_keys(SurgicalProcedure::SIZES))],
             ...($existing ? ['active' => ['required', 'boolean']] : []),
         ], [], ['name' => 'nome', 'code' => 'código TUSS/SIGTAP', 'duration_minutes' => 'duração prevista', 'size' => 'porte']);
+
+        return [...$data, 'name' => Medication::clean($data['name'])];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function material(Request $request, string $bag, bool $existing = false): array
+    {
+        $data = $request->validateWithBag($bag, [
+            'name' => ['required', 'string', 'max:255', 'not_regex:/^[=+\-@\t\r]/'],
+            'code' => ['nullable', 'string', 'max:30', 'regex:/^[0-9A-Za-z.\/-]+$/', 'not_regex:/^-/'],
+            'stock_unit' => ['required', Rule::in(Material::STOCK_UNITS)],
+            ...($existing ? ['active' => ['required', 'boolean']] : []),
+        ], [], ['name' => 'nome', 'code' => 'código', 'stock_unit' => 'unidade de estoque']);
 
         return [...$data, 'name' => Medication::clean($data['name'])];
     }

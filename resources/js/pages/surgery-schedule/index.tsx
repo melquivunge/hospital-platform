@@ -103,7 +103,8 @@ export default function SurgerySchedule({
                     {rooms.length === 0 ? (
                         <p className="rounded-xl border bg-card px-5 py-8 text-center text-muted-foreground">
                             Nenhuma sala ativa nesta unidade. O administrador da
-                            rede cadastra as salas em "Procedimentos e salas".
+                            rede cadastra as salas em "Procedimentos, salas e
+                            materiais".
                         </p>
                     ) : (
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

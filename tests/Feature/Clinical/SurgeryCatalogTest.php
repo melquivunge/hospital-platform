@@ -3,6 +3,7 @@
 namespace Tests\Feature\Clinical;
 
 use App\Models\AuditEvent;
+use App\Models\Material;
 use App\Models\Membership;
 use App\Models\OperatingRoom;
 use App\Models\SurgicalProcedure;
@@ -60,6 +61,41 @@ class SurgeryCatalogTest extends TestCase
         $this->get(route('surgery-catalog.index', ['q' => 'COLE']))->assertInertia(fn (Assert $page) => $page
             ->component('surgery-catalog/index')->where('total', 2)->has('procedures', 1)->where('procedures.0.active', false));
         $this->get(route('surgery-catalog.index', ['q' => 'hernia']))->assertInertia(fn (Assert $page) => $page->has('procedures', 0));
+    }
+
+    public function test_the_admin_keeps_the_materials_and_only_the_admin_of_its_network(): void
+    {
+        $stranger = Membership::factory()->withRole(Role::NetworkAdmin)->create();
+        $center = Membership::factory()->for($this->admin->tenant)->create();
+        $center->grant(Role::SurgicalCenter, $this->unit);
+        $this->actingAs($this->admin->user)->post(route('materials.store'), ['name' => ' Compressa  cirúrgica ', 'code' => 'CMP/45', 'stock_unit' => 'pacote'])
+            ->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Material cadastrado.');
+        $material = Material::withoutTenantScope()->sole();
+        $this->assertSame(['Compressa cirúrgica', 'compressa cirúrgica', 'pacote', true], [$material->name, $material->name_key, $material->stock_unit, $material->active]);
+        $this->assertEquals(['stock_unit' => 'pacote'], AuditEvent::where('action', 'material.created')->sole()->context);
+        $this->post(route('materials.store'), ['name' => 'COMPRESSA CIRÚRGICA', 'stock_unit' => 'unidade'])
+            ->assertSessionHasErrorsIn('newMaterial', ['name' => 'Já existe um material com este nome.']);
+        $this->post(route('materials.store'), ['name' => 'Luva', 'stock_unit' => 'tonel', 'code' => 'a b'])->assertSessionHasErrorsIn('newMaterial', ['stock_unit', 'code']);
+        // Nothing a spreadsheet would run as a formula, as in the CSV import (the procedures too).
+        $this->post(route('materials.store'), ['name' => '=HYPERLINK("x")', 'stock_unit' => 'unidade', 'code' => '-5'])->assertSessionHasErrorsIn('newMaterial', ['name', 'code']);
+        $this->post(route('surgical-procedures.store'), ['name' => '@SUM(A1)', 'duration_minutes' => 60, 'size' => 'small', 'code' => '-1'])->assertSessionHasErrorsIn('newProcedure', ['name', 'code']);
+
+        $this->put(route('materials.update', $material), ['name' => 'Compressa cirúrgica', 'code' => 'CMP/45', 'stock_unit' => 'unidade', 'active' => false])->assertSessionHasNoErrors();
+        $this->assertEquals(['fields' => ['stock_unit', 'active'], 'active' => false], AuditEvent::where('action', 'material.updated')->sole()->context);
+        $this->post(route('materials.store'), ['name' => 'Luva estéril', 'stock_unit' => 'par'])->assertSessionHasNoErrors();
+        $this->get(route('surgery-catalog.index', ['m' => 'luva']))->assertInertia(fn (Assert $page) => $page
+            ->where('materialTotal', 2)->has('materials', 1)->where('materials.0.stock_unit', 'par')->has('procedures', 0)->where('stockUnits', Material::STOCK_UNITS));
+
+        $this->actingAs($center->user)->post(route('materials.store'), ['name' => 'Gaze', 'stock_unit' => 'pacote'])->assertForbidden();
+        $this->put(route('materials.update', $material), ['name' => 'X', 'stock_unit' => 'unidade', 'active' => true])->assertForbidden();
+        // Another network neither sees nor changes them.
+        $this->actingAs($stranger->user)->get(route('surgery-catalog.index'))->assertInertia(fn (Assert $page) => $page->where('materialTotal', 0)->has('materials', 0));
+        $this->put(route('materials.update', $material), ['name' => 'X', 'stock_unit' => 'unidade', 'active' => true])->assertNotFound();
+        $this->assertSame('Compressa cirúrgica', $material->fresh()->name);
+
+        // The database checks the unit of stock.
+        $this->expectException(QueryException::class);
+        DB::table('materials')->insert(['tenant_id' => $this->admin->tenant_id, 'name' => 'Gaze', 'name_key' => 'gaze', 'stock_unit' => 'tonel', 'created_at' => now(), 'updated_at' => now()]);
     }
 
     public function test_the_admin_keeps_rooms_per_unit_and_a_room_never_changes_unit(): void
