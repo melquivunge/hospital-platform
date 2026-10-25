@@ -8,6 +8,7 @@ use App\Http\Controllers\BedController;
 use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\StockInventoryController;
+use App\Http\Controllers\SurgeryScheduleController;
 use App\Models\Exam;
 use App\Models\ImportBatch;
 use App\Models\Insurer;
@@ -91,6 +92,9 @@ class HandleInertiaRequests extends Middleware
             // Step 5.3 (ADR-0008): the Laboratory or the Imaging role in some unit.
             'canUseExamQueue' => fn () => $request->user() !== null
                 && ClinicalAccess::examScopes(UnitPolicy::currentMembership($request->user())) !== [],
+            // Step 5b.3a (ADR-0009): the Surgical center role in some unit.
+            'canUseSurgerySchedule' => fn () => $request->user() !== null
+                && SurgeryScheduleController::unitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canViewExamOverdue' => fn () => $request->user() !== null
                 && ((UnitPolicy::currentMembership($request->user())?->hasRole(Role::NetworkAdmin) ?? false) || StockInventoryController::managerUnitIds($request->user()) !== []),
             // Pharmacy or unit manager: stock (read-only for the manager) and inventories.

@@ -81,6 +81,7 @@ import { index as requests } from '@/routes/requests';
 import { index as schedules } from '@/routes/schedules';
 import { index as professionals } from '@/routes/professionals';
 import { index as shifts, mine as myShifts } from '@/routes/shifts';
+import { index as surgerySchedule } from '@/routes/surgery-schedule';
 import { index as units } from '@/routes/units';
 import { index as vacancies } from '@/routes/vacancies';
 import type { NavItem } from '@/types';
@@ -124,6 +125,7 @@ export function AppSidebar() {
         canViewCensus,
         canUsePharmacy,
         canUseExamQueue,
+        canUseSurgerySchedule,
         canViewExamOverdue,
         canUseInventory,
         canViewStockIndicators,
@@ -235,6 +237,15 @@ export function AppSidebar() {
             : []),
         ...(canUseExamQueue
             ? [{ title: 'Fila de exames', href: examQueue(), icon: TestTube }]
+            : []),
+        ...(canUseSurgerySchedule
+            ? [
+                  {
+                      title: 'Agenda cirúrgica',
+                      href: surgerySchedule(),
+                      icon: CalendarClock,
+                  },
+              ]
             : []),
         ...(canViewExamOverdue
             ? [
