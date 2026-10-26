@@ -9,6 +9,7 @@ use App\Models\Unit;
 use App\Policies\UnitPolicy;
 use App\Stock\StockItem;
 use App\Tenancy\Role;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ class StockIndicatorController extends Controller
 {
     public const LOSS_REASONS = ['expired' => 'Vencido', 'damage' => 'Avaria', 'loss' => 'Perda', 'other' => 'Outro', 'inventory' => 'Diferença de inventário'];
 
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
         $user = $request->user();
         $membership = UnitPolicy::currentMembership($user);
@@ -33,7 +34,9 @@ class StockIndicatorController extends Controller
         $stockUnitIds = array_values(array_unique([...PharmacyController::unitIds($membership), ...StockInventoryController::managerUnitIds($user)]));
         $units = Unit::query()->when(! ($membership?->hasRole(Role::NetworkAdmin) ?? false), fn ($query) => $query->whereKey($stockUnitIds))
             ->orderBy('name')->get(['id', 'name', 'timezone']);
-        abort_if($units->isEmpty(), 403);
+        if ($units->isEmpty()) {
+            return self::withoutUnits($request->user());
+        }
         $unit = $units->firstWhere('id', $request->integer('unit')) ?? $units->first();
         // ponytail: the period is read in the chosen unit's time zone for every unit; per-unit periods if a network spans zones.
         [$from, $to] = StockReportController::period($request, $unit->timezone ?? 'UTC');
