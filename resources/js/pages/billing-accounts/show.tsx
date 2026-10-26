@@ -498,6 +498,8 @@ function Authorize({ accountId, items }: { accountId: number; items: Item[] }) {
                 {...BillingAccountController.authorizeItems.form(accountId)}
                 errorBag="authorization"
                 resetOnSuccess
+                // The form resets to "Autorizada"; the fields shown follow it.
+                onSuccess={() => setStatus('authorized')}
                 options={{ preserveScroll: true }}
                 className="grid gap-4 py-3"
             >

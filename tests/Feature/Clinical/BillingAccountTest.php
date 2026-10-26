@@ -299,6 +299,14 @@ class BillingAccountTest extends ClinicalTestCase
         }
         app(CurrentTenant::class)->set(null);
 
+        // Billing of another unit cannot answer; a compensated item is no longer a target.
+        $elsewhere = Membership::factory()->for($this->unit->tenant)->create();
+        $elsewhere->grant(Role::Billing, $this->other);
+        $this->actingAs($elsewhere->user)->post(route('billing-accounts.authorizations.store', $account), ['item_ids' => [$manual->id], 'status' => 'urgency', 'reason' => 'X.'])->assertForbidden();
+        $this->actingAs($billing->user)->post(route('billing-account-items.compensate', $manual), ['reason' => 'Lançado errado.'])->assertSessionHasNoErrors();
+        $answer(['item_ids' => [$manual->id], 'status' => 'denied', 'reason' => 'X.'])->assertSessionHasErrorsIn('authorization', ['item_ids']);
+        $answer(['item_ids' => [$visitItem->id], 'status' => 'approved'])->assertSessionHasErrorsIn('authorization', ['status']);
+
         // A private account has no insurer to answer.
         $this->travelTo('2026-11-13 12:00:00');
         $private = $this->closedConsultation(['modality' => 'private'], '09:00');
