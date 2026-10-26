@@ -39,6 +39,8 @@ class BillingAccountController extends Controller
         abort_if($units->isEmpty(), 403);
         $unit = $units->firstWhere('id', $request->integer('unit')) ?? $units->first();
         $pendingOnly = $request->boolean('pending');
+        // Patients' names and stays: kept out of the browser's history in plain text.
+        Inertia::encryptHistory();
         $accounts = self::withTotals()->where('unit_id', $unit->id)->where('status', 'open')
             ->when($pendingOnly, fn ($query) => $query->whereHas('items', self::pending(...)))
             ->orderByDesc('opened_at')->orderByDesc('id')->limit(self::LIST_LIMIT)->get();

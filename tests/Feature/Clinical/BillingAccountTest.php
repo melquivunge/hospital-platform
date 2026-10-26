@@ -163,6 +163,10 @@ class BillingAccountTest extends ClinicalTestCase
         // Billing of another unit, another client, or without the role: nothing.
         $this->actingAs($elsewhere->user)->get(route('billing-accounts.show', $account))->assertForbidden();
         $this->get(route('billing-accounts.index'))->assertInertia(fn (Assert $page) => $page->has('accounts', 0));
+        // Patients' names stay out of the browser's history in plain text.
+        $this->get(route('billing-accounts.index'))->assertSee('"encryptHistory":true}', false);
+        $elsewhere->revoke();
+        $this->get(route('billing-accounts.index'))->assertForbidden();
         $this->actingAs($stranger->user)->get(route('billing-accounts.show', $account))->assertNotFound();
         $this->actingAs($this->doctorAccount->user)->get(route('billing-accounts.index'))->assertForbidden();
         $this->actingAs($this->manager->user)->get(route('billing-accounts.show', $account))->assertForbidden();
