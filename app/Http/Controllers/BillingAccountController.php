@@ -4,18 +4,26 @@ namespace App\Http\Controllers;
 
 use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
+use App\Models\AuditEvent;
 use App\Models\BillingAccount;
 use App\Models\BillingAccountItem;
+use App\Models\BillingItem;
 use App\Models\Insurer;
+use App\Models\InsurerContract;
 use App\Models\Membership;
 use App\Models\Patient;
 use App\Models\RoleAssignment;
 use App\Models\Unit;
+use App\Models\User;
 use App\Policies\UnitPolicy;
 use App\Tenancy\Role;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -62,6 +70,9 @@ class BillingAccountController extends Controller
         Inertia::encryptHistory();
         $timezone = Unit::query()->whereKey($account->unit_id)->value('timezone') ?? 'UTC';
         $account = self::withTotals()->findOrFail($account->id);
+        $items = BillingAccountItem::query()->where('billing_account_id', $account->id)->orderBy('performed_on')->orderBy('id')->get();
+        $authors = User::query()->whereKey($items->pluck('author_user_id')->filter()->unique()->all())->pluck('name', 'id');
+        $compensated = $items->where('origin_type', 'compensation')->pluck('origin_id')->flip();
 
         return Inertia::render('billing-accounts/show', [
             'account' => [
@@ -69,18 +80,112 @@ class BillingAccountController extends Controller
                 'card' => $account->insurance_card_number,
                 'cardValidUntil' => $account->insurance_card_valid_until?->format('d/m/Y'),
             ],
-            'items' => BillingAccountItem::query()->where('billing_account_id', $account->id)->orderBy('performed_on')->orderBy('id')->get()
-                ->map(fn (BillingAccountItem $item) => [
-                    'id' => $item->id,
-                    'day' => $item->performed_on->format('d/m/Y'),
-                    'origin' => $item->origin_type,
-                    'code' => $item->code,
-                    'name' => $item->name,
-                    'quantity' => $item->quantity,
-                    'unitPriceCents' => $item->unit_price_cents,
-                    'needsAuthorization' => $item->needs_authorization,
-                ])->values(),
+            'items' => $items->map(fn (BillingAccountItem $item) => [
+                'id' => $item->id,
+                'day' => $item->performed_on->format('d/m/Y'),
+                'origin' => $item->origin_type,
+                'code' => $item->code,
+                'name' => $item->name,
+                'quantity' => $item->quantity,
+                'unitPriceCents' => $item->unit_price_cents,
+                'needsAuthorization' => $item->needs_authorization,
+                // Step 6.3a: billing's own items carry why and who; an item is compensated once.
+                'reason' => $item->reason,
+                'author' => $item->author_user_id === null ? null : $authors->get($item->author_user_id),
+                'compensated' => $compensated->has($item->id),
+            ])->values(),
+            'canChange' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance'], true),
+            'billableItems' => BillingItem::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'code'])->values(),
+            'today' => now($timezone)->toDateString(),
         ]);
+    }
+
+    /**
+     * Step 6.3a: a manual item, from the network's billable items, priced by the table of its day for the account's
+     * modality, with the reason and the author. Only while the account is open, and not for SUS (delivery 6b).
+     */
+    public function storeItem(Request $request, BillingAccount $account): RedirectResponse
+    {
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $timezone = Unit::query()->whereKey($account->unit_id)->value('timezone') ?? 'UTC';
+        $data = $request->validateWithBag('item', [
+            'billing_item_id' => ['required', 'integer', Rule::exists('billing_items', 'id')->where('tenant_id', $account->tenant_id)->where('active', true)],
+            'performed_on' => ['required', 'date_format:Y-m-d', 'after_or_equal:'.$account->opened_at->setTimezone($timezone)->toDateString(), 'before_or_equal:'.now($timezone)->toDateString()],
+            'quantity' => ['required', 'integer', 'between:1,1000'],
+            'reason' => ['required', 'string', 'max:500'],
+        ], [
+            'performed_on.after_or_equal' => 'A data não pode ser anterior à abertura da conta.',
+            'performed_on.before_or_equal' => 'A data não pode estar no futuro.',
+        ], ['billing_item_id' => 'item', 'performed_on' => 'data', 'quantity' => 'quantidade', 'reason' => 'motivo']);
+
+        DB::transaction(function () use ($request, $account, $data) {
+            $locked = self::lockOpen($account, 'item');
+            $billable = BillingItem::query()->findOrFail((int) $data['billing_item_id']);
+            $item = new BillingAccountItem;
+            $item->forceFill([
+                'billing_account_id' => $locked->id, 'origin_type' => 'manual', 'origin_id' => null, 'billing_item_id' => $billable->id,
+                'code' => $billable->code, 'name' => $billable->name, 'quantity' => (int) $data['quantity'],
+                'unit_price_cents' => InsurerContract::priceFor($locked->insurer_id, $billable->id, $data['performed_on']),
+                'needs_authorization' => $locked->insurer_id !== null && InsurerContract::needsAuthorization($locked->insurer_id, $billable->id),
+                'performed_on' => $data['performed_on'], 'reason' => trim($data['reason']), 'author_user_id' => $request->user()->id, 'created_at' => now(),
+            ])->save();
+            // Ids and values only: never the item's name next to the patient.
+            AuditEvent::record('billing_item.added', $locked->tenant_id, $item, ['billing_account_id' => $locked->id, 'billing_item_id' => $billable->id, 'quantity' => $item->quantity, 'unit_price_cents' => $item->unit_price_cents]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Item incluído.']);
+
+        return back();
+    }
+
+    /**
+     * Step 6.3a: an item is never deleted; it is compensated, once, by a negative item at its quantity and price, with
+     * the reason and the author.
+     */
+    public function compensate(Request $request, BillingAccountItem $item): RedirectResponse
+    {
+        $account = BillingAccount::query()->findOrFail($item->billing_account_id);
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $bag = "compensate{$item->id}";
+        $data = $request->validateWithBag($bag, ['reason' => ['required', 'string', 'max:500']], [], ['reason' => 'motivo']);
+        $taken = ValidationException::withMessages(['reason' => 'Este item já foi estornado.'])->errorBag($bag);
+        if ($item->origin_type === 'compensation') {
+            throw ValidationException::withMessages(['reason' => 'Um estorno não é estornado.'])->errorBag($bag);
+        }
+
+        try {
+            DB::transaction(function () use ($request, $account, $item, $data, $bag, $taken) {
+                $locked = self::lockOpen($account, 'reason', $bag);
+                if (BillingAccountItem::query()->where('origin_type', 'compensation')->where('origin_id', $item->id)->exists()) {
+                    throw $taken;
+                }
+                $compensation = new BillingAccountItem;
+                $compensation->forceFill([
+                    'billing_account_id' => $locked->id, 'origin_type' => 'compensation', 'origin_id' => $item->id, 'billing_item_id' => $item->billing_item_id,
+                    'code' => $item->code, 'name' => $item->name, 'quantity' => -$item->quantity, 'unit_price_cents' => $item->unit_price_cents,
+                    'needs_authorization' => false, 'performed_on' => now(Unit::query()->whereKey($locked->unit_id)->value('timezone') ?? 'UTC')->toDateString(),
+                    'reason' => trim($data['reason']), 'author_user_id' => $request->user()->id, 'created_at' => now(),
+                ])->save();
+                AuditEvent::record('billing_item.compensated', $locked->tenant_id, $compensation, ['billing_account_id' => $locked->id, 'compensated_item_id' => $item->id, 'quantity' => $compensation->quantity, 'unit_price_cents' => $compensation->unit_price_cents]);
+            });
+        } catch (UniqueConstraintViolationException) {
+            throw $taken;
+        }
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Item estornado.']);
+
+        return back();
+    }
+
+    /**
+     * Inside the transaction: the account, locked, while it is open and its modality is billed here.
+     */
+    private static function lockOpen(BillingAccount $account, string $field, string $bag = 'item'): BillingAccount
+    {
+        $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
+        if ($locked->status !== 'open' || ! in_array($locked->modality, ['private', 'insurance'], true)) {
+            throw ValidationException::withMessages([$field => 'Esta conta não recebe mudanças: está fechada, é do SUS ou não tem modalidade.'])->errorBag($bag);
+        }
+
+        return $locked;
     }
 
     /**
@@ -95,13 +200,17 @@ class BillingAccountController extends Controller
     }
 
     /**
-     * Pending: an item without a price, or one the insurer's contract authorizes (recorded from step 6.3).
+     * Pending: an item without a price, or one the insurer's contract authorizes (recorded from step 6.3b); neither a
+     * compensation nor a compensated item (step 6.3a), which no longer count.
      *
      * @param  Builder<BillingAccountItem>  $items
      */
     private static function pending(Builder $items): void
     {
-        $items->where(fn (Builder $item) => $item->whereNull('unit_price_cents')->orWhere('needs_authorization', true));
+        $items->where(fn (Builder $item) => $item->whereNull('unit_price_cents')->orWhere('needs_authorization', true))
+            ->where('origin_type', '<>', 'compensation')
+            ->whereNotExists(fn ($compensations) => $compensations->from('billing_account_items as compensations')
+                ->where('compensations.origin_type', 'compensation')->whereColumn('compensations.origin_id', 'billing_account_items.id'));
     }
 
     /**
