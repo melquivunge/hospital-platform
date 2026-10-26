@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
 use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\Patient;
@@ -214,6 +215,8 @@ class PharmacyController extends Controller
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages(['quantity' => 'Este item já foi dispensado.'])->errorBag($bag);
         }
+        // Step 6.2b: the stay's account receives it; a failure is reported, never undoes it.
+        rescue(fn () => BillingAccount::ofStay($prescription->visit_id, $prescription->admission_id)?->generate());
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Dispensação registrada.']);
 
         return back();
@@ -278,6 +281,8 @@ class PharmacyController extends Controller
 
             return array_sum($discarded);
         });
+        // Step 6.2b: the stay's account receives it; a failure is reported, never undoes it.
+        rescue(fn () => BillingAccount::ofStay($prescription->visit_id, $prescription->admission_id)?->generate());
         Inertia::flash('toast', ['type' => 'success', 'message' => $discarded > 0
             ? "Devolução registrada. {$discarded} voltaram de lote vencido e foram baixadas como descarte: separe-as para descartar."
             : 'Devolução registrada.']);
