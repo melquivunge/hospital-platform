@@ -28,6 +28,8 @@ class PriceEntry extends Model
 
     public $timestamps = false;
 
+    public const MAX_CENTS = 100000000000;
+
     /**
      * "1.234,56", "1234,5" or "1234" (reais, as people type them) in cents; null when it is not a price.
      */
@@ -39,7 +41,10 @@ class PriceEntry extends Model
             return null;
         }
 
-        return (int) str_replace('.', '', $parts[1]) * 100 + (int) str_pad($parts[2] ?? '0', 2, '0');
+        $cents = (int) str_replace('.', '', $parts[1]) * 100 + (int) str_pad($parts[2] ?? '0', 2, '0');
+
+        // The same ceiling as the database (one billion reais): the screen and the CSV refuse above it.
+        return $cents > self::MAX_CENTS ? null : $cents;
     }
 
     /**

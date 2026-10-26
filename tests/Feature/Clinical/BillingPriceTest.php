@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Clinical;
 
+use App\Jobs\ApplyImportBatch;
 use App\Models\AuditEvent;
 use App\Models\BillingItem;
+use App\Models\ImportBatch;
 use App\Models\Insurer;
 use App\Models\InsurerContract;
 use App\Models\Material;
@@ -15,7 +17,10 @@ use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -45,8 +50,8 @@ class BillingPriceTest extends TestCase
 
     public function test_prices_from_reais_in_cents(): void
     {
-        $this->assertSame([123456, 123450, 123400, 5, 99999999999999, null, null, null, null, null], array_map(fn (string $text) => PriceEntry::cents($text),
-            ['1.234,56', '1234,5', '1234', '0,05', '999.999.999.999,99', '12.34', '1,234', 'R$ 10', '99999999999999999999', '1.234.567.890.123']));
+        $this->assertSame([123456, 123450, 123400, 5, 100000000000, null, null, null, null, null, null], array_map(fn (string $text) => PriceEntry::cents($text),
+            ['1.234,56', '1234,5', '1234', '0,05', '1.000.000.000,00', '1.000.000.000,01', '12.34', '1,234', 'R$ 10', '99999999999999999999', '1.234.567.890.123']));
     }
 
     public function test_the_admin_keeps_items_tables_and_prices_with_periods_that_never_overlap(): void
@@ -198,5 +203,38 @@ class BillingPriceTest extends TestCase
         $this->put(route('insurer-contracts.save', $foreign), ['price_table_id' => $base->id])->assertNotFound();
         $this->expectException(QueryException::class);
         DB::table('price_tables')->whereKey($base->id)->update(['private' => true]);
+    }
+
+    public function test_prices_are_imported_by_csv_by_the_same_rule(): void
+    {
+        Storage::fake('local');
+        $tenant = $this->admin->tenant;
+        $table = PriceTable::withoutTenantScope()->forceCreate(['tenant_id' => $tenant->id, 'name' => 'CBHPM']);
+        $consult = BillingItem::withoutTenantScope()->forceCreate(['tenant_id' => $tenant->id, 'kind' => 'consultation', 'name' => 'Consulta', 'code' => '10101012']);
+        $icu = BillingItem::withoutTenantScope()->forceCreate(['tenant_id' => $tenant->id, 'kind' => 'daily', 'bed_type' => 'icu', 'name' => 'Diária de UTI']);
+        $this->actingAs($this->admin->user)->post(route('price-tables.prices.store', $table), ['billing_item_id' => $icu->id, 'price' => '2.000,00', 'valid_from' => '2026-07-01'])->assertSessionHasNoErrors();
+        $this->post(route('imports.store'), ['type' => 'prices', 'source_system' => 'Planilha', 'file' => UploadedFile::fake()->createWithContent('precos.csv', implode("\r\n", [
+            'price_table;item_code;item_name;price;valid_from',
+            'cbhpm;10101012;;150,00;01/01/2026',
+            'CBHPM;;diária de uti;2.000,00;2026-07-01',
+            'CBHPM;;Diária de UTI;1.800,00;2026-03-01',
+            'Outra;10101012;;1,00;2026-01-01',
+            'CBHPM;99999;;1,00;2026-01-01',
+            'CBHPM;10101012;;12.34;2026-01-01',
+            'CBHPM;10101012;;150,00;2026-01-01',
+            'CBHPM;=10101012;;1,00;2026-01-01',
+            'CBHPM;10101012;;1.000.000.000,01;2026-02-01',
+        ]))])->assertRedirect();
+        $batch = ImportBatch::withoutTenantScope()->sole();
+        $this->assertSame([2 => 'ready', 3 => 'identical', 4 => 'conflict', 5 => 'rejected', 6 => 'rejected', 7 => 'rejected', 8 => 'rejected', 9 => 'rejected', 10 => 'rejected'], DB::table('import_items')->where('import_batch_id', $batch->id)->orderBy('line')->pluck('status', 'line')->all());
+        Bus::fake();
+        $this->post(route('imports.confirm', $batch))->assertSessionHasNoErrors();
+        Bus::assertDispatched(ApplyImportBatch::class, fn (ApplyImportBatch $job) => $job->handle(app(CurrentTenant::class)) === null);
+        $this->assertSame(15000, $table->priceOn($consult->id, '2026-02-01'));
+        $this->assertEquals(['price_table_id' => $table->id, 'billing_item_id' => $consult->id, 'price_cents' => 15000, 'valid_from' => '2026-01-01', 'import_batch_id' => $batch->id, 'line' => 2], AuditEvent::where('action', 'price_entry.created')->latest('id')->first()->context);
+        // Not for a unit manager.
+        $manager = Membership::factory()->for($tenant)->create();
+        $manager->grant(Role::UnitManager, $this->unit);
+        $this->actingAs($manager->user)->post(route('imports.confirm', $batch))->assertForbidden();
     }
 }
