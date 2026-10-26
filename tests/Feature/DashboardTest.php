@@ -46,4 +46,16 @@ class DashboardTest extends TestCase
                 ->where('stats', ['units' => 1, 'sectors' => 2, 'incomplete' => 1])
                 ->where('canCreateUnit', false));
     }
+
+    public function test_network_screens_send_the_admin_of_a_network_without_units_to_the_units(): void
+    {
+        $admin = Membership::factory()->withRole(Role::NetworkAdmin)->create();
+        $member = Membership::factory()->for($admin->tenant)->create();
+        foreach (['exam-overdue.index', 'surgery-overdue.index', 'stock.indicators.index'] as $route) {
+            $this->actingAs($admin->user)->get(route($route))->assertRedirect(route('units.index'))
+                ->assertInertiaFlash('toast.message', 'Cadastre uma unidade da rede para usar esta tela.');
+            // Without the role, still no access.
+            $this->actingAs($member->user)->get(route($route))->assertForbidden();
+        }
+    }
 }

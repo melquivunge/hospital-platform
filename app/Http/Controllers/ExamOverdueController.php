@@ -9,6 +9,7 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Policies\UnitPolicy;
 use App\Tenancy\Role;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -24,10 +25,12 @@ class ExamOverdueController extends Controller
     // ponytail: oldest first and capped; paginate if a unit ever piles up more.
     private const LIMIT = 200;
 
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
         $units = Unit::query()->whereKey(self::unitIds($request->user()))->orderBy('name')->get(['id', 'name', 'timezone']);
-        abort_if($units->isEmpty(), 403);
+        if ($units->isEmpty()) {
+            return self::withoutUnits($request->user());
+        }
         $unit = $units->firstWhere('id', (int) $request->query('unit')) ?? $units->first();
         $timezone = $unit->timezone ?? 'UTC';
 
