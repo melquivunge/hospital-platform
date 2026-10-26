@@ -5,6 +5,8 @@ namespace Tests\Feature\Clinical;
 use App\Models\Admission;
 use App\Models\AuditEvent;
 use App\Models\Bed;
+use App\Models\BillingAccount;
+use App\Models\BillingAccountItem;
 use App\Models\ClinicalNote;
 use App\Models\EmergencyEpisode;
 use App\Models\JobFunction;
@@ -68,6 +70,22 @@ class DischargeTest extends ClinicalTestCase
         $this->actingAs($this->bedManager->user)->post(route('admissions.allocate', $admission), ['bed_id' => $bed->id])->assertSessionHasNoErrors();
 
         return $admission->fresh();
+    }
+
+    public function test_the_admission_keeps_the_emergency_account_and_the_discharge_bills_it(): void
+    {
+        $admission = $this->admitted($this->bed('A-1'));
+        $account = BillingAccount::withoutTenantScope()->sole();
+        $this->assertSame([$admission->emergency_episode_id, 'sus'], [$account->emergency_episode_id, $account->modality]);
+        // SUS generated nothing on the visit's close; with a billable modality, the discharge bills what is pending.
+        $this->assertSame(0, BillingAccountItem::withoutTenantScope()->count());
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        DB::table('billing_accounts')->where('id', $account->id)->update(['modality' => 'private']);
+        app(CurrentTenant::class)->set(null);
+
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->assertSame([[$account->id, 'visit', 'Consulta de urgência']], BillingAccountItem::withoutTenantScope()->get()->map(fn ($item) => [$item->billing_account_id, $item->origin_type, $item->name])->all());
+        $this->assertSame(1, BillingAccount::withoutTenantScope()->count());
     }
 
     public function test_the_signed_summary_discharges_frees_the_bed_and_ends_the_ward_access(): void

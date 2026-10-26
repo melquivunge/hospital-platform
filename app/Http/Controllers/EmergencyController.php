@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Clinical\ClinicalAccess;
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
 use App\Models\EmergencyEpisode;
 use App\Models\Insurer;
 use App\Models\JobFunction;
@@ -124,6 +125,7 @@ class EmergencyController extends Controller
                 }
                 AppointmentController::lockInsurer($modality);
                 $episode = EmergencyEpisode::query()->create(['unit_id' => $unit->id, 'patient_id' => $patient->id, 'arrived_at' => now(), 'arrived_by_user_id' => $request->user()->id, ...$modality]);
+                BillingAccount::open($episode);
                 // The card number stays in the clinical table, out of the audit trail.
                 AuditEvent::record('emergency.arrived', $episode->tenant_id, $episode, array_filter(['unit_id' => $unit->id, 'patient_id' => $patient->id, 'modality' => $episode->modality, 'insurer_id' => $episode->insurer_id]));
             });

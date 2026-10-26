@@ -5,12 +5,17 @@ namespace Tests\Feature\Clinical;
 use App\Http\Controllers\StockController;
 use App\Jobs\DeliverNotifications;
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
+use App\Models\BillingAccountItem;
+use App\Models\BillingItem;
 use App\Models\EmergencyEpisode;
 use App\Models\JobFunction;
 use App\Models\Material;
 use App\Models\Medication;
 use App\Models\Membership;
 use App\Models\OperatingRoom;
+use App\Models\PriceEntry;
+use App\Models\PriceTable;
 use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Sector;
@@ -78,7 +83,7 @@ class SurgeryDescriptionTest extends ClinicalTestCase
         $this->stranger = Membership::factory()->withRole(Role::NetworkAdmin)->create();
         $this->stranger->grant(Role::Professional, Unit::factory()->for($this->stranger->tenant)->create());
 
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'private'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dor.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();
@@ -157,6 +162,26 @@ class SurgeryDescriptionTest extends ClinicalTestCase
         // The description is in the record of who attends.
         $this->actingAs($this->doctorAccount->user)->get(route('visits.show', $this->visit))
             ->assertInertia(fn (Assert $page) => $page->has('surgeryDescriptions', 1)->where('surgeryDescriptions.0.technique', 'Videolaparoscopia.')->where('surgeryDescriptions.0.addenda', []));
+    }
+
+    public function test_the_completed_surgery_is_billed_with_the_visit_when_it_closes(): void
+    {
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $table = PriceTable::query()->create(['name' => 'Particular', 'private' => true]);
+        $billable = BillingItem::query()->create(['kind' => 'procedure', 'surgical_procedure_id' => SurgicalProcedure::query()->value('id'), 'name' => 'Apendicectomia videolaparoscópica', 'code' => '31003079']);
+        PriceEntry::query()->create(['price_table_id' => $table->id, 'billing_item_id' => $billable->id, 'price_cents' => 450000, 'valid_from' => '2026-01-01', 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        app(CurrentTenant::class)->set(null);
+        $surgery = $this->started();
+        // In progress: closing the visit bills the consultation only.
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit), ['outcome' => 'discharged'])->assertSessionHasNoErrors();
+        $this->assertSame(['visit'], BillingAccountItem::withoutTenantScope()->pluck('origin_type')->all());
+
+        $this->actingAs($this->surgeonAccount->user)->post(route('surgery-description.store', $surgery), self::DESCRIPTION)->assertSessionHasNoErrors();
+        // The completion bills it at once.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->assertSame(0, BillingAccount::query()->sole()->generate());
+        $billed = BillingAccountItem::query()->where('origin_type', 'surgery')->sole();
+        $this->assertSame([$surgery->id, '31003079', 450000, '2026-11-13'], [$billed->origin_id, $billed->code, $billed->unit_price_cents, $billed->performed_on->toDateString()]);
     }
 
     public function test_a_surgery_left_in_progress_past_its_window_is_still_described_without_the_record(): void

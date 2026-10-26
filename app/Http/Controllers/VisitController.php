@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Clinical\ClinicalAccess;
 use App\Models\Appointment;
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
 use App\Models\ClinicalNote;
 use App\Models\EmergencyEpisode;
 use App\Models\Patient;
@@ -176,6 +177,9 @@ class VisitController extends Controller
                 EmergencyController::end($locked, $outcome, $request->user()->id, $admission);
             }
         });
+        // Step 6.2a: the account receives the visit's items. Idempotent and run again later: a failure here is
+        // reported, never undoes the close.
+        rescue(fn () => BillingAccount::ofVisit($visit)?->generate());
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Atendimento encerrado.']);
 
         return $outcome === null ? to_route('visits.index') : to_route('emergency.index', ['unit' => $visit->unit_id]);

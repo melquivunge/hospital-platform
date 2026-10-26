@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Clinical\ClinicalAccess;
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
 use App\Models\Surgery;
 use App\Models\SurgeryDescription;
 use App\Models\User;
@@ -62,6 +63,8 @@ class SurgeryDescriptionController extends Controller
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages(['description' => 'A descrição desta cirurgia já foi assinada.'])->errorBag('description');
         }
+        // Step 6.2a: the completed surgery goes to the stay's account; a failure is reported, never undoes it.
+        rescue(fn () => BillingAccount::ofStay($surgery->visit_id, $surgery->admission_id)?->generate());
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Descrição assinada. Cirurgia concluída.']);
 
         return back();

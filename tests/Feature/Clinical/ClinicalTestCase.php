@@ -83,13 +83,15 @@ abstract class ClinicalTestCase extends TestCase
 
     /**
      * Booked on Friday for Monday, then the patient arrives on Monday morning.
+     *
+     * @param  array<string, mixed>  $modality
      */
-    protected function arrived(Professional $professional, Unit $unit, string $time = '08:20'): Appointment
+    protected function arrived(Professional $professional, Unit $unit, string $time = '08:20', array $modality = ['modality' => 'sus']): Appointment
     {
         $this->actingAs($this->reception->user)->post(route('appointments.store', $unit), ['professional_id' => $professional->id, 'patient_id' => $this->patient->id, 'starts_at' => "2026-11-16T{$time}"])->assertSessionHasNoErrors();
         $appointment = Appointment::withoutTenantScope()->latest('id')->firstOrFail();
         $this->travelTo('2026-11-16 10:30:00');
-        $this->post(route('appointments.arrive', $appointment), ['modality' => 'sus'])->assertSessionHasNoErrors();
+        $this->post(route('appointments.arrive', $appointment), $modality)->assertSessionHasNoErrors();
 
         return $appointment;
     }
