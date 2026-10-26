@@ -7,6 +7,7 @@ use App\Models\Admission;
 use App\Models\AdmissionTransfer;
 use App\Models\AuditEvent;
 use App\Models\Bed;
+use App\Models\BillingAccount;
 use App\Models\ClinicalNote;
 use App\Models\EmergencyEpisode;
 use App\Models\Patient;
@@ -271,6 +272,9 @@ class WardController extends Controller
             // Ids only: the discharge type (death included) stays in the clinical table.
             AuditEvent::record('admission.discharged', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'bed_id' => $bed?->id, 'summary_id' => $summary?->id]));
         });
+        // Step 6.2a: on the discharge, the account (the episode's) receives what is still unbilled; a failure is reported,
+        // never undoes the discharge.
+        rescue(fn () => BillingAccount::query()->where('emergency_episode_id', $admission->emergency_episode_id ?? 0)->first()?->generate());
         Inertia::flash('toast', ['type' => 'success', 'message' => $admission->bed_id === null ? 'Alta registrada.' : 'Alta registrada. O leito foi para higienização.']);
 
         return to_route('ward.index');

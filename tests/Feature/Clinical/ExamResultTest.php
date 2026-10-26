@@ -4,6 +4,9 @@ namespace Tests\Feature\Clinical;
 
 use App\Jobs\DeliverNotifications;
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
+use App\Models\BillingAccountItem;
+use App\Models\BillingItem;
 use App\Models\ClinicalDocument;
 use App\Models\EmergencyEpisode;
 use App\Models\Exam;
@@ -14,6 +17,8 @@ use App\Models\ExamResult;
 use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\Patient;
+use App\Models\PriceEntry;
+use App\Models\PriceTable;
 use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Visit;
@@ -64,7 +69,7 @@ class ExamResultTest extends ClinicalTestCase
             $this->{$property}->grant($role, $unit);
         }
 
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'private'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 3, 'complaint' => 'Febre.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();
@@ -173,6 +178,32 @@ class ExamResultTest extends ClinicalTestCase
                 $this->assertSame('23514', $e->getCode());
             }
         }
+    }
+
+    public function test_a_released_exam_is_billed_once_on_the_day_of_its_first_release(): void
+    {
+        $item = $this->item('laboratory');
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $table = PriceTable::query()->create(['name' => 'Particular', 'private' => true]);
+        $billable = BillingItem::query()->create(['kind' => 'exam', 'exam_id' => $item->exam_id, 'name' => 'Hemograma completo', 'code' => '40304361']);
+        PriceEntry::query()->create(['price_table_id' => $table->id, 'billing_item_id' => $billable->id, 'price_cents' => 2500, 'valid_from' => '2026-01-01', 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        $account = BillingAccount::query()->sole();
+        // Collected, not released: nothing to bill.
+        app(CurrentTenant::class)->set(null);
+        $this->actingAs($this->lab->user)->post(route('exam-queue.collect', $item))->assertSessionHasNoErrors();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->assertSame(0, $account->generate());
+
+        app(CurrentTenant::class)->set(null);
+        $this->post(route('exam-results.release', $item), $this->payload())->assertSessionHasNoErrors();
+        $this->travelTo('2026-11-14 12:00:00');
+        $this->post(route('exam-results.release', $item), $this->payload(['version' => 2, 'reason' => 'Leucócitos digitados errado.']))->assertSessionHasNoErrors();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->assertSame(1, $account->generate());
+        $this->assertSame(0, $account->generate());
+        $billed = BillingAccountItem::query()->sole();
+        $this->assertSame(['exam_order_item', $item->id, '40304361', 'Hemograma completo', 2500, '2026-11-13'],
+            [$billed->origin_type, $billed->origin_id, $billed->code, $billed->name, $billed->unit_price_cents, $billed->performed_on->toDateString()]);
     }
 
     public function test_a_rectification_is_the_next_version_with_a_reason_and_the_previous_stays(): void

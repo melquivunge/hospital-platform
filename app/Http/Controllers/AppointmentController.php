@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
 use App\Models\Insurer;
 use App\Models\Membership;
 use App\Models\Patient;
@@ -226,6 +227,7 @@ class AppointmentController extends Controller
             }
             self::lockInsurer($data);
             $locked->forceFill(['status' => 'arrived', 'arrived_at' => now(), 'arrived_by_user_id' => Auth::id(), ...$data])->save();
+            BillingAccount::open($locked);
             // The card number stays in the clinical table, out of the audit trail.
             AuditEvent::record('appointment.arrived', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'modality' => $locked->modality, 'insurer_id' => $locked->insurer_id]));
         });
