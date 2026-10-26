@@ -233,6 +233,18 @@ class BillingAccountTest extends ClinicalTestCase
             ->where('account.totalCents', 30000)->where('canChange', true)->has('items', 3)
             ->where('items.0.compensated', true)->where('items.1.author', $billing->user->name)->where('items.2.reason', 'Consulta não realizada.'));
 
+        // A manual item is compensated too, at its quantity and price.
+        $this->post(route('billing-account-items.compensate', $manual), ['reason' => 'Retorno não cobrado.'])->assertSessionHasNoErrors();
+        $this->assertSame([-2, 15000], [BillingAccountItem::withoutTenantScope()->where('origin_type', 'compensation')->where('origin_id', $manual->id)->value('quantity'),
+            BillingAccountItem::withoutTenantScope()->where('origin_type', 'compensation')->where('origin_id', $manual->id)->value('unit_price_cents')]);
+
+        // Billing of another client finds neither the account nor the item.
+        app(CurrentTenant::class)->set(null);
+        $stranger = Membership::factory()->withRole(Role::NetworkAdmin)->create();
+        $stranger->grant(Role::Billing, Unit::factory()->for($stranger->tenant)->create());
+        $this->actingAs($stranger->user)->post(route('billing-accounts.items.store', $account), ['billing_item_id' => $this->consultation->id, 'performed_on' => '2026-11-16', 'quantity' => 1, 'reason' => 'X.'])->assertNotFound();
+        $this->post(route('billing-account-items.compensate', $visitItem), ['reason' => 'X.'])->assertNotFound();
+
         // A SUS account takes no change here (delivery 6b).
         $this->travelTo('2026-11-13 12:00:00');
         $sus = $this->closedConsultation(['modality' => 'sus'], '09:00');
