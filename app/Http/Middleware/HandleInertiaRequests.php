@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Clinical\ClinicalAccess;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\BedController;
+use App\Http\Controllers\BillingAccountController;
 use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\StockInventoryController;
@@ -88,6 +89,9 @@ class HandleInertiaRequests extends Middleware
                 && BedController::visibleUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canViewCensus' => fn () => $request->user() !== null
                 && BedController::censusUnitIds(UnitPolicy::currentMembership($request->user())) !== [],
+            // Step 6.2c (ADR-0010): the Billing role in some unit.
+            'canUseBilling' => fn () => $request->user() !== null
+                && BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())) !== [],
             'canUsePharmacy' => fn () => $request->user() !== null
                 && PharmacyController::unitIds(UnitPolicy::currentMembership($request->user())) !== [],
             // Step 5.3 (ADR-0008): the Laboratory or the Imaging role in some unit.

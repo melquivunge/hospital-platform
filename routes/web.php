@@ -6,6 +6,7 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AttendanceOccurrenceController;
 use App\Http\Controllers\AttendancePointController;
 use App\Http\Controllers\BedController;
+use App\Http\Controllers\BillingAccountController;
 use App\Http\Controllers\BillingPriceController;
 use App\Http\Controllers\CensusController;
 use App\Http\Controllers\ClinicalDocumentController;
@@ -124,6 +125,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('settings/certificate', [PrescriptionSignatureController::class, 'edit'])->name('certificate.edit');
     Route::post('settings/certificate', [PrescriptionSignatureController::class, 'link'])->middleware('throttle:10,1')->name('certificate.link');
     Route::delete('settings/certificate', [PrescriptionSignatureController::class, 'unlink'])->middleware('throttle:10,1')->name('certificate.unlink');
+    Route::get('billing-accounts', [BillingAccountController::class, 'index'])->middleware('throttle:120,1')->name('billing-accounts.index');
+    Route::get('billing-accounts/{account}', [BillingAccountController::class, 'show'])->middleware('throttle:120,1')->name('billing-accounts.show');
     Route::get('pharmacy', [PharmacyController::class, 'index'])->middleware('throttle:120,1')->name('pharmacy.index');
     Route::get('pharmacy/prescriptions/{prescription}', [PharmacyController::class, 'show'])->middleware('throttle:120,1')->name('pharmacy.show');
     Route::post('pharmacy/items/{item}/review', [PharmacyController::class, 'review'])->middleware('throttle:120,1')->name('pharmacy.review');
