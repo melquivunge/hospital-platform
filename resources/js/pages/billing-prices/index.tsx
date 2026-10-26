@@ -7,6 +7,7 @@ import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { money } from '@/lib/utils';
 import { index } from '@/routes/billing-prices';
 
 type Item = {
@@ -40,12 +41,6 @@ type Price = {
 };
 
 type Option = { id: number; name: string };
-
-const money = (cents: number) =>
-    (cents / 100).toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-    });
 
 /**
  * The network's billable items, price tables and prices (step 6.1a, ADR-0010), kept by the network admin. A new

@@ -4,6 +4,7 @@ namespace App\Clinical;
 
 use App\Http\Controllers\SurgeryScheduleController;
 use App\Models\Admission;
+use App\Models\BillingAccount;
 use App\Models\EmergencyAccess;
 use App\Models\ExamOrder;
 use App\Models\Membership;
@@ -212,7 +213,7 @@ final class ClinicalAccess
         return self::openSurgeries($user)->whereIn('patient_id', self::recordIds($patient))->orderBy('id')->first();
     }
 
-    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission|Prescription|ExamOrder|Surgery $basis): void
+    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission|Prescription|ExamOrder|Surgery|BillingAccount $basis): void
     {
         DB::table('clinical_reads')->insert([
             'tenant_id' => $patient->tenant_id, 'user_id' => $user->id, 'patient_id' => $patient->merged_into_id ?? $patient->id,
@@ -225,6 +226,8 @@ final class ClinicalAccess
                 $basis instanceof ExamOrder => 'exam',
                 // ADR-0009: the surgical center and the scheduled team, while the surgery is open.
                 $basis instanceof Surgery => 'surgery',
+                // ADR-0010: billing reads the account, never the record.
+                $basis instanceof BillingAccount => 'billing',
                 default => 'emergency',
             },
             'visit_id' => $basis instanceof Visit ? $basis->id : null,
@@ -233,6 +236,7 @@ final class ClinicalAccess
             'prescription_id' => $basis instanceof Prescription ? $basis->id : null,
             'exam_order_id' => $basis instanceof ExamOrder ? $basis->id : null,
             'surgery_id' => $basis instanceof Surgery ? $basis->id : null,
+            'billing_account_id' => $basis instanceof BillingAccount ? $basis->id : null,
             'read_at' => now(),
         ]);
     }

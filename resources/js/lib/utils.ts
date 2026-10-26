@@ -10,3 +10,10 @@ export function cn(...inputs: ClassValue[]) {
 export function toUrl(url: NonNullable<InertiaLinkProps['href']>): string {
     return typeof url === 'string' ? url : url.url;
 }
+
+/** Cents as reais: "R$ 1.234,56". */
+export const money = (cents: number) =>
+    (cents / 100).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+    });
