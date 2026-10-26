@@ -1,4 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
+import { useState } from 'react';
 import BillingAccountController from '@/actions/App/Http/Controllers/BillingAccountController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -34,6 +35,13 @@ type Item = {
     reason: string | null;
     author: string | null;
     compensated: boolean;
+    authorization: {
+        status: 'authorized' | 'denied' | 'urgency';
+        number: string | null;
+        validUntil: string | null;
+        reason: string | null;
+        author: string | null;
+    } | null;
 };
 
 /** Where each item came from, by its type only (ADR-0010: never the record's content). */
@@ -76,9 +84,7 @@ export default function BillingAccountShow({
     const withoutPrice = counts.filter(
         (item) => item.unitPriceCents === null,
     ).length;
-    const authorizations = counts.filter(
-        (item) => item.needsAuthorization,
-    ).length;
+    const authorizations = counts.filter(waitsForAuthorization).length;
 
     return (
         <>
@@ -148,6 +154,17 @@ export default function BillingAccountShow({
                             Itens
                         </h2>
                     </div>
+                    {canChange && account.insurer !== null && (
+                        <Authorize
+                            accountId={account.id}
+                            items={items.filter(
+                                (item) =>
+                                    item.needsAuthorization &&
+                                    item.origin !== 'compensation' &&
+                                    !item.compensated,
+                            )}
+                        />
+                    )}
                     {canChange && (
                         <AddItem
                             accountId={account.id}
@@ -185,7 +202,8 @@ export default function BillingAccountShow({
                                             </span>
                                         )}
                                         {(isPending(item) ||
-                                            item.compensated) && (
+                                            item.compensated ||
+                                            item.authorization !== null) && (
                                             <span className="flex flex-wrap gap-2 pt-1">
                                                 {isPending(item) &&
                                                     item.unitPriceCents ===
@@ -194,8 +212,27 @@ export default function BillingAccountShow({
                                                             Sem preço
                                                         </Pending>
                                                     )}
+                                                {item.authorization && (
+                                                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                                        {
+                                                            answerLabels[
+                                                                item
+                                                                    .authorization
+                                                                    .status
+                                                            ]
+                                                        }
+                                                        {item.authorization
+                                                            .number &&
+                                                            ` nº ${item.authorization.number} até ${item.authorization.validUntil}`}
+                                                        {item.authorization
+                                                            .reason &&
+                                                            `: ${item.authorization.reason}`}
+                                                    </span>
+                                                )}
                                                 {isPending(item) &&
-                                                    item.needsAuthorization && (
+                                                    waitsForAuthorization(
+                                                        item,
+                                                    ) && (
                                                         <Pending>
                                                             Exige autorização
                                                         </Pending>
@@ -423,7 +460,152 @@ function isPending(item: Item): boolean {
     return (
         item.origin !== 'compensation' &&
         !item.compensated &&
-        (item.unitPriceCents === null || item.needsAuthorization)
+        (item.unitPriceCents === null || waitsForAuthorization(item))
+    );
+}
+
+/** Step 6.3b: needs the insurer's authorization and has neither it nor an urgency. */
+function waitsForAuthorization(item: Item): boolean {
+    return (
+        item.needsAuthorization &&
+        item.authorization?.status !== 'authorized' &&
+        item.authorization?.status !== 'urgency'
+    );
+}
+
+const answerLabels = {
+    authorized: 'Autorizada',
+    denied: 'Negada',
+    urgency: 'Urgência',
+} as const;
+
+/** Step 6.3b: the insurer's answer, by item or by guide (several items, one number). */
+function Authorize({ accountId, items }: { accountId: number; items: Item[] }) {
+    const [status, setStatus] = useState<'authorized' | 'denied' | 'urgency'>(
+        'authorized',
+    );
+
+    if (items.length === 0) {
+        return null;
+    }
+
+    return (
+        <details className="rounded-xl border bg-card px-5 py-2">
+            <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">
+                Registrar resposta do convênio
+            </summary>
+            <Form
+                {...BillingAccountController.authorizeItems.form(accountId)}
+                errorBag="authorization"
+                resetOnSuccess
+                options={{ preserveScroll: true }}
+                className="grid gap-4 py-3"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <fieldset className="grid gap-2">
+                            <legend className="mb-2 text-sm font-medium">
+                                Itens (uma guia pode cobrir vários)
+                            </legend>
+                            {items.map((item) => (
+                                <label
+                                    key={item.id}
+                                    className="flex min-h-11 items-center gap-3 text-sm"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        name="item_ids[]"
+                                        value={item.id}
+                                        className="size-4"
+                                    />
+                                    <span>
+                                        {item.name} · {item.day}
+                                        {item.authorization &&
+                                            ` · ${answerLabels[item.authorization.status]}`}
+                                    </span>
+                                </label>
+                            ))}
+                            <InputError message={errors.item_ids} />
+                        </fieldset>
+                        <Field
+                            id="status"
+                            label="Resposta"
+                            error={errors.status}
+                        >
+                            <select
+                                id="status"
+                                name="status"
+                                value={status}
+                                onChange={(event) =>
+                                    setStatus(
+                                        event.target.value as typeof status,
+                                    )
+                                }
+                                className={selectClassName}
+                            >
+                                <option value="authorized">Autorizada</option>
+                                <option value="denied">Negada</option>
+                                <option value="urgency">
+                                    Urgência (sem autorização)
+                                </option>
+                            </select>
+                        </Field>
+                        {status === 'authorized' ? (
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <Field
+                                    id="number"
+                                    label="Número da autorização ou guia"
+                                    error={errors.number}
+                                >
+                                    <Input
+                                        id="number"
+                                        name="number"
+                                        required
+                                        maxLength={40}
+                                        autoComplete="off"
+                                        className="h-11"
+                                    />
+                                </Field>
+                                <Field
+                                    id="valid_until"
+                                    label="Validade"
+                                    error={errors.valid_until}
+                                >
+                                    <Input
+                                        id="valid_until"
+                                        name="valid_until"
+                                        type="date"
+                                        required
+                                        className="h-11"
+                                    />
+                                </Field>
+                            </div>
+                        ) : (
+                            <Field
+                                id="authorization-reason"
+                                label="Motivo"
+                                error={errors.reason}
+                            >
+                                <Input
+                                    id="authorization-reason"
+                                    name="reason"
+                                    required
+                                    maxLength={500}
+                                    className="h-11"
+                                />
+                            </Field>
+                        )}
+                        <Button
+                            type="submit"
+                            disabled={processing}
+                            className="min-h-11 justify-self-start"
+                        >
+                            Registrar resposta
+                        </Button>
+                    </>
+                )}
+            </Form>
+        </details>
     );
 }
 
