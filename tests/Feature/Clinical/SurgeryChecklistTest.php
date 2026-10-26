@@ -62,7 +62,7 @@ class SurgeryChecklistTest extends ClinicalTestCase
             ->transitionTo(QualificationStatus::Approved, null);
         app(CurrentTenant::class)->set(null);
 
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dor.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();

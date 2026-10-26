@@ -49,7 +49,7 @@ class InpatientLooseEndsTest extends ClinicalTestCase
     /** Requested by the doctor from the emergency visit, still without a bed. */
     private function requested(Bed $bed): Admission
     {
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id]);
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus']);
         $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));
@@ -95,7 +95,7 @@ class InpatientLooseEndsTest extends ClinicalTestCase
         // Out of the bed management list and of the census; the patient can arrive again.
         $this->actingAs($this->originBeds->user)->get(route('admissions.index'))->assertInertia(fn (Assert $page) => $page->has('admissions', 0));
         $this->get(route('census.index'))->assertInertia(fn (Assert $page) => $page->where('total.discharges', 0));
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
     }
 
     public function test_a_patient_in_transit_is_discharged_and_the_reserved_bed_is_freed(): void
@@ -139,7 +139,7 @@ class InpatientLooseEndsTest extends ClinicalTestCase
 
     public function test_only_functions_that_attend_patients_call_from_the_queue(): void
     {
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id]);
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus']);
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $function = JobFunction::withoutTenantScope()->sole();
         $admin = Membership::withoutGlobalScopes()->whereHas('roleAssignments', fn ($query) => $query->where('role', Role::NetworkAdmin))->firstOrFail();

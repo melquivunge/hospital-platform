@@ -4,6 +4,7 @@ namespace Tests\Feature\Clinical;
 
 use App\Models\AuditEvent;
 use App\Models\EmergencyEpisode;
+use App\Models\Insurer;
 use App\Models\Membership;
 use App\Models\Patient;
 use App\Models\Triage;
@@ -20,16 +21,39 @@ class EmergencyTest extends ClinicalTestCase
 
     private function arrive(?Patient $patient = null): EmergencyEpisode
     {
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => ($patient ?? $this->patient)->id])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => ($patient ?? $this->patient)->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
 
         return EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
     }
 
     private function unidentified(): EmergencyEpisode
     {
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['unidentified' => true, 'sex' => 'male', 'apparent_age' => 40, 'description' => 'Camiseta azul, trazido pelo SAMU.'])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['unidentified' => true, 'modality' => 'sus', 'sex' => 'male', 'apparent_age' => 40, 'description' => 'Camiseta azul, trazido pelo SAMU.'])->assertSessionHasNoErrors();
 
         return EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
+    }
+
+    public function test_the_arrival_records_the_modality_and_the_card(): void
+    {
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $insurer = Insurer::query()->create(['name' => 'Saúde Boa', 'ans_code' => '123456']);
+        app(CurrentTenant::class)->set(null);
+        $arrive = fn (array $data) => $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, ...$data]);
+        $card = ['modality' => 'insurance', 'insurer_id' => $insurer->id, 'insurance_card_number' => '0012 3456 7890', 'insurance_card_valid_until' => now()->addYear()->toDateString()];
+
+        $arrive([])->assertSessionHasErrors('modality');
+        $arrive(['modality' => 'insurance'])->assertSessionHasErrors(['insurer_id', 'insurance_card_number', 'insurance_card_valid_until']);
+        $arrive([...$card, 'insurance_card_valid_until' => now()->subDay()->toDateString()])->assertSessionHasErrors('insurance_card_valid_until');
+        $this->assertSame(0, EmergencyEpisode::withoutTenantScope()->count());
+
+        $arrive($card)->assertSessionHasNoErrors();
+        $episode = EmergencyEpisode::withoutTenantScope()->sole();
+        $this->assertSame(['insurance', $insurer->id, '0012 3456 7890'], [$episode->modality, $episode->insurer_id, $episode->insurance_card_number]);
+        $this->assertStringNotContainsString('7890', (string) json_encode(AuditEvent::where('action', 'emergency.arrived')->pluck('context')));
+
+        // The database keeps the card with the insurer, and nothing without it.
+        $this->expectException(QueryException::class);
+        DB::table('emergency_episodes')->where('id', $episode->id)->update(['modality' => 'private']);
     }
 
     public function test_the_reception_registers_arrivals_and_never_sees_the_complaint(): void
@@ -40,7 +64,7 @@ class EmergencyTest extends ClinicalTestCase
         $this->assertSame(['Não identificado', 'provisional', 40], [$unidentified->name, $unidentified->status, $unidentified->apparent_age]);
 
         // The same patient twice in the network is refused.
-        $this->post(route('emergency.arrive', $this->other), ['patient_id' => $this->patient->id])->assertSessionHasErrors('patient_id');
+        $this->post(route('emergency.arrive', $this->other), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasErrors('patient_id');
         $this->assertSame(2, EmergencyEpisode::withoutTenantScope()->count());
 
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), self::TRIAGE)->assertSessionHasNoErrors();
@@ -139,12 +163,12 @@ class EmergencyTest extends ClinicalTestCase
         $this->post(route('patient-merges.store'), ['a_id' => $this->patient->id, 'b_id' => $identified->id, 'primary_id' => $this->patient->id, 'reason' => 'Identificada pela família.'])->assertSessionHasNoErrors();
 
         // The person is still in the queue through the merged registration: no second arrival by either one.
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->other), ['patient_id' => $identified->id])->assertSessionHasErrors('patient_id');
-        $this->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id])->assertSessionHasErrors('patient_id');
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->other), ['patient_id' => $identified->id, 'modality' => 'sus'])->assertSessionHasErrors('patient_id');
+        $this->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasErrors('patient_id');
 
         // Once that episode ends, an arrival through the merged registration lands on the primary one.
         $this->post(route('emergency.evade', $episode))->assertSessionHasNoErrors();
-        $this->post(route('emergency.arrive', $this->other), ['patient_id' => $identified->id])->assertSessionHasNoErrors();
+        $this->post(route('emergency.arrive', $this->other), ['patient_id' => $identified->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $this->assertSame($this->patient->id, EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail()->patient_id);
     }
 
@@ -162,7 +186,7 @@ class EmergencyTest extends ClinicalTestCase
         // Only the duplicate in the queue: the merge goes through and the primary cannot arrive again.
         $this->actingAs($this->reception->user)->post(route('emergency.evade', $primaryEpisode))->assertSessionHasNoErrors();
         $this->actingAs($this->manager->user)->post(route('patient-merges.store'), $merge)->assertSessionHasNoErrors();
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->other), ['patient_id' => $this->patient->id])->assertSessionHasErrors('patient_id');
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->other), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasErrors('patient_id');
         $this->assertSame(1, EmergencyEpisode::withoutTenantScope()->where('status', 'waiting')->count());
     }
 

@@ -25,7 +25,7 @@ class EmergencyCareTest extends ClinicalTestCase
      */
     private function waiting(bool $classified = true): EmergencyEpisode
     {
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
         if ($classified) {
             $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 3, 'complaint' => 'Febre há 3 dias.'])->assertSessionHasNoErrors();
@@ -125,7 +125,7 @@ class EmergencyCareTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.call', $third));
         $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $this->assertSame('admission_requested', $third->fresh()->status);
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->other), ['patient_id' => $this->patient->id])->assertSessionHasErrors('patient_id');
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->other), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasErrors('patient_id');
         $this->get(route('emergency.index', ['unit' => $this->unit->id]))->assertInertia(fn (Assert $page) => $page->where('episodes.0.status', 'admission_requested'));
     }
 

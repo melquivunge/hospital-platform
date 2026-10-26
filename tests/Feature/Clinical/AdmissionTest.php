@@ -49,7 +49,7 @@ class AdmissionTest extends ClinicalTestCase
      */
     private function requested(bool $isolation = false): Admission
     {
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));
@@ -62,7 +62,7 @@ class AdmissionTest extends ClinicalTestCase
     public function test_the_emergency_doctor_requests_and_bed_management_admits(): void
     {
         $bed = $this->bed('10-A');
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id]);
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus']);
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));

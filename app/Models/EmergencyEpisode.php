@@ -25,8 +25,12 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $triaged_at
  * @property Carbon|null $ended_at
  * @property int|null $ended_by_user_id
+ * @property string|null $modality private, insurance or sus (set on arrival since step 6.2a0)
+ * @property int|null $insurer_id
+ * @property string|null $insurance_card_number
+ * @property Carbon|null $insurance_card_valid_until
  */
-#[Fillable(['unit_id', 'patient_id', 'arrived_at', 'arrived_by_user_id'])]
+#[Fillable(['unit_id', 'patient_id', 'arrived_at', 'arrived_by_user_id', 'modality', 'insurer_id', 'insurance_card_number', 'insurance_card_valid_until'])]
 class EmergencyEpisode extends Model
 {
     use BelongsToTenant;
@@ -44,7 +48,7 @@ class EmergencyEpisode extends Model
      */
     protected function casts(): array
     {
-        return ['arrived_at' => 'datetime', 'triaged_at' => 'datetime', 'ended_at' => 'datetime', 'current_level' => 'integer'];
+        return ['arrived_at' => 'datetime', 'triaged_at' => 'datetime', 'ended_at' => 'datetime', 'current_level' => 'integer', 'insurance_card_valid_until' => 'date'];
     }
 
     /**

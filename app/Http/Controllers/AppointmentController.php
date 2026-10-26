@@ -173,14 +173,14 @@ class AppointmentController extends Controller
     }
 
     /**
-     * The reception confirms the patient is here, on the day of the consultation, with the modality of the
-     * visit. An expired insurance card is refused: the desk checks it or records another modality.
+     * The modality the reception records on arrival (step 3.5; the emergency's since step 6.2a0): private, insurer
+     * (card number and validity) or SUS. An expired insurance card is refused: the desk checks it or records another
+     * modality.
+     *
+     * @return array{modality: string, insurer_id: int|null, insurance_card_number: string|null, insurance_card_valid_until: string|null}
      */
-    public function arrive(Request $request, Appointment $appointment): RedirectResponse
+    public static function validateModality(Request $request, string $today): array
     {
-        $unit = self::authorizeAppointment($request, $appointment);
-        $timezone = $unit->timezone ?? 'UTC';
-        $today = CarbonImmutable::now($timezone)->toDateString();
         $insurance = ['exclude_unless:modality,insurance', 'required'];
         $data = $request->validate([
             'modality' => ['required', Rule::in(['private', 'insurance', 'sus'])],
@@ -192,20 +192,40 @@ class AppointmentController extends Controller
             'insurance_card_valid_until.after_or_equal' => 'A carteira está vencida. Confira a validade ou registre outra modalidade.',
         ], ['modality' => 'modalidade', 'insurer_id' => 'convênio', 'insurance_card_number' => 'número da carteira', 'insurance_card_valid_until' => 'validade da carteira']);
 
+        return ['modality' => $data['modality'], 'insurer_id' => isset($data['insurer_id']) ? (int) $data['insurer_id'] : null,
+            'insurance_card_number' => $data['insurance_card_number'] ?? null, 'insurance_card_valid_until' => $data['insurance_card_valid_until'] ?? null];
+    }
+
+    /**
+     * Inside the arrival's transaction: deactivating an insurer updates its row, so read under a share lock it cannot
+     * change meanwhile.
+     *
+     * @param  array{insurer_id: int|null}  $data
+     */
+    public static function lockInsurer(array $data): void
+    {
+        if ($data['insurer_id'] !== null && ! Insurer::query()->whereKey($data['insurer_id'])->where('active', true)->sharedLock()->exists()) {
+            throw ValidationException::withMessages(['insurer_id' => 'Escolha um convênio ativo da rede.']);
+        }
+    }
+
+    /**
+     * The reception confirms the patient is here, on the day of the consultation, with the modality of the visit.
+     */
+    public function arrive(Request $request, Appointment $appointment): RedirectResponse
+    {
+        $unit = self::authorizeAppointment($request, $appointment);
+        $timezone = $unit->timezone ?? 'UTC';
+        $today = CarbonImmutable::now($timezone)->toDateString();
+        $data = self::validateModality($request, $today);
+
         DB::transaction(function () use ($appointment, $data, $timezone, $today) {
             $locked = Appointment::query()->whereKey($appointment->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== 'scheduled' || $locked->starts_at->setTimezone($timezone)->toDateString() !== $today) {
                 throw ValidationException::withMessages(['modality' => 'Só é possível confirmar a chegada de um agendamento em aberto, no dia da consulta.']);
             }
-            // Deactivating an insurer updates its row: read under a share lock, it cannot change meanwhile.
-            if (isset($data['insurer_id']) && ! Insurer::query()->whereKey($data['insurer_id'])->where('active', true)->sharedLock()->exists()) {
-                throw ValidationException::withMessages(['insurer_id' => 'Escolha um convênio ativo da rede.']);
-            }
-            $locked->forceFill([
-                'status' => 'arrived', 'arrived_at' => now(), 'arrived_by_user_id' => Auth::id(), 'modality' => $data['modality'],
-                'insurer_id' => $data['insurer_id'] ?? null, 'insurance_card_number' => $data['insurance_card_number'] ?? null,
-                'insurance_card_valid_until' => $data['insurance_card_valid_until'] ?? null,
-            ])->save();
+            self::lockInsurer($data);
+            $locked->forceFill(['status' => 'arrived', 'arrived_at' => now(), 'arrived_by_user_id' => Auth::id(), ...$data])->save();
             // The card number stays in the clinical table, out of the audit trail.
             AuditEvent::record('appointment.arrived', $locked->tenant_id, $locked, array_filter(['unit_id' => $locked->unit_id, 'modality' => $locked->modality, 'insurer_id' => $locked->insurer_id]));
         });
