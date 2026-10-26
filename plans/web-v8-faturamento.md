@@ -30,6 +30,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6" (todas as propostas ace
 - Geração idempotente dos itens a partir de: atendimento encerrado, dias de internação por tipo de leito, item de exame liberado, cirurgia concluída, consumo e estorno de material, dispensação e devolução de medicamento.
 - Tela "Contas" do faturamento da unidade: lista por estado e a conta com os itens, a origem pelo tipo e as pendências (item sem preço, autorização faltando).
 - **Saída:** gerar duas vezes ou ao mesmo tempo não duplica item (corrida real); o faturamento não vê conteúdo clínico.
+- Divisão (25/10/2026): 6.2a conta por atendimento (`billing_accounts`, RLS, modalidade e convênio copiados do atendimento) e itens (`billing_account_items`, RLS, origem tipo+id com índice único, código, nome, quantidade, preço unitário congelado em centavos) gerados de consulta encerrada, exame liberado e cirurgia concluída, por um gerador idempotente; 6.2b diárias por tipo de leito, consumo e estorno de material, dispensação e devolução de medicamento; 6.2c tela "Contas" do papel Faturamento (lista por estado, conta com itens e pendências: item sem preço, autorização faltando), leitura na trilha com motivo "billing", sem conteúdo clínico.
 
 ### 6.3 Revisão, item manual e autorização
 - Item manual com motivo e autor; item automático não se apaga, é compensado por item negativo com motivo.
