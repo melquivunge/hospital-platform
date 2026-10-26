@@ -220,6 +220,26 @@ class PharmacyTest extends ClinicalTestCase
         }
     }
 
+    public function test_a_return_is_credited_at_the_price_it_was_charged_at(): void
+    {
+        [$dipyrone] = PrescriptionItem::withoutTenantScope()->orderBy('id')->get()->all();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $billable = BillingItem::query()->create(['kind' => 'medication', 'medication_id' => $dipyrone->medication_id, 'name' => 'Dipirona 500 mg comprimido']);
+        $table = PriceTable::query()->create(['name' => 'Particular', 'private' => true]);
+        $today = now($this->unit->timezone)->toDateString();
+        PriceEntry::query()->create(['price_table_id' => $table->id, 'billing_item_id' => $billable->id, 'price_cents' => 35, 'valid_from' => '2026-01-01', 'valid_until' => $today, 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        PriceEntry::query()->create(['price_table_id' => $table->id, 'billing_item_id' => $billable->id, 'price_cents' => 40, 'valid_from' => now($this->unit->timezone)->addDay()->toDateString(), 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        app(CurrentTenant::class)->set(null);
+        $this->actingAs($this->pharmacist->user)->post(route('pharmacy.review', $dipyrone), ['decision' => 'approved'])->assertSessionHasNoErrors();
+        $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2])->assertSessionHasNoErrors();
+
+        // Returned tomorrow, when the price is 0,40: credited at 0,35, as charged.
+        $this->travel(1)->day();
+        $this->post(route('pharmacy.return', PrescriptionDispensing::withoutTenantScope()->sole()), ['quantity' => 1, 'reason' => 'Sobra.'])->assertSessionHasNoErrors();
+        $this->assertSame([['dispensing', 2, 35], ['dispensing_return', -1, 35]],
+            BillingAccountItem::withoutTenantScope()->orderBy('id')->get()->map(fn ($item) => [$item->origin_type, $item->quantity, $item->unit_price_cents])->all());
+    }
+
     public function test_the_dispensing_takes_from_the_lots_that_expire_first_and_the_return_puts_back(): void
     {
         [$dipyrone, $ceftriaxone] = PrescriptionItem::withoutTenantScope()->orderBy('id')->get()->all();

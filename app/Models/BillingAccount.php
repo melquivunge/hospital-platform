@@ -77,7 +77,7 @@ class BillingAccount extends Model
      * one), each released exam of an order and each completed surgery of the stay (its visit or, for an episode, the
      * admission it became); since step 6.2b, each day of the admission by its bed type, the material a surgery of the
      * stay consumed or gave back, and the medication dispensed or returned. A return is a negative quantity at the
-     * price of the day it happened. Idempotent: run on the visit's close, an exam's first release, a surgery's
+     * price of the charge it gives back. Idempotent: run on the visit's close, an exam's first release, a surgery's
      * completion, its materials, a dispensing or return and the discharge (and, from step 6.2c, when billing opens the
      * account); a record already billed is skipped, and the unique origin makes a concurrent run insert nothing twice.
      * Returns how many items were added.
@@ -98,7 +98,7 @@ class BillingAccount extends Model
             $ofStay = fn ($query) => $query->whereIn('visit_id', (clone $visits)->select('id'))->orWhereIn('admission_id', (clone $admissions)->select('id'));
             $surgeries = Surgery::query()->where($ofStay);
 
-            // [origin type, origin id, billable kind, its reference, name without a billable item, day, quantity]
+            // [origin type, origin id, billable kind, its reference, name without a billable item, day, quantity, price day?]
             $records = [];
             foreach ((clone $visits)->whereNotNull('closed_at')->get() as $visit) {
                 $kind = $visit->emergency_episode_id === null ? 'consultation' : 'emergency_consultation';
@@ -121,10 +121,14 @@ class BillingAccount extends Model
             }
             $materials = StockMovement::query()->whereIn('surgery_id', (clone $surgeries)->select('id'))->whereIn('stock_movements.type', ['surgery', 'surgery_return'])
                 ->join('stock_lots', 'stock_lots.id', '=', 'stock_movements.stock_lot_id')->join('materials', 'materials.id', '=', 'stock_lots.material_id')
-                ->get(['stock_movements.id', 'stock_movements.quantity', 'stock_movements.created_at', 'stock_lots.material_id', 'materials.name']);
+                ->orderBy('stock_movements.id')
+                ->get(['stock_movements.id', 'stock_movements.type', 'stock_movements.surgery_id', 'stock_movements.stock_lot_id', 'stock_movements.quantity', 'stock_movements.created_at', 'stock_lots.material_id', 'materials.name']);
             foreach ($materials as $movement) {
-                // A consumption takes from the stock (negative there): billed positive; a return, negative.
-                $records[] = ['stock_movement', $movement->id, 'material', ['material_id' => $movement->getAttribute('material_id')], $movement->getAttribute('name'), $day($movement->created_at), -$movement->quantity];
+                // A consumption takes from the stock (negative there): billed positive; a return, negative, credited at
+                // the price of the consumption it gives back (the last one of the surgery from that lot).
+                $taken = $movement->type === 'surgery' ? $movement : $materials->last(fn (StockMovement $earlier) => $earlier->type === 'surgery'
+                    && $earlier->surgery_id === $movement->surgery_id && $earlier->stock_lot_id === $movement->stock_lot_id && $earlier->id < $movement->id) ?? $movement;
+                $records[] = ['stock_movement', $movement->id, 'material', ['material_id' => $movement->getAttribute('material_id')], $movement->getAttribute('name'), $day($movement->created_at), -$movement->quantity, $day($taken->created_at)];
             }
             $dispensings = PrescriptionDispensing::query()->join('prescription_items', 'prescription_items.id', '=', 'prescription_dispensings.prescription_item_id')
                 ->whereIn('prescription_items.prescription_id', Prescription::query()->where($ofStay)->select('id'))
@@ -135,7 +139,8 @@ class BillingAccount extends Model
                 $label = mb_substr((string) $dispensing->getAttribute('medication_label'), 0, 255);
                 $records[] = ['dispensing', $dispensing->id, 'medication', $medication, $label, $day($dispensing->created_at), $dispensing->quantity];
                 if ($dispensing->returned_quantity > 0) {
-                    $records[] = ['dispensing_return', $dispensing->id, 'medication', $medication, $label, $day($dispensing->returned_at), -$dispensing->returned_quantity];
+                    // Credited at the price it was charged at.
+                    $records[] = ['dispensing_return', $dispensing->id, 'medication', $medication, $label, $day($dispensing->returned_at), -$dispensing->returned_quantity, $day($dispensing->created_at)];
                 }
             }
 
@@ -144,7 +149,10 @@ class BillingAccount extends Model
             $billed = BillingAccountItem::query()->where('billing_account_id', $account->id)->get(['origin_type', 'origin_id', 'performed_on'])
                 ->map(fn (BillingAccountItem $item) => $key($item->origin_type, $item->origin_id, $item->performed_on->toDateString()))->flip();
             $rows = [];
-            foreach ($records as [$type, $id, $kind, $reference, $name, $date, $quantity]) {
+            foreach ($records as $record) {
+                // The price is the one of the day it happened, or, for a return, of the charge it gives back.
+                [$type, $id, $kind, $reference, $name, $date, $quantity] = $record;
+                $priceDay = $record[7] ?? $date;
                 if ($billed->has($key($type, $id, $date))) {
                     continue;
                 }
@@ -154,7 +162,7 @@ class BillingAccount extends Model
                 $rows[] = [
                     'tenant_id' => $account->tenant_id, 'billing_account_id' => $account->id, 'origin_type' => $type, 'origin_id' => $id,
                     'billing_item_id' => $item?->id, 'code' => $item?->code, 'name' => $item->name ?? $name, 'quantity' => $quantity,
-                    'unit_price_cents' => $item === null ? null : InsurerContract::priceFor($account->insurer_id, $item->id, $date),
+                    'unit_price_cents' => $item === null ? null : InsurerContract::priceFor($account->insurer_id, $item->id, $priceDay),
                     'needs_authorization' => $item !== null && $account->insurer_id !== null && InsurerContract::needsAuthorization($account->insurer_id, $item->id),
                     'performed_on' => $date, 'created_at' => now(),
                 ];
