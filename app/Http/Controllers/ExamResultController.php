@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
 use App\Models\ExamAnalyte;
 use App\Models\ExamCriticalAlert;
 use App\Models\ExamOrder;
@@ -140,6 +141,10 @@ class ExamResultController extends Controller
             }
 
             throw $exception;
+        }
+        // Step 6.2a: the first release bills the exam in the stay's account; a failure is reported, never undoes it.
+        if ($version === 1) {
+            rescue(fn () => BillingAccount::ofStay($order->visit_id, $order->admission_id)?->generate());
         }
         Inertia::flash('toast', ['type' => 'success', 'message' => $version > 1 ? 'Resultado retificado.' : 'Resultado liberado.']);
 

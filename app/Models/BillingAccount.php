@@ -58,9 +58,24 @@ class BillingAccount extends Model
     }
 
     /**
+     * The account of the stay an exam order or a surgery belongs to (its visit, or the admission an episode became).
+     */
+    public static function ofStay(?int $visitId, ?int $admissionId): ?self
+    {
+        $visit = $visitId === null ? null : Visit::query()->find($visitId);
+        if ($visit !== null) {
+            return self::ofVisit($visit);
+        }
+        $episode = $admissionId === null ? null : Admission::query()->whereKey($admissionId)->value('emergency_episode_id');
+
+        return $episode === null ? null : self::query()->where('emergency_episode_id', $episode)->first();
+    }
+
+    /**
      * Adds the items of the care records not billed yet: the closed visit (a consultation, or an emergency one), each
      * released exam of an order and each completed surgery of the stay (its visit or, for an episode, the admission it
-     * became). Idempotent: run on the visit's close, on the discharge and when billing opens the account; a record
+     * became). Idempotent: run on the visit's close, the first release of an exam's result, a surgery's completion and the
+     * discharge (and, from step 6.2c, when billing opens the account); a record
      * already billed is skipped, and the unique origin makes a concurrent run insert nothing twice. Returns how many
      * items were added.
      */

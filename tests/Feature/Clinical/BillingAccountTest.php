@@ -90,13 +90,20 @@ class BillingAccountTest extends ClinicalTestCase
 
     public function test_a_private_consultation_uses_the_private_table_and_sus_waits_for_its_delivery(): void
     {
-        $this->closedConsultation(['modality' => 'private']);
+        $first = $this->closedConsultation(['modality' => 'private']);
         $item = BillingAccountItem::withoutTenantScope()->sole();
         $this->assertSame([15000, false], [$item->unit_price_cents, $item->needs_authorization]);
 
+        // The patient's next consultation has its own account: each bills its own visit only.
+        $this->travelTo('2026-11-13 12:00:00');
+        $second = $this->closedConsultation(['modality' => 'private'], '09:00');
+        $visits = Visit::withoutTenantScope()->orderBy('id')->pluck('id')->all();
+        $this->assertSame([[$first->id, $visits[0]], [$second->id, $visits[1]]],
+            BillingAccountItem::withoutTenantScope()->orderBy('id')->get()->map(fn ($row) => [$row->billing_account_id, $row->origin_id])->all());
+
         // SUS (delivery 6b): the account opens, with no items.
         $this->travelTo('2026-11-13 12:00:00');
-        $account = $this->closedConsultation(['modality' => 'sus'], '09:00');
+        $account = $this->closedConsultation(['modality' => 'sus'], '09:20');
         $this->assertSame('sus', $account->modality);
         $this->assertSame(0, BillingAccountItem::withoutTenantScope()->where('billing_account_id', $account->id)->count());
     }

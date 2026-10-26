@@ -274,7 +274,7 @@ class WardController extends Controller
         });
         // Step 6.2a: on the discharge, the account (the episode's) receives what is still unbilled; a failure is reported,
         // never undoes the discharge.
-        rescue(fn () => BillingAccount::query()->where('emergency_episode_id', $admission->emergency_episode_id ?? 0)->first()?->generate());
+        rescue(fn () => BillingAccount::ofStay(null, $admission->id)?->generate());
         Inertia::flash('toast', ['type' => 'success', 'message' => $admission->bed_id === null ? 'Alta registrada.' : 'Alta registrada. O leito foi para higienização.']);
 
         return to_route('ward.index');

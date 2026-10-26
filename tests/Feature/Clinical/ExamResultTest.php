@@ -195,11 +195,12 @@ class ExamResultTest extends ClinicalTestCase
         $this->assertSame(0, $account->generate());
 
         app(CurrentTenant::class)->set(null);
+        // The release bills it at once; the rectification, a day later, bills nothing more.
         $this->post(route('exam-results.release', $item), $this->payload())->assertSessionHasNoErrors();
+        $this->assertSame(1, BillingAccountItem::withoutTenantScope()->count());
         $this->travelTo('2026-11-14 12:00:00');
         $this->post(route('exam-results.release', $item), $this->payload(['version' => 2, 'reason' => 'Leucócitos digitados errado.']))->assertSessionHasNoErrors();
         app(CurrentTenant::class)->set($this->unit->tenant);
-        $this->assertSame(1, $account->generate());
         $this->assertSame(0, $account->generate());
         $billed = BillingAccountItem::query()->sole();
         $this->assertSame(['exam_order_item', $item->id, '40304361', 'Hemograma completo', 2500, '2026-11-13'],

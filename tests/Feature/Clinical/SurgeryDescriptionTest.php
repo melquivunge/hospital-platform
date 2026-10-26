@@ -177,10 +177,9 @@ class SurgeryDescriptionTest extends ClinicalTestCase
         $this->assertSame(['visit'], BillingAccountItem::withoutTenantScope()->pluck('origin_type')->all());
 
         $this->actingAs($this->surgeonAccount->user)->post(route('surgery-description.store', $surgery), self::DESCRIPTION)->assertSessionHasNoErrors();
+        // The completion bills it at once.
         app(CurrentTenant::class)->set($this->unit->tenant);
-        $account = BillingAccount::query()->sole();
-        $this->assertSame(1, $account->generate());
-        $this->assertSame(0, $account->generate());
+        $this->assertSame(0, BillingAccount::query()->sole()->generate());
         $billed = BillingAccountItem::query()->where('origin_type', 'surgery')->sole();
         $this->assertSame([$surgery->id, '31003079', 450000, '2026-11-13'], [$billed->origin_id, $billed->code, $billed->unit_price_cents, $billed->performed_on->toDateString()]);
     }
