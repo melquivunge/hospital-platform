@@ -146,7 +146,9 @@ class BillingAccount extends Model
 
             // An admission day is billed once per day; any other record, once.
             $key = fn (string $type, int $id, string $date) => $type === 'admission_day' ? "{$type}:{$id}:{$date}" : "{$type}:{$id}";
-            $billed = BillingAccountItem::query()->where('billing_account_id', $account->id)->get(['origin_type', 'origin_id', 'performed_on'])
+            // Manual items and compensations (step 6.3a) are billing's own, not care records.
+            $billed = BillingAccountItem::query()->where('billing_account_id', $account->id)->whereNotIn('origin_type', ['manual', 'compensation'])
+                ->get(['origin_type', 'origin_id', 'performed_on'])
                 ->map(fn (BillingAccountItem $item) => $key($item->origin_type, $item->origin_id, $item->performed_on->toDateString()))->flip();
             $rows = [];
             foreach ($records as $record) {

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Clinical;
 
+use App\Models\AuditEvent;
 use App\Models\BillingAccount;
 use App\Models\BillingAccountItem;
 use App\Models\BillingItem;
@@ -159,6 +160,10 @@ class BillingAccountTest extends ClinicalTestCase
         $this->assertSame([$billing->user_id, $this->patient->id, $account->id], [$read->user_id, $read->patient_id, $read->billing_account_id]);
         app(CurrentTenant::class)->set(null);
         $this->get(route('billing-accounts.index', ['pending' => 1]))->assertInertia(fn (Assert $page) => $page->has('accounts', 1)->where('accounts.0.pending', 1));
+        // A compensated item no longer holds the account (step 6.3a).
+        $this->post(route('billing-account-items.compensate', BillingAccountItem::withoutTenantScope()->sole()), ['reason' => 'Atendimento não cobrado.'])->assertSessionHasNoErrors();
+        $this->get(route('billing-accounts.index', ['pending' => 1]))->assertInertia(fn (Assert $page) => $page->has('accounts', 0));
+        $this->get(route('billing-accounts.index'))->assertInertia(fn (Assert $page) => $page->where('accounts.0.pending', 0)->where('accounts.0.items', 2));
 
         // Billing of another unit, another client, or without the role: nothing.
         $this->actingAs($elsewhere->user)->get(route('billing-accounts.show', $account))->assertForbidden();
@@ -174,5 +179,76 @@ class BillingAccountTest extends ClinicalTestCase
         $this->actingAs($billing->user)->get(route('billing-accounts.index'))->assertForbidden();
         $this->get(route('billing-accounts.show', $account))->assertForbidden();
         $this->assertSame(1, DB::table('clinical_reads')->where('reason', 'billing')->count());
+    }
+
+    public function test_billing_adds_a_manual_item_and_compensates_an_item_once_with_the_reason(): void
+    {
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $elsewhere = Membership::factory()->for($this->unit->tenant)->create();
+        $elsewhere->grant(Role::Billing, $this->other);
+        $account = $this->closedConsultation(['modality' => 'private']);
+        $visitItem = BillingAccountItem::withoutTenantScope()->sole();
+        $add = fn (array $data = []) => $this->post(route('billing-accounts.items.store', $account),
+            [...['billing_item_id' => $this->consultation->id, 'performed_on' => '2026-11-16', 'quantity' => 2, 'reason' => 'Retorno cobrado no mesmo dia.'], ...$data]);
+
+        // Only billing of the account's unit.
+        $this->actingAs($elsewhere->user);
+        $add()->assertForbidden();
+        $this->post(route('billing-account-items.compensate', $visitItem), ['reason' => 'Erro.'])->assertForbidden();
+
+        $this->actingAs($billing->user);
+        $add(['reason' => ' '])->assertSessionHasErrorsIn('item', ['reason']);
+        $add(['performed_on' => '2026-11-17'])->assertSessionHasErrorsIn('item', ['performed_on' => 'A data não pode estar no futuro.']);
+        $add(['performed_on' => '2026-11-15'])->assertSessionHasErrorsIn('item', ['performed_on' => 'A data não pode ser anterior à abertura da conta.']);
+        $add(['quantity' => 0])->assertSessionHasErrorsIn('item', ['quantity']);
+        $add()->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Item incluído.');
+        $manual = BillingAccountItem::withoutTenantScope()->where('origin_type', 'manual')->sole();
+        $this->assertSame([null, 2, 15000, 'Retorno cobrado no mesmo dia.', $billing->user_id], [$manual->origin_id, $manual->quantity, $manual->unit_price_cents, $manual->reason, $manual->author_user_id]);
+        $this->assertEquals(['billing_account_id' => $account->id, 'billing_item_id' => $this->consultation->id, 'quantity' => 2, 'unit_price_cents' => 15000],
+            AuditEvent::where('action', 'billing_item.added')->sole()->context);
+
+        // The visit's item is compensated once: a negative item at its quantity and price, with the reason.
+        $this->post(route('billing-account-items.compensate', $visitItem), ['reason' => ' '])->assertSessionHasErrorsIn("compensate{$visitItem->id}", ['reason']);
+        $this->post(route('billing-account-items.compensate', $visitItem), ['reason' => 'Consulta não realizada.'])->assertSessionHasNoErrors();
+        $this->post(route('billing-account-items.compensate', $visitItem), ['reason' => 'De novo.'])
+            ->assertSessionHasErrorsIn("compensate{$visitItem->id}", ['reason' => 'Este item já foi estornado.']);
+        $compensation = BillingAccountItem::withoutTenantScope()->where('origin_type', 'compensation')->sole();
+        $this->assertSame([$visitItem->id, -1, 15000], [$compensation->origin_id, $compensation->quantity, $compensation->unit_price_cents]);
+        $this->post(route('billing-account-items.compensate', $compensation), ['reason' => 'Desfazer.'])
+            ->assertSessionHasErrorsIn("compensate{$compensation->id}", ['reason' => 'Um estorno não é estornado.']);
+
+        // Generating again does not bring the visit back; the screen shows who and why, and the total.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->assertSame(0, $account->generate());
+        // The database keeps a compensation to one item of its account, at its quantity and price.
+        try {
+            DB::transaction(fn () => DB::table('billing_account_items')->insert([...collect($compensation->getAttributes())->except('id')->all(), 'origin_id' => $manual->id, 'quantity' => -1]));
+            $this->fail('The database must refuse it.');
+        } catch (QueryException $e) {
+            $this->assertStringContainsString('a compensation undoes one item', $e->getMessage());
+        }
+        app(CurrentTenant::class)->set(null);
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('account.totalCents', 30000)->where('canChange', true)->has('items', 3)
+            ->where('items.0.compensated', true)->where('items.1.author', $billing->user->name)->where('items.2.reason', 'Consulta não realizada.'));
+
+        // A manual item is compensated too, at its quantity and price.
+        $this->post(route('billing-account-items.compensate', $manual), ['reason' => 'Retorno não cobrado.'])->assertSessionHasNoErrors();
+        $this->assertSame([-2, 15000], [BillingAccountItem::withoutTenantScope()->where('origin_type', 'compensation')->where('origin_id', $manual->id)->value('quantity'),
+            BillingAccountItem::withoutTenantScope()->where('origin_type', 'compensation')->where('origin_id', $manual->id)->value('unit_price_cents')]);
+
+        // Billing of another client finds neither the account nor the item.
+        app(CurrentTenant::class)->set(null);
+        $stranger = Membership::factory()->withRole(Role::NetworkAdmin)->create();
+        $stranger->grant(Role::Billing, Unit::factory()->for($stranger->tenant)->create());
+        $this->actingAs($stranger->user)->post(route('billing-accounts.items.store', $account), ['billing_item_id' => $this->consultation->id, 'performed_on' => '2026-11-16', 'quantity' => 1, 'reason' => 'X.'])->assertNotFound();
+        $this->post(route('billing-account-items.compensate', $visitItem), ['reason' => 'X.'])->assertNotFound();
+
+        // A SUS account takes no change here (delivery 6b).
+        $this->travelTo('2026-11-13 12:00:00');
+        $sus = $this->closedConsultation(['modality' => 'sus'], '09:00');
+        $this->actingAs($billing->user)->post(route('billing-accounts.items.store', $sus), ['billing_item_id' => $this->consultation->id, 'performed_on' => '2026-11-16', 'quantity' => 1, 'reason' => 'Teste.'])
+            ->assertSessionHasErrorsIn('item', ['item']);
     }
 }

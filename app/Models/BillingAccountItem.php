@@ -14,8 +14,9 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $tenant_id
  * @property int $billing_account_id
- * @property string $origin_type visit | exam_order_item | surgery
- * @property int $origin_id
+ * @property string $origin_type visit | exam_order_item | surgery | admission_day | stock_movement | dispensing | dispensing_return;
+ *                               manual | compensation (step 6.3a)
+ * @property int|null $origin_id null for a manual item; the compensated item for a compensation
  * @property int|null $billing_item_id
  * @property string|null $code
  * @property string $name
@@ -24,6 +25,8 @@ use Illuminate\Support\Carbon;
  * @property bool $needs_authorization
  * @property Carbon $performed_on
  * @property Carbon $created_at
+ * @property string|null $reason of a manual item or a compensation
+ * @property int|null $author_user_id
  */
 class BillingAccountItem extends Model
 {

@@ -41,6 +41,8 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6" (todas as propostas ace
 - Item manual com motivo e autor; item automático não se apaga, é compensado por item negativo com motivo.
 - Autorização por item ou guia: número, validade, negada com motivo; item que exige autorização bloqueia o fechamento, salvo urgência com motivo.
 - **Saída:** todas as mudanças na trilha e na auditoria só com ids e valores.
+- Divisão (26/10/2026): 6.3a item manual e compensação; 6.3b autorização do convênio (número, validade, negada com motivo; urgência com motivo).
+- **Feito na 6.3a:** na conta, o faturamento inclui um item manual (item cobrável ativo da rede, data entre a abertura da conta e hoje, quantidade e motivo), com preço da tabela do dia para a modalidade da conta, e estorna qualquer item (automático ou manual) uma vez, com motivo: um item negativo que aponta para o estornado, com a mesma quantidade e preço (gatilho no banco). Nada é alterado nem apagado; o estornado e o estorno deixam de contar como pendência; a geração automática não traz de volta um item estornado. Contas do SUS ou sem modalidade não recebem mudanças. Auditoria só com ids e valores. Corrida real: dois estornos do mesmo item ao mesmo tempo, um só (três execuções).
 
 ### 6.4 Fechamento, conta complementar e particular
 - Revisão → fechada (imutável no banco); o que chega depois vai para conta complementar automática.
