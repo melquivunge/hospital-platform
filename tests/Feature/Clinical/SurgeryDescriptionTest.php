@@ -366,6 +366,10 @@ class SurgeryDescriptionTest extends ClinicalTestCase
         $this->assertSame(17, StockLot::withoutTenantScope()->find($g1)->balance);
         $this->get(route('surgery-schedule.show', $surgery))->assertInertia(fn (Assert $page) => $page
             ->where('materials.used.0.taken', 5)->where('materials.used.0.returned', 2)->where('materials.used.0.code', 'G1')->where('materials.used.0.name', 'Compressa cirúrgica'));
+        // Step 6.2b: the account bills the consumption and the return (negative), by the material's name while it has no
+        // billable item (pending, no price).
+        $this->assertSame([['stock_movement', 5, 'Compressa cirúrgica', null], ['stock_movement', -2, 'Compressa cirúrgica', null]],
+            BillingAccountItem::withoutTenantScope()->orderBy('id')->get()->map(fn ($item) => [$item->origin_type, $item->quantity, $item->name, $item->unit_price_cents])->all());
 
         // What comes back to a lot that expired in the meantime is discarded at once.
         $use($soon, 2)->assertSessionHasNoErrors();

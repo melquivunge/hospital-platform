@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
 use App\Models\StockLot;
 use App\Models\StockMovement;
 use App\Models\Surgery;
@@ -62,6 +63,8 @@ class SurgeryMaterialController extends Controller
                 'unit_id' => $locked->unit_id, 'surgery_id' => $locked->id, 'material_id' => $lot->material_id, 'stock_lot_id' => $lot->id, 'quantity' => (int) $data['quantity'],
             ]);
         });
+        // Step 6.2b: the stay's account receives it; a failure is reported, never undoes it.
+        rescue(fn () => BillingAccount::ofStay($surgery->visit_id, $surgery->admission_id)?->generate());
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Consumo registrado.']);
 
         return back();
@@ -99,6 +102,8 @@ class SurgeryMaterialController extends Controller
                 ...($expired ? ['discarded' => (int) $data['quantity']] : []),
             ]);
         });
+        // Step 6.2b: the stay's account receives it; a failure is reported, never undoes it.
+        rescue(fn () => BillingAccount::ofStay($surgery->visit_id, $surgery->admission_id)?->generate());
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Estorno registrado.']);
 
         return back();

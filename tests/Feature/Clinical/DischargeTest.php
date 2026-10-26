@@ -7,10 +7,13 @@ use App\Models\AuditEvent;
 use App\Models\Bed;
 use App\Models\BillingAccount;
 use App\Models\BillingAccountItem;
+use App\Models\BillingItem;
 use App\Models\ClinicalNote;
 use App\Models\EmergencyEpisode;
 use App\Models\JobFunction;
 use App\Models\Membership;
+use App\Models\PriceEntry;
+use App\Models\PriceTable;
 use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Sector;
@@ -50,18 +53,18 @@ class DischargeTest extends ClinicalTestCase
         app(CurrentTenant::class)->set(null);
     }
 
-    private function bed(string $code, ?Unit $unit = null): Bed
+    private function bed(string $code, ?Unit $unit = null, string $type = 'ward'): Bed
     {
         $unit ??= $this->unit;
         $sector = $unit->is($this->unit) ? $this->ward : Sector::withoutGlobalScopes()->where('unit_id', $unit->id)->firstOrFail();
-        $this->actingAs($this->manager->user)->post(route('beds.store', $unit), ['sector_id' => $sector->id, 'room' => '1', 'code' => $code, 'type' => 'ward'])->assertSessionHasNoErrors();
+        $this->actingAs($this->manager->user)->post(route('beds.store', $unit), ['sector_id' => $sector->id, 'room' => '1', 'code' => $code, 'type' => $type])->assertSessionHasNoErrors();
 
         return Bed::withoutGlobalScopes()->where('code', $code)->sole();
     }
 
-    private function admitted(Bed $bed): Admission
+    private function admitted(Bed $bed, string $modality = 'sus'): Admission
     {
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus']);
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => $modality]);
         $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));
@@ -84,8 +87,48 @@ class DischargeTest extends ClinicalTestCase
         app(CurrentTenant::class)->set(null);
 
         $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
-        $this->assertSame([[$account->id, 'visit', 'Consulta de urgência']], BillingAccountItem::withoutTenantScope()->get()->map(fn ($item) => [$item->billing_account_id, $item->origin_type, $item->name])->all());
+        // The emergency visit and, admitted and discharged the same day, one daily rate (no billable item yet: pending).
+        $this->assertSame([[$account->id, 'visit', 'Consulta de urgência'], [$account->id, 'admission_day', 'Diária Enfermaria']],
+            BillingAccountItem::withoutTenantScope()->orderBy('id')->get()->map(fn ($item) => [$item->billing_account_id, $item->origin_type, $item->name])->all());
         $this->assertSame(1, BillingAccount::withoutTenantScope()->count());
+    }
+
+    public function test_each_day_of_the_admission_is_one_daily_rate_by_the_bed_type(): void
+    {
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $daily = BillingItem::query()->create(['kind' => 'daily', 'bed_type' => 'ward', 'name' => 'Diária de enfermaria', 'code' => '60000775']);
+        $table = PriceTable::query()->create(['name' => 'Particular', 'private' => true]);
+        PriceEntry::query()->create(['price_table_id' => $table->id, 'billing_item_id' => $daily->id, 'price_cents' => 48000, 'valid_from' => '2026-01-01', 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        app(CurrentTenant::class)->set(null);
+        $days = fn () => BillingAccountItem::withoutTenantScope()->where('origin_type', 'admission_day')->orderBy('performed_on')->get()
+            ->map(fn ($item) => [$item->performed_on->toDateString(), $item->code, $item->unit_price_cents])->all();
+
+        // Admitted on Friday morning (São Paulo): no day has ended yet, so none is billed.
+        $admission = $this->admitted($this->bed('A-1'), 'private');
+        $account = BillingAccount::withoutTenantScope()->sole();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->assertSame(0, $account->generate());
+
+        // Moved to an ICU bed on Saturday afternoon: Saturday is billed by the ICU, the bed at the end of the day.
+        app(CurrentTenant::class)->set(null);
+        $icu = $this->bed('U-1', null, 'icu');
+        $this->travelTo('2026-11-14 18:00:00');
+        $this->actingAs($this->bedManager->user)->post(route('admissions.move', $admission), ['bed_id' => $icu->id])->assertSessionHasNoErrors();
+        // On Sunday, Friday and Saturday have ended: two days, each billed once however often it runs.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->travelTo('2026-11-15 13:00:00');
+        $this->assertSame(2, $account->generate());
+        $this->assertSame(0, $account->generate());
+        app(CurrentTenant::class)->set(null);
+        // The discharge on Sunday bills no day for Sunday.
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->assertSame([['2026-11-13', '60000775', 48000], ['2026-11-14', null, null]], $days());
+        $this->assertSame('Diária UTI', BillingAccountItem::withoutTenantScope()->where('performed_on', '2026-11-14')->value('name'));
+
+        // Admitted and discharged on the same day: one day.
+        $again = $this->admitted($this->bed('A-2'), 'private');
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $again), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->assertSame('2026-11-15', BillingAccountItem::withoutTenantScope()->where('origin_type', 'admission_day')->where('origin_id', $again->id)->sole()->performed_on->toDateString());
     }
 
     public function test_the_signed_summary_discharges_frees_the_bed_and_ends_the_ward_access(): void

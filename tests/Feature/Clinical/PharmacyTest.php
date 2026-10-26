@@ -4,6 +4,8 @@ namespace Tests\Feature\Clinical;
 
 use App\Jobs\DeliverNotifications;
 use App\Models\AuditEvent;
+use App\Models\BillingAccountItem;
+use App\Models\BillingItem;
 use App\Models\EmergencyEpisode;
 use App\Models\Material;
 use App\Models\Medication;
@@ -11,6 +13,8 @@ use App\Models\Membership;
 use App\Models\Prescription;
 use App\Models\PrescriptionDispensing;
 use App\Models\PrescriptionItem;
+use App\Models\PriceEntry;
+use App\Models\PriceTable;
 use App\Models\StockMovement;
 use App\Models\Visit;
 use App\Tenancy\CurrentTenant;
@@ -48,7 +52,7 @@ class PharmacyTest extends ClinicalTestCase
         $this->pharmacist = Membership::factory()->for($this->unit->tenant)->create();
         $this->pharmacist->grant(Role::Pharmacy, $this->unit);
 
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'private'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Febre.']);
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();
@@ -216,6 +220,26 @@ class PharmacyTest extends ClinicalTestCase
         }
     }
 
+    public function test_a_return_is_credited_at_the_price_it_was_charged_at(): void
+    {
+        [$dipyrone] = PrescriptionItem::withoutTenantScope()->orderBy('id')->get()->all();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $billable = BillingItem::query()->create(['kind' => 'medication', 'medication_id' => $dipyrone->medication_id, 'name' => 'Dipirona 500 mg comprimido']);
+        $table = PriceTable::query()->create(['name' => 'Particular', 'private' => true]);
+        $today = now($this->unit->timezone)->toDateString();
+        PriceEntry::query()->create(['price_table_id' => $table->id, 'billing_item_id' => $billable->id, 'price_cents' => 35, 'valid_from' => '2026-01-01', 'valid_until' => $today, 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        PriceEntry::query()->create(['price_table_id' => $table->id, 'billing_item_id' => $billable->id, 'price_cents' => 40, 'valid_from' => now($this->unit->timezone)->addDay()->toDateString(), 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        app(CurrentTenant::class)->set(null);
+        $this->actingAs($this->pharmacist->user)->post(route('pharmacy.review', $dipyrone), ['decision' => 'approved'])->assertSessionHasNoErrors();
+        $this->post(route('pharmacy.dispense', $dipyrone), ['quantity' => 2])->assertSessionHasNoErrors();
+
+        // Returned tomorrow, when the price is 0,40: credited at 0,35, as charged.
+        $this->travel(1)->day();
+        $this->post(route('pharmacy.return', PrescriptionDispensing::withoutTenantScope()->sole()), ['quantity' => 1, 'reason' => 'Sobra.'])->assertSessionHasNoErrors();
+        $this->assertSame([['dispensing', 2, 35], ['dispensing_return', -1, 35]],
+            BillingAccountItem::withoutTenantScope()->orderBy('id')->get()->map(fn ($item) => [$item->origin_type, $item->quantity, $item->unit_price_cents])->all());
+    }
+
     public function test_the_dispensing_takes_from_the_lots_that_expire_first_and_the_return_puts_back(): void
     {
         [$dipyrone, $ceftriaxone] = PrescriptionItem::withoutTenantScope()->orderBy('id')->get()->all();
@@ -225,6 +249,11 @@ class PharmacyTest extends ClinicalTestCase
         // Expired by the application's clock and by the database's (the tests travel; the database does not).
         $expired = $this->stockLot($this->unit->id, $medication, 5, 'VENCIDO', '2026-01-01')->id;
         $elsewhere = $this->stockLot($this->other->id, $medication, 50, 'OUTRA')->id;
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $billable = BillingItem::query()->create(['kind' => 'medication', 'medication_id' => $medication->id, 'name' => 'Dipirona 500 mg comprimido', 'code' => '90000001']);
+        $table = PriceTable::query()->create(['name' => 'Particular', 'private' => true]);
+        PriceEntry::query()->create(['price_table_id' => $table->id, 'billing_item_id' => $billable->id, 'price_cents' => 35, 'valid_from' => '2026-01-01', 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        app(CurrentTenant::class)->set(null);
         $this->actingAs($this->pharmacist->user);
         foreach ([$dipyrone, $ceftriaxone] as $item) {
             $this->post(route('pharmacy.review', $item), ['decision' => 'approved'])->assertSessionHasNoErrors();
@@ -257,6 +286,9 @@ class PharmacyTest extends ClinicalTestCase
         $dispensing = PrescriptionDispensing::withoutTenantScope()->sole();
         $this->post(route('pharmacy.return', $dispensing), ['quantity' => 4, 'reason' => 'Sobra.'])->assertSessionHasNoErrors();
         $this->assertSame([$later => 1000, $soon => 2, $expired => 5, $elsewhere => 50], $balances());
+        // Step 6.2b: the account bills the dispensing and the return (negative), once each, at the price of the day.
+        $this->assertSame([['dispensing', 5, '90000001', 35], ['dispensing_return', -4, '90000001', 35]],
+            BillingAccountItem::withoutTenantScope()->orderBy('id')->get()->map(fn ($item) => [$item->origin_type, $item->quantity, $item->code, $item->unit_price_cents])->all());
         // The movements report shows them by type only: nothing that leads to the patient (step 4c.4b).
         $this->get(route('stock.movements.index', ['medication' => $dipyrone->medication_id]))->assertInertia(fn (Assert $page) => $page
             ->where('summary.0.dispensing', -5)->where('summary.0.return', 4)
