@@ -44,7 +44,7 @@ class PrescriptionTest extends ClinicalTestCase
         MedicationInteraction::query()->create(['ingredient_a' => 'varfarina', 'ingredient_b' => 'ácido acetilsalicílico', 'severity' => 'severe', 'note' => 'Risco de sangramento.', 'created_by_user_id' => $this->manager->user_id]);
         app(CurrentTenant::class)->set(null);
 
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dor torácica.']);
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();

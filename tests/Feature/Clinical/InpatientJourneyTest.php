@@ -116,7 +116,7 @@ class InpatientJourneyTest extends TestCase
         // 4. Arrival at the emergency desk, triage, emergency care with a signed note, admission request.
         $this->actingAs($users['recepcao'])->post(route('patients.store'), ['registered_unit_id' => $north->id, 'name' => 'Otávio Mendes Rocha', 'birth_date' => '1960-07-08', 'sex' => 'male', 'cpf' => '52998224725'])->assertSessionHasNoErrors();
         $patient = Patient::withoutTenantScope()->sole();
-        $this->post(route('emergency.arrive', $north), ['patient_id' => $patient->id])->assertSessionHasNoErrors();
+        $this->post(route('emergency.arrive', $north), ['patient_id' => $patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($doctorUser)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia súbita.', 'systolic' => 150, 'diastolic' => 90, 'heart_rate' => 118, 'temperature' => 37.2, 'spo2' => 88])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();

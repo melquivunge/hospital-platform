@@ -136,7 +136,7 @@ class PrescriptionJourneyTest extends TestCase
         // 5. Emergency care, admission request and the ward bed.
         $this->actingAs($users['recepcao'])->post(route('patients.store'), ['registered_unit_id' => $unit->id, 'name' => 'Benedita Faria Nunes', 'birth_date' => '1948-03-02', 'sex' => 'female', 'cpf' => '11144477735'])->assertSessionHasNoErrors();
         $patient = Patient::withoutTenantScope()->sole();
-        $this->post(route('emergency.arrive', $unit), ['patient_id' => $patient->id])->assertSessionHasNoErrors();
+        $this->post(route('emergency.arrive', $unit), ['patient_id' => $patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($doctorUser)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Fratura de fêmur após queda.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();

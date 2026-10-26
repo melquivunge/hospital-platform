@@ -1,5 +1,4 @@
 import { Form, Head, router } from '@inertiajs/react';
-import { useState } from 'react';
 import type { ReactNode } from 'react';
 import AppointmentController from '@/actions/App/Http/Controllers/AppointmentController';
 import type { AppointmentStatus } from '@/components/appointment-actions';
@@ -9,14 +8,13 @@ import {
     NoShowButton,
 } from '@/components/appointment-actions';
 import InputError from '@/components/input-error';
+import type { Modality } from '@/components/modality-fields';
+import { ModalityFields, modalityLabels } from '@/components/modality-fields';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { queue } from '@/routes/appointments';
-
-type Modality = 'private' | 'insurance' | 'sus';
 
 type QueueItem = {
     id: number;
@@ -30,12 +28,6 @@ type QueueItem = {
     insurer: string | null;
     cancelReason: string | null;
     canNoShow: boolean;
-};
-
-const modalityLabels: Record<Modality, string> = {
-    private: 'Particular',
-    insurance: 'Convênio',
-    sus: 'SUS',
 };
 
 /** Today's reception queue (step 3.5): waiting, arrived, no-shows and cancellations. */
@@ -220,9 +212,6 @@ function ArriveForm({
     context: string;
     insurers: { id: number; name: string }[];
 }) {
-    const [modality, setModality] = useState<Modality | ''>('');
-    const id = (field: string) => `${field}-${appointmentId}`;
-
     return (
         <Form
             {...AppointmentController.arrive.form(appointmentId)}
@@ -232,97 +221,11 @@ function ArriveForm({
         >
             {({ processing, errors }) => (
                 <>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                        <Field
-                            id={id('modality')}
-                            label="Modalidade"
-                            error={errors.modality}
-                        >
-                            <select
-                                id={id('modality')}
-                                name="modality"
-                                required
-                                value={modality}
-                                onChange={(event) =>
-                                    setModality(
-                                        event.target.value as Modality | '',
-                                    )
-                                }
-                                className={selectClassName}
-                            >
-                                <option value="" disabled>
-                                    Selecione
-                                </option>
-                                {Object.entries(modalityLabels).map(
-                                    ([value, label]) => (
-                                        <option key={value} value={value}>
-                                            {label}
-                                        </option>
-                                    ),
-                                )}
-                            </select>
-                        </Field>
-                        {modality === 'insurance' && (
-                            <Field
-                                id={id('insurer_id')}
-                                label="Convênio"
-                                error={errors.insurer_id}
-                            >
-                                <select
-                                    id={id('insurer_id')}
-                                    name="insurer_id"
-                                    required
-                                    defaultValue=""
-                                    className={selectClassName}
-                                >
-                                    <option value="" disabled>
-                                        {insurers.length === 0
-                                            ? 'Nenhum convênio ativo'
-                                            : 'Selecione'}
-                                    </option>
-                                    {insurers.map((insurer) => (
-                                        <option
-                                            key={insurer.id}
-                                            value={insurer.id}
-                                        >
-                                            {insurer.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </Field>
-                        )}
-                    </div>
-                    {modality === 'insurance' && (
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <Field
-                                id={id('card')}
-                                label="Número da carteira"
-                                error={errors.insurance_card_number}
-                            >
-                                <Input
-                                    id={id('card')}
-                                    name="insurance_card_number"
-                                    required
-                                    maxLength={40}
-                                    autoComplete="off"
-                                    className="h-11"
-                                />
-                            </Field>
-                            <Field
-                                id={id('valid_until')}
-                                label="Validade da carteira"
-                                error={errors.insurance_card_valid_until}
-                            >
-                                <Input
-                                    id={id('valid_until')}
-                                    name="insurance_card_valid_until"
-                                    type="date"
-                                    required
-                                    className="h-11"
-                                />
-                            </Field>
-                        </div>
-                    )}
+                    <ModalityFields
+                        idPrefix={`arrive-${appointmentId}`}
+                        insurers={insurers}
+                        errors={errors}
+                    />
                     <div className="flex justify-end">
                         <Button
                             type="submit"

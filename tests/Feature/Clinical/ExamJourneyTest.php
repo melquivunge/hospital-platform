@@ -124,7 +124,7 @@ class ExamJourneyTest extends TestCase
         // 5. The emergency room: arrival, triage, the visit, and an urgent potassium signed with the password.
         $this->actingAs($users['recepcao'])->post(route('patients.store'), ['registered_unit_id' => $unit->id, 'name' => 'Benedita Faria Nunes', 'birth_date' => '1948-03-02', 'sex' => 'female'])->assertSessionHasNoErrors();
         $patient = Patient::withoutTenantScope()->sole();
-        $this->post(route('emergency.arrive', $unit), ['patient_id' => $patient->id])->assertSessionHasNoErrors();
+        $this->post(route('emergency.arrive', $unit), ['patient_id' => $patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($doctorUser)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Fraqueza e palpitações.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();

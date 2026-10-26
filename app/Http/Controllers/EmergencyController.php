@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Clinical\ClinicalAccess;
 use App\Models\AuditEvent;
 use App\Models\EmergencyEpisode;
+use App\Models\Insurer;
 use App\Models\JobFunction;
 use App\Models\Membership;
 use App\Models\Patient;
@@ -64,6 +65,7 @@ class EmergencyController extends Controller
             'units' => $units->map->only('id', 'name')->values(),
             'unit' => $unit->only('id', 'name'),
             'canArrive' => in_array($unit->id, $reception, true),
+            'insurers' => in_array($unit->id, $reception, true) ? Insurer::query()->where('active', true)->orderBy('name')->get(['id', 'name']) : [],
             'canTriage' => $canTriage,
             'canCall' => in_array($unit->id, self::triageUnitIds($request, attending: true), true),
             'levels' => $scale->values()->map->only('level', 'name', 'color', 'target_minutes'),
@@ -102,9 +104,11 @@ class EmergencyController extends Controller
             'apparent_age' => ['nullable', 'integer', 'between:0,120'],
             'description' => ['required', 'string', 'max:500'],
         ] : ['patient_id' => ['required', 'integer']], [], ['sex' => 'sexo', 'apparent_age' => 'idade aparente', 'description' => 'descrição', 'patient_id' => 'paciente']);
+        // Step 6.2a0: the modality of the stay, as on a consultation's arrival; an admission keeps it.
+        $modality = AppointmentController::validateModality($request, now($unit->timezone ?? 'UTC')->toDateString());
 
         try {
-            DB::transaction(function () use ($request, $unit, $unidentified, $data) {
+            DB::transaction(function () use ($request, $unit, $unidentified, $data, $modality) {
                 if ($unidentified) {
                     $patient = new Patient(['registered_unit_id' => $unit->id, 'name' => 'Não identificado', 'sex' => $data['sex']]);
                     $patient->forceFill(['unidentified' => true, 'apparent_age' => $data['apparent_age'] ?? null, 'description' => $data['description'], 'created_by_user_id' => $request->user()->id])->save();
@@ -118,8 +122,10 @@ class EmergencyController extends Controller
                         throw ValidationException::withMessages(['patient_id' => 'Este paciente já está na urgência.']);
                     }
                 }
-                $episode = EmergencyEpisode::query()->create(['unit_id' => $unit->id, 'patient_id' => $patient->id, 'arrived_at' => now(), 'arrived_by_user_id' => $request->user()->id]);
-                AuditEvent::record('emergency.arrived', $episode->tenant_id, $episode, ['unit_id' => $unit->id, 'patient_id' => $patient->id]);
+                AppointmentController::lockInsurer($modality);
+                $episode = EmergencyEpisode::query()->create(['unit_id' => $unit->id, 'patient_id' => $patient->id, 'arrived_at' => now(), 'arrived_by_user_id' => $request->user()->id, ...$modality]);
+                // The card number stays in the clinical table, out of the audit trail.
+                AuditEvent::record('emergency.arrived', $episode->tenant_id, $episode, array_filter(['unit_id' => $unit->id, 'patient_id' => $patient->id, 'modality' => $episode->modality, 'insurer_id' => $episode->insurer_id]));
             });
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages(['patient_id' => 'Este paciente já está na urgência.']);

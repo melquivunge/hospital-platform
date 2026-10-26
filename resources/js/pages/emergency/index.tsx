@@ -3,6 +3,7 @@ import { Siren, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import EmergencyController from '@/actions/App/Http/Controllers/EmergencyController';
 import InputError from '@/components/input-error';
+import { ModalityFields } from '@/components/modality-fields';
 import { Page, PageHeader } from '@/components/page';
 import { sexLabels } from '@/components/patient-display';
 import { selectClassName } from '@/components/role-fields';
@@ -85,6 +86,7 @@ export default function Emergency({
     units,
     unit,
     canArrive,
+    insurers,
     canTriage,
     canCall,
     levels,
@@ -94,6 +96,7 @@ export default function Emergency({
     units: { id: number; name: string }[];
     unit: { id: number; name: string };
     canArrive: boolean;
+    insurers: { id: number; name: string }[];
     canTriage: boolean;
     canCall: boolean;
     levels: Level[];
@@ -136,7 +139,13 @@ export default function Emergency({
                     </div>
                 )}
 
-                {canArrive && <Arrival unitId={unit.id} patient={patient} />}
+                {canArrive && (
+                    <Arrival
+                        unitId={unit.id}
+                        patient={patient}
+                        insurers={insurers}
+                    />
+                )}
                 <InputError message={errors.call} className="mb-4" />
 
                 <section aria-labelledby="queue-heading" className="grid gap-3">
@@ -187,9 +196,11 @@ export default function Emergency({
 function Arrival({
     unitId,
     patient,
+    insurers,
 }: {
     unitId: number;
     patient: { id: number; name: string } | null;
+    insurers: { id: number; name: string }[];
 }) {
     return (
         <section
@@ -213,7 +224,7 @@ function Arrival({
             ) : (
                 <Form
                     {...EmergencyController.arrive.form(unitId)}
-                    className="flex flex-wrap items-center gap-3"
+                    className="grid gap-3"
                 >
                     {({ processing, errors }) => (
                         <>
@@ -228,17 +239,19 @@ function Arrival({
                                     {patient.name}
                                 </span>
                             </p>
+                            <ModalityFields
+                                idPrefix="arrival"
+                                insurers={insurers}
+                                errors={errors}
+                            />
+                            <InputError message={errors.patient_id} />
                             <Button
                                 type="submit"
                                 disabled={processing}
-                                className="min-h-11"
+                                className="min-h-11 justify-self-start"
                             >
                                 Registrar chegada
                             </Button>
-                            <InputError
-                                message={errors.patient_id}
-                                className="basis-full"
-                            />
                         </>
                     )}
                 </Form>
@@ -314,6 +327,11 @@ function Arrival({
                                     className={textareaClassName}
                                 />
                             </Field>
+                            <ModalityFields
+                                idPrefix="unidentified"
+                                insurers={insurers}
+                                errors={errors}
+                            />
                             <Button
                                 type="submit"
                                 disabled={processing}

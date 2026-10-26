@@ -116,7 +116,7 @@ class SurgeryJourneyTest extends TestCase
         // 5. The emergency room and the admission to the surgical ward.
         $this->actingAs($users['recepcao'])->post(route('patients.store'), ['registered_unit_id' => $unit->id, 'name' => 'Rosalina Prado Gomes', 'birth_date' => '1961-07-09', 'sex' => 'female'])->assertSessionHasNoErrors();
         $patient = Patient::withoutTenantScope()->sole();
-        $this->post(route('emergency.arrive', $unit), ['patient_id' => $patient->id])->assertSessionHasNoErrors();
+        $this->post(route('emergency.arrive', $unit), ['patient_id' => $patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($doctorUser)->post(route('emergency.triage', $episode), ['level' => 3, 'complaint' => 'Dor em hipocôndrio direito.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();

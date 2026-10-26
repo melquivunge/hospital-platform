@@ -63,7 +63,7 @@ class MedicationAdministrationTest extends ClinicalTestCase
         $this->icuNurse = $this->teamMember('Enf. Davi', $icu);
 
         $this->actingAs($this->manager->user)->post(route('beds.store', $this->unit), ['sector_id' => $ward->id, 'room' => '1', 'code' => 'E-1', 'type' => 'ward'])->assertSessionHasNoErrors();
-        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasNoErrors();
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dor.']);
         $this->post(route('emergency.call', $episode));
