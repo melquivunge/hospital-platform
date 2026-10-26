@@ -87,4 +87,26 @@ class TenantSelectionTest extends TestCase
             ->get(route('current-tenant.edit'))
             ->assertInertia(fn (Assert $page) => $page->has('tenants', 1)->where('tenants.0.id', $active->tenant_id));
     }
+
+    public function test_each_tab_keeps_the_network_it_shows(): void
+    {
+        $first = Membership::factory()->withRole(Role::NetworkAdmin)->create();
+        $second = Membership::factory()->for($first->user)->withRole(Role::NetworkAdmin)->create();
+        $foreign = Membership::factory()->create();
+        $revoked = Membership::factory()->for($first->user)->create();
+        $revoked->revoke();
+
+        // Another tab chose the second network last; this tab still shows the first and says so.
+        $this->actingAs($first->user)->post(route('current-tenant.update'), ['tenant_id' => $second->tenant_id]);
+        $this->get(route('dashboard'), ['X-Tenant' => (string) $first->tenant_id])
+            ->assertInertia(fn (Assert $page) => $page->where('currentTenant.id', $first->tenant_id));
+        // The session follows the tab used last.
+        $this->get(route('dashboard'))->assertInertia(fn (Assert $page) => $page->where('currentTenant.id', $first->tenant_id));
+
+        // A network the user is not an active member of is ignored: the session's stays.
+        foreach ([$foreign->tenant_id, $revoked->tenant_id, 'x'] as $tenant) {
+            $this->get(route('dashboard'), ['X-Tenant' => (string) $tenant])
+                ->assertInertia(fn (Assert $page) => $page->where('currentTenant.id', $first->tenant_id));
+        }
+    }
 }

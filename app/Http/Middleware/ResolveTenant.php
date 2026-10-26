@@ -23,7 +23,12 @@ class ResolveTenant
     {
         $memberships = $request->user()->memberships()->active()->with('tenant')->get();
 
-        $selected = $memberships->firstWhere('tenant_id', $request->session()->get('tenant_id'))
+        // Each tab says which network it shows (X-Tenant, sent by the front end on every visit): the session alone holds
+        // the last one chosen in any tab, so another tab would switch this one's network. Only an active membership
+        // counts; anything else falls back to the session.
+        $requested = $request->header('X-Tenant');
+        $selected = (is_string($requested) && ctype_digit($requested) ? $memberships->firstWhere('tenant_id', (int) $requested) : null)
+            ?? $memberships->firstWhere('tenant_id', $request->session()->get('tenant_id'))
             ?? ($memberships->count() === 1 ? $memberships->first() : null);
 
         if ($selected === null && $mode === 'optional') {
