@@ -623,4 +623,57 @@ class BillingLotTest extends ClinicalTestCase
             }
         }
     }
+
+    /**
+     * Step 6.6: the unit manager's billing reports, numbers only: production by modality, the accounts pending now,
+     * the glosas by reason (with appeals) and what was received; the CSV has the same numbers and is logged.
+     */
+    public function test_the_managers_billing_reports_add_up_production_pending_glosas_and_received(): void
+    {
+        $lot = $this->sentLot();
+        // A private account still open (arrived) and one closed without payment, at the private table's price.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        PriceTable::query()->update(['private' => true]);
+        app(CurrentTenant::class)->set(null);
+        $this->arrived($this->doctor, $this->unit, '10:20', ['modality' => 'private']);
+        $paid = $this->arrived($this->doctor, $this->unit, '11:20', ['modality' => 'private']);
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $paid))->assertRedirect();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()))->assertSessionHasNoErrors();
+        $this->actingAs($this->billing->user)->post(route('billing-accounts.close', BillingAccount::withoutTenantScope()->where('appointment_id', $paid->id)->sole()))->assertSessionHasNoErrors();
+        $report = fn () => $this->actingAs($this->manager->user)->get(route('billing-reports.index', ['unit' => $this->unit->id]));
+        $report()->assertInertia(fn (Assert $page) => $page->component('billing-reports/index')
+            ->where('production.0', ['group' => 'Convênio · Saúde Boa', 'accounts' => 2, 'items' => 2, 'totalCents' => 20000, 'pricelessItems' => 0])
+            ->where('production.1.group', 'Particular')->where('production.1.accounts', 1)
+            ->where('pending.0.accounts', 1)->where('pending.1.accounts', 0)
+            ->where('pending.2', ['label' => 'Convênio em lote, aguardando retorno', 'accounts' => 2, 'totalCents' => 20000])
+            ->where('pending.3.accounts', 1)->where('glosas', []));
+
+        // A return with a glosa, appealed and partly recovered.
+        [$first] = $lot->guideItems()->pluck('id')->all();
+        $this->actingAs($this->billing->user)->post(route('billing-lots.return.store', $lot), ['glosas' => [$first => ['amount' => '30,00', 'code' => '1001']]])->assertSessionHasNoErrors();
+        $this->post(route('billing-lots.appeals.store', $lot), ['protocol' => '1', 'items' => [$first => ['amount' => '', 'justification' => 'Carteira válida.']]])->assertSessionHasNoErrors();
+        $this->post(route('billing-lots.appeals.results', $lot), ['results' => [$first => '20,00']])->assertSessionHasNoErrors();
+
+        $report()->assertInertia(fn (Assert $page) => $page
+            ->where('pending.2.accounts', 0)
+            ->where('glosas', [['code' => '1001', 'term' => 'NÚMERO DA CARTEIRA INVÁLIDO', 'items' => 1, 'glossedCents' => 3000, 'appealingCents' => 0, 'recoveredCents' => 2000]])
+            ->where('received', [
+                ['group' => 'Particular', 'label' => 'Pagamentos recebidos', 'count' => 0, 'totalCents' => 0],
+                ['group' => 'Convênio · Saúde Boa', 'label' => 'Pago no retorno (lotes)', 'count' => 1, 'totalCents' => 17000],
+                ['group' => 'Convênio · Saúde Boa', 'label' => 'Recuperado em recurso (itens)', 'count' => 1, 'totalCents' => 2000],
+            ]));
+        // A period without them: nothing produced, glossed nor received; pending stays.
+        $this->get(route('billing-reports.index', ['from' => '2025-01-01', 'to' => '2025-01-31']))
+            ->assertInertia(fn (Assert $page) => $page->where('production', [])->where('glosas', [])->where('received.0.totalCents', 0)->has('received', 1));
+
+        $csv = $this->get(route('billing-reports.csv', ['unit' => $this->unit->id]))->assertOk()->streamedContent();
+        $this->assertStringContainsString('Glosas;"1001 NÚMERO DA CARTEIRA INVÁLIDO";"em recurso 0,00, recuperado 20,00";1;30,00', $csv);
+        $this->assertStringContainsString('Produção;"Convênio · Saúde Boa";"2 contas, 0 itens sem preço";2;200,00', $csv);
+        $this->assertStringNotContainsString('Joana', $csv);
+        $this->assertTrue(AuditEvent::where('action', 'billing.report_exported')->exists());
+
+        // The manager only (and the network admin): not billing.
+        $this->actingAs($this->billing->user)->get(route('billing-reports.index'))->assertForbidden();
+        $this->actingAs($this->billing->user)->get(route('billing-reports.csv'))->assertForbidden();
+    }
 }
