@@ -207,6 +207,29 @@ class ExamResultTest extends ClinicalTestCase
             [$billed->origin_type, $billed->origin_id, $billed->code, $billed->name, $billed->unit_price_cents, $billed->performed_on->toDateString()]);
     }
 
+    public function test_a_result_released_after_the_account_closed_goes_to_a_complementary_account(): void
+    {
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $item = $this->item('laboratory');
+        $this->actingAs($this->lab->user)->post(route('exam-queue.collect', $item))->assertSessionHasNoErrors();
+        // The emergency visit ends; its item (no billable item: pending) is compensated and the account closes.
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit), ['outcome' => 'discharged'])->assertSessionHasNoErrors();
+        $account = BillingAccount::withoutTenantScope()->sole();
+        $this->actingAs($billing->user)->post(route('billing-account-items.compensate', BillingAccountItem::withoutTenantScope()->sole()), ['reason' => 'Não cobrado.'])->assertSessionHasNoErrors();
+        $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
+
+        // Released afterwards: billed in a complementary account, with the same modality; the closed one is untouched.
+        $this->actingAs($this->lab->user)->post(route('exam-results.release', $item), $this->payload())->assertSessionHasNoErrors();
+        $complement = BillingAccount::withoutTenantScope()->where('complement_of_id', $account->id)->sole();
+        $this->assertSame(['open', 'private'], [$complement->status, $complement->modality]);
+        $this->assertSame([['exam_order_item', $item->id]], BillingAccountItem::withoutTenantScope()->where('billing_account_id', $complement->id)->get()->map(fn ($row) => [$row->origin_type, $row->origin_id])->all());
+        $this->assertSame(2, BillingAccountItem::withoutTenantScope()->where('billing_account_id', $account->id)->count());
+        // Generating again, from either account, adds nothing.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->assertSame([0, 0], [$account->generate(), $complement->generate()]);
+    }
+
     public function test_a_rectification_is_the_next_version_with_a_reason_and_the_previous_stays(): void
     {
         $item = $this->item('laboratory');

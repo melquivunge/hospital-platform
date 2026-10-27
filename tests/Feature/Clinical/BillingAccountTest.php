@@ -314,4 +314,55 @@ class BillingAccountTest extends ClinicalTestCase
         $this->actingAs($billing->user)->post(route('billing-accounts.authorizations.store', $private), ['item_ids' => [$item->id], 'status' => 'urgency', 'reason' => 'X.'])
             ->assertSessionHasErrorsIn('authorization', ['item_ids']);
     }
+
+    public function test_billing_closes_once_after_the_stay_and_without_pending_items_and_the_closed_account_never_changes(): void
+    {
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $appointment = $this->arrived($this->doctor, $this->unit, '08:20', ['modality' => 'insurance', 'insurer_id' => $this->insurer->id, 'insurance_card_number' => '0012 3456', 'insurance_card_valid_until' => '2027-03-31']);
+        $account = BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $appointment))->assertRedirect();
+        $close = fn () => $this->actingAs($billing->user)->post(route('billing-accounts.close', $account));
+
+        // While the visit is open, the stay has not ended.
+        $close()->assertSessionHasErrorsIn('close', ['close' => 'O atendimento ainda não terminou: a conta fecha depois do encerramento ou da alta.']);
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', Visit::withoutTenantScope()->sole()))->assertSessionHasNoErrors();
+        // The consultation needs the insurer's authorization: pending until answered.
+        $close()->assertSessionHasErrorsIn('close', ['close' => 'Resolva as pendências antes de fechar: itens sem preço ou sem autorização do convênio.']);
+        $item = BillingAccountItem::withoutTenantScope()->sole();
+        $this->post(route('billing-accounts.authorizations.store', $account), ['item_ids' => [$item->id], 'status' => 'authorized', 'number' => 'G-9', 'valid_until' => '2026-12-31'])->assertSessionHasNoErrors();
+        $close()->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Conta fechada.');
+        $close()->assertSessionHasErrorsIn('close', ['close' => 'Esta conta já foi fechada.']);
+        $account = $account->fresh();
+        $this->assertSame(['closed', $billing->user_id], [$account->status, $account->closed_by_user_id]);
+        $this->assertEquals(['unit_id' => $this->unit->id, 'total_cents' => 11050, 'complement_of_id' => null], AuditEvent::where('action', 'billing_account.closed')->sole()->context);
+
+        // The closed account takes nothing: no manual item, no answer, no change in the database.
+        $this->post(route('billing-accounts.items.store', $account), ['billing_item_id' => $this->consultation->id, 'performed_on' => '2026-11-16', 'quantity' => 1, 'reason' => 'X.'])->assertSessionHasErrorsIn('item', ['item']);
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        foreach ([
+            fn () => DB::table('billing_accounts')->where('id', $account->id)->update(['modality' => 'private', 'insurer_id' => null, 'insurance_card_number' => null, 'insurance_card_valid_until' => null]),
+            fn () => DB::table('billing_account_items')->insert([...collect($item->getAttributes())->except('id')->all(), 'origin_type' => 'manual', 'origin_id' => null, 'reason' => 'X', 'author_user_id' => $billing->user_id]),
+            fn () => DB::table('billing_authorizations')->insert(['tenant_id' => $item->tenant_id, 'billing_account_item_id' => $item->id, 'status' => 'urgency', 'reason' => 'X', 'author_user_id' => $billing->user_id, 'created_at' => now()]),
+        ] as $write) {
+            try {
+                DB::transaction($write);
+                $this->fail('The database must refuse it.');
+            } catch (QueryException $e) {
+                $this->assertMatchesRegularExpression('/closed account/', $e->getMessage());
+            }
+        }
+        app(CurrentTenant::class)->set(null);
+
+        // A correction after the close: the compensation goes to a complementary account, which closes on its own.
+        $this->post(route('billing-account-items.compensate', $item), ['reason' => 'Glosa prevista.'])->assertSessionHasNoErrors();
+        $complement = BillingAccount::withoutTenantScope()->where('complement_of_id', $account->id)->sole();
+        $this->assertSame(['open', 'insurance', '0012 3456'], [$complement->status, $complement->modality, $complement->insurance_card_number]);
+        $this->assertSame($complement->id, BillingAccountItem::withoutTenantScope()->where('origin_type', 'compensation')->sole()->billing_account_id);
+        $this->get(route('billing-accounts.show', $complement))->assertInertia(fn (Assert $page) => $page
+            ->where('account.complementOf', $account->id)->where('account.stay', 'Consulta')->where('canClose', true)->where('complements', [$complement->id]));
+        $this->post(route('billing-accounts.close', $complement))->assertSessionHasNoErrors();
+        $this->get(route('billing-accounts.index', ['closed' => 1]))->assertInertia(fn (Assert $page) => $page->has('accounts', 2));
+        $this->get(route('billing-accounts.index'))->assertInertia(fn (Assert $page) => $page->has('accounts', 0));
+    }
 }

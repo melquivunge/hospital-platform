@@ -1,4 +1,4 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
 import BillingAccountController from '@/actions/App/Http/Controllers/BillingAccountController';
 import InputError from '@/components/input-error';
@@ -65,6 +65,9 @@ export default function BillingAccountShow({
     account,
     items,
     canChange,
+    canCompensate,
+    canClose,
+    complements,
     billableItems,
     today,
 }: {
@@ -74,6 +77,9 @@ export default function BillingAccountShow({
     };
     items: Item[];
     canChange: boolean;
+    canCompensate: boolean;
+    canClose: boolean;
+    complements: number[];
     billableItems: { id: number; name: string; code: string | null }[];
     today: string;
 }) {
@@ -94,6 +100,11 @@ export default function BillingAccountShow({
                     eyebrow={`Conta ${account.id} · aberta em ${account.openedAt}`}
                     title={account.patient ?? 'Paciente'}
                     description={`${account.stay} · ${stayModality(account)}`}
+                />
+                <CloseBar
+                    account={account}
+                    canClose={canClose}
+                    complements={complements}
                 />
                 <dl className="mb-8 grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-3">
                     <div className="grid gap-1">
@@ -261,7 +272,7 @@ export default function BillingAccountShow({
                                                 : money(item.unitPriceCents)}
                                         </span>
                                     </span>
-                                    {canChange &&
+                                    {canCompensate &&
                                         item.origin !== 'compensation' &&
                                         !item.compensated && (
                                             <Compensate item={item} />
@@ -452,6 +463,99 @@ function Field({
             {children}
             <InputError message={error} />
         </div>
+    );
+}
+
+/**
+ * Step 6.4a: the account's state and its closing (once the stay ended and nothing is pending), and the complementary
+ * accounts that receive what comes after it closed.
+ */
+function CloseBar({
+    account,
+    canClose,
+    complements,
+}: {
+    account: AccountSummary;
+    canClose: boolean;
+    complements: number[];
+}) {
+    const others = complements.filter((id) => id !== account.id);
+
+    return (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-5 py-4">
+            <div className="grid gap-1 text-sm">
+                <span className="font-medium">
+                    {account.status === 'closed'
+                        ? `Fechada em ${account.closedAt}`
+                        : 'Aberta'}
+                    {account.complementOf !== null && (
+                        <>
+                            {' · complementar da '}
+                            <AccountLink id={account.complementOf} />
+                        </>
+                    )}
+                </span>
+                {account.status === 'closed' && (
+                    <span className="text-muted-foreground">
+                        Conta fechada não muda. O que chegar depois vai para a
+                        conta complementar; um estorno também.
+                    </span>
+                )}
+                {others.length > 0 && (
+                    <span className="text-muted-foreground">
+                        Complementares:{' '}
+                        {others.map((id, index) => (
+                            <span key={id}>
+                                {index > 0 && ', '}
+                                <AccountLink id={id} />
+                            </span>
+                        ))}
+                    </span>
+                )}
+            </div>
+            {account.status === 'open' && (
+                <Form
+                    {...BillingAccountController.close.form(account.id)}
+                    errorBag="close"
+                    options={{ preserveScroll: true }}
+                    onBefore={() =>
+                        window.confirm(
+                            'Fechar a conta? Depois de fechada, ela não muda.',
+                        )
+                    }
+                    className="grid justify-items-end gap-1"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <Button
+                                type="submit"
+                                disabled={processing || !canClose}
+                                className="min-h-11"
+                            >
+                                Fechar conta
+                            </Button>
+                            {!canClose && (
+                                <span className="text-xs text-muted-foreground">
+                                    Fecha depois do encerramento ou da alta.
+                                </span>
+                            )}
+                            <InputError message={errors.close} />
+                        </>
+                    )}
+                </Form>
+            )}
+        </div>
+    );
+}
+
+function AccountLink({ id }: { id: number }) {
+    return (
+        <Link
+            href={BillingAccountController.show.url(id)}
+            className="text-primary underline-offset-4 hover:underline"
+        >
+            conta {id}
+        </Link>
     );
 }
 
