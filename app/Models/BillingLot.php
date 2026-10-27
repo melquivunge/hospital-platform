@@ -122,9 +122,9 @@ class BillingLot extends Model
      * Cancels a generated lot with a reason and releases its accounts; returns why it could not (already cancelled, or
      * the insurer's return is recorded), null when cancelled.
      */
-    public function cancel(string $reason, User $user): ?string
+    public function cancel(string $reason, User $user, bool $insurerRefused = false): ?string
     {
-        return DB::transaction(function () use ($reason, $user) {
+        return DB::transaction(function () use ($reason, $user, $insurerRefused) {
             $lot = self::query()->lockForUpdate()->findOrFail($this->id);
             if ($lot->status !== 'generated') {
                 return 'Este lote já foi cancelado.';
@@ -132,9 +132,14 @@ class BillingLot extends Model
             if (DB::table('billing_item_returns')->where('billing_lot_id', $lot->id)->exists()) {
                 return 'O retorno da operadora já foi registrado: o lote não é mais cancelado.';
             }
+            // Step 6.7 (user's decision, option A): a file that may have reached the insurer is cancelled only when the
+            // insurer refused it, so the same guides are never sent twice.
+            if ($lot->file_path !== null && ! $insurerRefused) {
+                return 'O arquivo deste lote já foi gerado: cancele só se a operadora o recusou, confirmando abaixo.';
+            }
             $lot->forceFill(['status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by_user_id' => $user->id, 'cancel_reason' => $reason])->save();
             DB::table('billing_lot_accounts')->where('billing_lot_id', $lot->id)->whereNull('released_at')->update(['released_at' => now()]);
-            AuditEvent::record('billing_lot.cancelled', $lot->tenant_id, $lot, ['guide_count' => $lot->guide_count]);
+            AuditEvent::record('billing_lot.cancelled', $lot->tenant_id, $lot, ['guide_count' => $lot->guide_count, ...($lot->file_path === null ? [] : ['insurer_refused' => true])]);
 
             return null;
         });

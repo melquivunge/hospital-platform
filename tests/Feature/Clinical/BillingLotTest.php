@@ -331,7 +331,11 @@ class BillingLotTest extends ClinicalTestCase
         $this->actingAs($elsewhere->user)->post(route('billing-lots.file', $lot))->assertForbidden();
 
         // Cancelled, its accounts may go into another lot: the file is no longer downloaded.
-        $this->actingAs($this->billing->user)->post(route('billing-lots.cancel', $lot), ['reason' => 'Reenvio corrigido.'])->assertSessionHasNoErrors();
+        // Step 6.7: a generated file is cancelled only when the insurer refused it (no guide sent twice).
+        $this->actingAs($this->billing->user)->post(route('billing-lots.cancel', $lot), ['reason' => 'Reenvio corrigido.'])
+            ->assertSessionHasErrorsIn("cancel-{$lot->id}", ['reason' => 'O arquivo deste lote já foi gerado: cancele só se a operadora o recusou, confirmando abaixo.']);
+        $this->post(route('billing-lots.cancel', $lot), ['reason' => 'Reenvio corrigido.', 'insurer_refused' => '1'])->assertSessionHasNoErrors();
+        $this->assertEquals(['guide_count' => 1, 'insurer_refused' => true], AuditEvent::where('action', 'billing_lot.cancelled')->sole()->context);
         $this->get(route('billing-lots.download', $lot))->assertNotFound();
         $this->post(route('billing-lots.file', $lot))->assertSessionHasErrorsIn("file-{$lot->id}", ['file' => 'Este lote foi cancelado.']);
 

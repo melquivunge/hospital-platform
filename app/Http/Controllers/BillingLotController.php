@@ -119,8 +119,8 @@ class BillingLotController extends Controller
     {
         abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
         $bag = "cancel-{$lot->id}";
-        $data = $request->validateWithBag($bag, ['reason' => ['required', 'string', 'max:500']], [], ['reason' => 'motivo']);
-        if (($refusal = $lot->cancel(trim((string) $data['reason']), $request->user())) !== null) {
+        $data = $request->validateWithBag($bag, ['reason' => ['required', 'string', 'max:500'], 'insurer_refused' => ['sometimes', 'boolean']], [], ['reason' => 'motivo']);
+        if (($refusal = $lot->cancel(trim((string) $data['reason']), $request->user(), $request->boolean('insurer_refused'))) !== null) {
             throw ValidationException::withMessages(['reason' => $refusal])->errorBag($bag);
         }
         Inertia::flash('toast', ['type' => 'success', 'message' => "Lote {$lot->id} cancelado; as contas voltaram para as prontas."]);
