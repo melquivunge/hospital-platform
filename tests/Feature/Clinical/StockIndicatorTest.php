@@ -112,7 +112,8 @@ class StockIndicatorTest extends TestCase
     {
         $this->stockLot($this->other->id, $this->medication, 6, 'B1', '2026-11-20');
         $this->actingAs($this->admin->user)->get(route('stock.indicators.index', ['unit' => $this->other->id]))->assertInertia(fn (Assert $page) => $page
-            ->where('stockUnitIds', [])->has('units', 2)->where('unitId', $this->other->id)
+            // The network admin opens every unit's stock as its manager (user's decision, 27/10/2026).
+            ->where('stockUnitIds', fn ($ids) => collect($ids)->sort()->values()->all() === collect([$this->unit->id, $this->other->id])->sort()->values()->all())->has('units', 2)->where('unitId', $this->other->id)
             ->where('units.1.name', 'Hospital B')->where('units.1.expiring', 1)->where('detail.expiring.0.lot', 'B1'));
         $this->actingAs($this->otherManager->user)->get(route('stock.indicators.index', ['unit' => $this->unit->id]))->assertInertia(fn (Assert $page) => $page
             ->has('units', 1)->where('unitId', $this->other->id)->where('stockUnitIds', [$this->other->id]));

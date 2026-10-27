@@ -116,8 +116,8 @@ class BedTest extends TestCase
         $otherManager->grant(Role::UnitManager, $this->other);
         $this->actingAs($otherManager->user)->post(route('beds.store', $this->unit), ['sector_id' => $this->ward->id, 'room' => '1', 'code' => 'Z', 'type' => 'ward'])->assertForbidden();
         $admin = Membership::query()->where('tenant_id', $this->unit->tenant_id)->whereHas('roleAssignments', fn ($query) => $query->where('role', Role::NetworkAdmin))->firstOrFail();
-        $this->actingAs($admin->user)->get(route('beds.index'))->assertInertia(fn (Assert $page) => $page->where('can.configure', true)->where('can.manage', false));
-        $this->post(route('beds.block', $bed), ['reason' => 'x'])->assertForbidden();
+        // The network admin also manages the beds of every unit (user's decision, 27/10/2026).
+        $this->actingAs($admin->user)->get(route('beds.index'))->assertInertia(fn (Assert $page) => $page->where('can.configure', true)->where('can.manage', true));
 
         // Deactivated only while free or blocked; it leaves the map.
         $this->actingAs($this->bedManager->user)->post(route('beds.send-to-cleaning', $bed));
