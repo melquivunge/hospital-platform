@@ -138,6 +138,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('billing-lots', [BillingLotController::class, 'index'])->middleware('throttle:120,1')->name('billing-lots.index');
     Route::post('billing-lots', [BillingLotController::class, 'store'])->middleware('throttle:30,1')->name('billing-lots.store');
     Route::post('billing-lots/{lot}/cancel', [BillingLotController::class, 'cancel'])->middleware('throttle:30,1')->name('billing-lots.cancel');
+    // Step 6.5b2a: the lot's TISS file.
+    Route::post('billing-lots/{lot}/file', [BillingLotController::class, 'file'])->middleware('throttle:30,1')->name('billing-lots.file');
+    Route::get('billing-lots/{lot}/file', [BillingLotController::class, 'download'])->middleware('throttle:30,1')->name('billing-lots.download');
     Route::get('pharmacy', [PharmacyController::class, 'index'])->middleware('throttle:120,1')->name('pharmacy.index');
     Route::get('pharmacy/prescriptions/{prescription}', [PharmacyController::class, 'show'])->middleware('throttle:120,1')->name('pharmacy.show');
     Route::post('pharmacy/items/{item}/review', [PharmacyController::class, 'review'])->middleware('throttle:120,1')->name('pharmacy.review');

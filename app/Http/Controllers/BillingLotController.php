@@ -2,8 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Billing\TissLotXml;
+use App\Clinical\ClinicalAccess;
+use App\Models\AuditEvent;
+use App\Models\BillingAccount;
 use App\Models\BillingLot;
 use App\Models\Insurer;
+use App\Models\Patient;
 use App\Models\Unit;
 use App\Models\User;
 use App\Policies\UnitPolicy;
@@ -12,10 +17,12 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Step 6.5b1 (ADR-0010): the TISS lots of a unit, for its Billing role (or the network admin): what is ready to go
@@ -64,6 +71,12 @@ class BillingLotController extends Controller
                 'cancelledAt' => $lot->cancelled_at?->setTimezone($timezone)->format('d/m/Y H:i'),
                 'cancelledBy' => $lot->cancelled_by_user_id === null ? null : $users->get($lot->cancelled_by_user_id),
                 'cancelReason' => $lot->cancel_reason,
+                // Step 6.5b2a: the TISS file, or what keeps a generated lot from it.
+                'file' => $lot->file_path === null ? null : [
+                    'sha256' => $lot->file_sha256,
+                    'generatedAt' => $lot->file_generated_at?->setTimezone($timezone)->format('d/m/Y H:i'),
+                ],
+                'problems' => $lot->status === 'generated' && $lot->file_path === null ? (new TissLotXml($lot))->problems() : [],
             ])->values(),
             'guideTypes' => BillingLot::GUIDE_TYPES,
             'maxGuides' => BillingLot::MAX_GUIDES,
@@ -108,5 +121,44 @@ class BillingLotController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => "Lote {$lot->id} cancelado; as contas voltaram para as prontas."]);
 
         return to_route('billing-lots.index', ['unit' => $lot->unit_id]);
+    }
+
+    /**
+     * Step 6.5b2a: writes the lot's TISS file once, validated against the official schema, with its SHA-256; refused
+     * while anything is missing (listed on the screen).
+     */
+    public function file(Request $request, BillingLot $lot): RedirectResponse
+    {
+        abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $errors = $lot->writeFile($request->user());
+        if ($errors !== []) {
+            throw ValidationException::withMessages(['file' => $errors])->errorBag("file-{$lot->id}");
+        }
+        Inertia::flash('toast', ['type' => 'success', 'message' => "Arquivo do lote {$lot->id} gerado e validado no padrão TISS."]);
+
+        return to_route('billing-lots.index', ['unit' => $lot->unit_id]);
+    }
+
+    /**
+     * Step 6.5b2a: the file to send on the insurer's portal. It carries every guide's patient: each one is logged in
+     * the access trail ("billing").
+     */
+    public function download(Request $request, BillingLot $lot): SymfonyResponse
+    {
+        abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        // A cancelled lot's accounts may be in another lot: its file is never sent again.
+        abort_if($lot->status !== 'generated' || $lot->file_path === null || ! Storage::disk('local')->exists($lot->file_path), 404);
+        $accounts = BillingAccount::query()->whereIn('id', DB::table('billing_lot_accounts')->where('billing_lot_id', $lot->id)->select('billing_account_id'))->get();
+        $patients = Patient::query()->whereKey($accounts->pluck('patient_id')->unique()->all())->get()->keyBy('id');
+        foreach ($accounts as $account) {
+            ClinicalAccess::recordRead($request->user(), $patients->get($account->patient_id), $account);
+        }
+        AuditEvent::record('billing_lot.file_downloaded', $lot->tenant_id, $lot, ['sha256' => $lot->file_sha256]);
+
+        return response((string) Storage::disk('local')->get($lot->file_path), 200, [
+            'Content-Type' => 'application/xml; charset=ISO-8859-1',
+            'Content-Disposition' => "attachment; filename=\"lote-{$lot->id}-tiss-{$lot->tiss_version}.xml\"",
+            'Cache-Control' => 'no-store',
+        ]);
     }
 }

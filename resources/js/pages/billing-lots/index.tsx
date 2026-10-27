@@ -32,6 +32,8 @@ type Lot = {
     cancelledAt: string | null;
     cancelledBy: string | null;
     cancelReason: string | null;
+    file: { sha256: string; generatedAt: string } | null;
+    problems: string[];
 };
 
 /** "2026-10" → "10/2026". */
@@ -262,6 +264,7 @@ function LotItem({
                     </span>
                 </span>
             </div>
+            {!cancelled && <LotFile lot={lot} />}
             {!cancelled && (
                 <details>
                     <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary">
@@ -306,6 +309,62 @@ function LotItem({
                 </details>
             )}
         </li>
+    );
+}
+
+/** Step 6.5b2a: the lot's TISS file, or what is missing to generate it. */
+function LotFile({ lot }: { lot: Lot }) {
+    if (lot.file) {
+        return (
+            <div className="flex flex-wrap items-center gap-3">
+                <a
+                    href={BillingLotController.download.url(lot.id)}
+                    className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                    Baixar arquivo TISS
+                </a>
+                <span className="text-sm break-all text-muted-foreground">
+                    Gerado em {lot.file.generatedAt} · SHA-256{' '}
+                    <span className="font-mono">{lot.file.sha256}</span>
+                </span>
+            </div>
+        );
+    }
+
+    if (lot.problems.length > 0) {
+        return (
+            <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+                <p className="font-medium">Para gerar o arquivo TISS, falta:</p>
+                <ul className="mt-1 list-disc pl-5">
+                    {lot.problems.map((problem) => (
+                        <li key={problem}>{problem}</li>
+                    ))}
+                </ul>
+            </div>
+        );
+    }
+
+    return (
+        <Form
+            {...BillingLotController.file.form(lot.id)}
+            errorBag={`file-${lot.id}`}
+            options={{ preserveScroll: true }}
+            className="grid gap-2"
+        >
+            {({ processing, errors }) => (
+                <>
+                    <Button
+                        type="submit"
+                        disabled={processing}
+                        className="min-h-11 justify-self-start"
+                    >
+                        {processing && <Spinner />}
+                        Gerar arquivo TISS
+                    </Button>
+                    <InputError message={errors.file} />
+                </>
+            )}
+        </Form>
     );
 }
 
