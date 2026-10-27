@@ -130,6 +130,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('billing-accounts/{account}/items', [BillingAccountController::class, 'storeItem'])->middleware('throttle:60,1')->name('billing-accounts.items.store');
     Route::post('billing-accounts/{account}/authorizations', [BillingAccountController::class, 'authorizeItems'])->middleware('throttle:60,1')->name('billing-accounts.authorizations.store');
     Route::post('billing-accounts/{account}/close', [BillingAccountController::class, 'close'])->middleware('throttle:30,1')->name('billing-accounts.close');
+    Route::post('billing-accounts/{account}/payment', [BillingAccountController::class, 'receive'])->middleware('throttle:30,1')->name('billing-accounts.payment.store');
+    Route::get('billing-accounts/{account}/receipt', [BillingAccountController::class, 'receipt'])->middleware('throttle:30,1')->name('billing-accounts.receipt');
     Route::post('billing-account-items/{item}/compensate', [BillingAccountController::class, 'compensate'])->middleware('throttle:60,1')->name('billing-account-items.compensate');
     Route::get('pharmacy', [PharmacyController::class, 'index'])->middleware('throttle:120,1')->name('pharmacy.index');
     Route::get('pharmacy/prescriptions/{prescription}', [PharmacyController::class, 'show'])->middleware('throttle:120,1')->name('pharmacy.show');
