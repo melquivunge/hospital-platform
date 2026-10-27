@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Tenancy\Role;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -78,7 +79,18 @@ class User extends Authenticatable implements MustVerifyEmail
     public function activeMembershipIn(int $tenantId): ?Membership
     {
         // ponytail: one query per policy check; eager-load per request when list screens need it (step 2b).
-        return $this->memberships()->active()->where('tenant_id', $tenantId)->with('roleAssignments')->first();
+        $membership = $this->memberships()->active()->where('tenant_id', $tenantId)->with('roleAssignments')->first();
+        if ($membership?->hasRole(Role::NetworkAdmin) ?? false) {
+            // User's decision (27/10/2026): the network admin works every unit with the roles that never read the record.
+            // Granted in memory only, never stored: pharmacy, laboratory, imaging, surgical center and attending stay by
+            // role (they read the record).
+            $granted = collect(Unit::query()->where('tenant_id', $tenantId)->pluck('id')->all())
+                ->crossJoin([Role::UnitManager, Role::Reception, Role::BedManagement, Role::Billing])
+                ->map(fn (array $pair) => (new RoleAssignment)->forceFill(['membership_id' => $membership->id, 'tenant_id' => $tenantId, 'unit_id' => (int) $pair[0], 'role' => $pair[1]]));
+            $membership->setRelation('roleAssignments', $membership->roleAssignments->concat($granted));
+        }
+
+        return $membership;
     }
 
     /**

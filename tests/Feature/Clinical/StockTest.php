@@ -93,8 +93,9 @@ class StockTest extends TestCase
         $post([])->assertSessionHasErrors('medication_id', null, 'entry');
         $this->assertSame(0, DB::table('stock_movements')->count());
 
-        // Only the unit's pharmacy: not the network admin, not a pharmacy of another unit.
-        $this->actingAs($this->admin->user)->get(route('stock.index'))->assertForbidden();
+        // Only the unit's pharmacy records: the network admin reads the stock as a unit manager (user's decision,
+        // 27/10/2026), but does not enter lots; nor does a pharmacy of another unit.
+        $this->actingAs($this->admin->user)->get(route('stock.index'))->assertOk();
         $this->post(route('stock.entries.store'), ['unit_id' => $this->unit->id])->assertSessionHasErrors('unit_id', null, 'entry');
         $elsewhere = Membership::factory()->for($this->admin->tenant)->create();
         $elsewhere->grant(Role::Pharmacy, $this->other);
