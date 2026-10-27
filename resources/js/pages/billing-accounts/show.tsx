@@ -68,6 +68,9 @@ export default function BillingAccountShow({
     canCompensate,
     canClose,
     complements,
+    payment,
+    canReceive,
+    methods,
     billableItems,
     today,
 }: {
@@ -80,6 +83,14 @@ export default function BillingAccountShow({
     canCompensate: boolean;
     canClose: boolean;
     complements: number[];
+    payment: {
+        method: string;
+        amountCents: number;
+        receivedAt: string;
+        by: string | null;
+    } | null;
+    canReceive: boolean;
+    methods: Record<string, string>;
     billableItems: { id: number; name: string; code: string | null }[];
     today: string;
 }) {
@@ -106,6 +117,13 @@ export default function BillingAccountShow({
                     canClose={canClose}
                     complements={complements}
                 />
+                {(payment !== null || canReceive) && (
+                    <Payment
+                        accountId={account.id}
+                        payment={payment}
+                        methods={methods}
+                    />
+                )}
                 <dl className="mb-8 grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-3">
                     <div className="grid gap-1">
                         <dt className="text-sm text-muted-foreground">Total</dt>
@@ -545,6 +563,96 @@ function CloseBar({
                 </Form>
             )}
         </div>
+    );
+}
+
+/** Step 6.4b: a closed private account's payment (informative) and its receipt. */
+function Payment({
+    accountId,
+    payment,
+    methods,
+}: {
+    accountId: number;
+    payment: {
+        method: string;
+        amountCents: number;
+        receivedAt: string;
+        by: string | null;
+    } | null;
+    methods: Record<string, string>;
+}) {
+    return (
+        <section
+            aria-label="Recebimento"
+            className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-5 py-4"
+        >
+            {payment !== null ? (
+                <>
+                    <span className="grid gap-1 text-sm">
+                        <span className="font-medium">
+                            Recebido {money(payment.amountCents)} ·{' '}
+                            {payment.method}
+                        </span>
+                        <span className="text-muted-foreground">
+                            Em {payment.receivedAt}
+                            {payment.by && ` · por ${payment.by}`}
+                        </span>
+                    </span>
+                    <Button asChild variant="outline" className="min-h-11">
+                        <a
+                            href={BillingAccountController.receipt.url(
+                                accountId,
+                            )}
+                        >
+                            Baixar recibo (PDF)
+                        </a>
+                    </Button>
+                </>
+            ) : (
+                <Form
+                    {...BillingAccountController.receive.form(accountId)}
+                    errorBag="payment"
+                    options={{ preserveScroll: true }}
+                    className="flex w-full flex-wrap items-end gap-3"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <Field
+                                id="method"
+                                label="Forma de pagamento"
+                                error={errors.method}
+                            >
+                                <select
+                                    id="method"
+                                    name="method"
+                                    required
+                                    defaultValue=""
+                                    className={selectClassName}
+                                >
+                                    <option value="" disabled>
+                                        Selecione
+                                    </option>
+                                    {Object.entries(methods).map(
+                                        ([value, label]) => (
+                                            <option key={value} value={value}>
+                                                {label}
+                                            </option>
+                                        ),
+                                    )}
+                                </select>
+                            </Field>
+                            <Button
+                                type="submit"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Registrar recebimento
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            )}
+        </section>
     );
 }
 

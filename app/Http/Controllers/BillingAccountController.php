@@ -18,6 +18,8 @@ use App\Models\User;
 use App\Policies\UnitPolicy;
 use App\Tenancy\Role;
 use Carbon\CarbonImmutable;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -27,6 +29,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * The accounts of a unit for its Billing role (step 6.2c, ADR-0010): the list, with identification, modality, totals
@@ -41,6 +44,9 @@ class BillingAccountController extends Controller
     private const LIST_LIMIT = 200;
 
     public const MODALITIES = ['private' => 'Particular', 'insurance' => 'Convênio', 'sus' => 'SUS'];
+
+    /** Step 6.4b: how a private account was paid (informative, no integration). */
+    public const METHODS = ['cash' => 'Dinheiro', 'debit' => 'Cartão de débito', 'credit' => 'Cartão de crédito', 'pix' => 'Pix', 'transfer' => 'Transferência'];
 
     public function index(Request $request): Response
     {
@@ -111,6 +117,14 @@ class BillingAccountController extends Controller
             // Step 6.4a: an item of a closed account is compensated in the complementary account.
             'canCompensate' => in_array($account->modality, ['private', 'insurance'], true),
             'canClose' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance'], true) && $account->stayEnded(),
+            // Step 6.4b: the private account's payment and its receipt.
+            'payment' => ($payment = DB::table('billing_payments')->where('billing_account_id', $account->id)->first()) === null ? null : [
+                'method' => self::METHODS[$payment->method], 'amountCents' => (int) $payment->amount_cents,
+                'receivedAt' => CarbonImmutable::parse($payment->received_at)->setTimezone($timezone)->format('d/m/Y H:i'),
+                'by' => User::query()->whereKey($payment->received_by_user_id)->value('name'),
+            ],
+            'canReceive' => $account->status === 'closed' && $account->modality === 'private' && (int) $account->getAttribute('total_cents') > 0,
+            'methods' => self::METHODS,
             'complements' => BillingAccount::query()->where('complement_of_id', $account->complement_of_id ?? $account->id)->orderBy('id')->pluck('id')->all(),
             'billableItems' => BillingItem::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'code'])->values(),
             'today' => now($timezone)->toDateString(),
@@ -281,6 +295,82 @@ class BillingAccountController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Conta fechada.']);
 
         return back();
+    }
+
+    /**
+     * Step 6.4b: the payment of a closed private account, once: its total, and how it was paid (informative).
+     */
+    public function receive(Request $request, BillingAccount $account): RedirectResponse
+    {
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $data = $request->validateWithBag('payment', ['method' => ['required', Rule::in(array_keys(self::METHODS))]], [], ['method' => 'forma de pagamento']);
+        $refuse = fn (string $message) => ValidationException::withMessages(['method' => $message])->errorBag('payment');
+
+        try {
+            DB::transaction(function () use ($request, $account, $data, $refuse) {
+                $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
+                if ($locked->status !== 'closed' || $locked->modality !== 'private') {
+                    throw $refuse('O recebimento é registrado numa conta particular fechada.');
+                }
+                if (DB::table('billing_payments')->where('billing_account_id', $locked->id)->exists()) {
+                    throw $refuse('O recebimento desta conta já foi registrado.');
+                }
+                $total = (int) BillingAccountItem::query()->where('billing_account_id', $locked->id)->sum(DB::raw('quantity * unit_price_cents'));
+                if ($total <= 0) {
+                    throw $refuse('A conta não tem valor a receber.');
+                }
+                $id = DB::table('billing_payments')->insertGetId([
+                    'tenant_id' => $locked->tenant_id, 'billing_account_id' => $locked->id, 'method' => $data['method'], 'amount_cents' => $total,
+                    'received_by_user_id' => $request->user()->id, 'received_at' => now(),
+                ]);
+                AuditEvent::record('billing_payment.received', $locked->tenant_id, $locked, ['payment_id' => $id, 'amount_cents' => $total, 'method' => $data['method']]);
+            });
+        } catch (UniqueConstraintViolationException) {
+            throw $refuse('O recebimento desta conta já foi registrado.');
+        }
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Recebimento registrado.']);
+
+        return back();
+    }
+
+    /**
+     * Step 6.4b: the receipt (PDF) of a paid private account: the network and unit, the patient, the items and the
+     * payment. A read of the account, logged in the trail like opening it.
+     */
+    public function receipt(Request $request, BillingAccount $account): SymfonyResponse
+    {
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $payment = DB::table('billing_payments')->where('billing_account_id', $account->id)->first();
+        abort_if($payment === null, 404);
+        $patient = Patient::query()->findOrFail($account->patient_id);
+        $patient = $patient->merged_into_id === null ? $patient : Patient::query()->findOrFail($patient->merged_into_id);
+        ClinicalAccess::recordRead($request->user(), $patient, $account);
+        $unit = Unit::query()->findOrFail($account->unit_id);
+        $timezone = $unit->timezone ?? 'UTC';
+        $pdf = new Dompdf(new Options(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Sans']));
+        $pdf->loadHtml(view('billing.receipt', [
+            'network' => $unit->tenant->name, 'unit' => $unit->name, 'number' => $payment->id, 'account' => $account->id,
+            'patient' => $patient->social_name ?? $patient->name, 'cpf' => $patient->cpf,
+            'items' => BillingAccountItem::query()->where('billing_account_id', $account->id)->orderBy('performed_on')->orderBy('id')->get()
+                ->map(fn (BillingAccountItem $item) => ['day' => $item->performed_on->format('d/m/Y'), 'code' => $item->code, 'name' => $item->name, 'quantity' => $item->quantity,
+                    'price' => self::reais((int) $item->unit_price_cents), 'total' => self::reais($item->quantity * (int) $item->unit_price_cents)])->all(),
+            'total' => self::reais((int) $payment->amount_cents), 'method' => self::METHODS[$payment->method],
+            'receivedAt' => CarbonImmutable::parse($payment->received_at)->setTimezone($timezone)->format('d/m/Y H:i'),
+        ])->render());
+        $pdf->setPaper('A4');
+        $pdf->render();
+        AuditEvent::record('billing_payment.receipt', $account->tenant_id, $account, ['payment_id' => $payment->id]);
+
+        return response((string) $pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "attachment; filename=\"recibo-{$payment->id}.pdf\"",
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    private static function reais(int $cents): string
+    {
+        return 'R$ '.number_format($cents / 100, 2, ',', '.');
     }
 
     /**

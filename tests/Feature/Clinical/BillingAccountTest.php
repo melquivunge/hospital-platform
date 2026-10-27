@@ -371,4 +371,46 @@ class BillingAccountTest extends ClinicalTestCase
         $this->get(route('billing-accounts.index', ['closed' => 1]))->assertInertia(fn (Assert $page) => $page->has('accounts', 2));
         $this->get(route('billing-accounts.index'))->assertInertia(fn (Assert $page) => $page->has('accounts', 0));
     }
+
+    public function test_a_closed_private_account_is_received_once_and_its_receipt_is_printed(): void
+    {
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $account = $this->closedConsultation(['modality' => 'private']);
+        $receive = fn (array $data = ['method' => 'pix']) => $this->post(route('billing-accounts.payment.store', $account), $data);
+
+        $this->actingAs($billing->user);
+        $receive()->assertSessionHasErrorsIn('payment', ['method' => 'O recebimento é registrado numa conta particular fechada.']);
+        $this->get(route('billing-accounts.receipt', $account))->assertNotFound();
+        $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
+        $receive(['method' => 'cheque'])->assertSessionHasErrorsIn('payment', ['method']);
+        $receive()->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Recebimento registrado.');
+        $receive(['method' => 'cash'])->assertSessionHasErrorsIn('payment', ['method' => 'O recebimento desta conta já foi registrado.']);
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $payment = DB::table('billing_payments')->sole();
+        $this->assertSame([15000, 'pix', $billing->user_id], [(int) $payment->amount_cents, $payment->method, $payment->received_by_user_id]);
+        try {
+            DB::transaction(fn () => DB::table('billing_payments')->update(['method' => 'cash']));
+            $this->fail('The database must refuse it.');
+        } catch (QueryException $e) {
+            $this->assertStringContainsString('never changed', $e->getMessage());
+        }
+        app(CurrentTenant::class)->set(null);
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('payment.method', 'Pix')->where('payment.amountCents', 15000)->where('canReceive', true));
+
+        // The receipt: a PDF, logged as a read of the account and in the audit (ids only).
+        $reads = DB::table('clinical_reads')->where('reason', 'billing')->count();
+        $this->get(route('billing-accounts.receipt', $account))->assertOk()->assertHeader('Content-Type', 'application/pdf')
+            ->assertHeader('Content-Disposition', "attachment; filename=\"recibo-{$payment->id}.pdf\"");
+        $this->assertSame($reads + 1, DB::table('clinical_reads')->where('reason', 'billing')->count());
+        $this->assertEquals(['payment_id' => $payment->id], AuditEvent::where('action', 'billing_payment.receipt')->sole()->context);
+        $this->assertEquals(['payment_id' => $payment->id, 'amount_cents' => 15000, 'method' => 'pix'], AuditEvent::where('action', 'billing_payment.received')->sole()->context);
+
+        // Billing of another unit neither receives nor prints.
+        $elsewhere = Membership::factory()->for($this->unit->tenant)->create();
+        $elsewhere->grant(Role::Billing, $this->other);
+        $this->actingAs($elsewhere->user)->get(route('billing-accounts.receipt', $account))->assertForbidden();
+        $this->post(route('billing-accounts.payment.store', $account), ['method' => 'pix'])->assertForbidden();
+    }
 }
