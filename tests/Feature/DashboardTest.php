@@ -58,4 +58,21 @@ class DashboardTest extends TestCase
             $this->actingAs($member->user)->get(route($route))->assertForbidden();
         }
     }
+
+    public function test_the_network_admin_works_every_unit_without_the_roles_that_read_the_record(): void
+    {
+        $admin = Membership::factory()->withRole(Role::NetworkAdmin)->create();
+        Unit::factory()->for($admin->tenant)->create(['uf' => 'SP', 'timezone' => 'America/Sao_Paulo']);
+        $this->actingAs($admin->user);
+        // Unit manager, reception, bed management and billing in every unit (user's decision, 27/10/2026).
+        foreach (['appointments.queue', 'emergency.index', 'beds.index', 'admissions.index', 'billing-accounts.index'] as $route) {
+            $this->get(route($route))->assertOk();
+        }
+        // Pharmacy, laboratory/imaging and surgical center read the record: still by role.
+        foreach (['pharmacy.index', 'exam-queue.index', 'surgery-schedule.index'] as $route) {
+            $this->get(route($route))->assertForbidden();
+        }
+        // Granted in memory only: nothing stored.
+        $this->assertSame(1, $admin->roleAssignments()->count());
+    }
 }
