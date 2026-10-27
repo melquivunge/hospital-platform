@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Billing\TissLotXml;
 use App\Tenancy\BelongsToTenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * A lot of TISS guides (step 6.5b1, ADR-0010): one insurer, one unit, one competence (the month the accounts closed,
@@ -29,6 +31,11 @@ use Illuminate\Support\Facades\DB;
  * @property Carbon|null $cancelled_at
  * @property int|null $cancelled_by_user_id
  * @property string|null $cancel_reason
+ * @property string|null $file_path step 6.5b2a: the TISS file, written once
+ * @property string|null $file_sha256
+ * @property string|null $file_hash the epilogue hash
+ * @property Carbon|null $file_generated_at
+ * @property int|null $file_generated_by_user_id
  */
 class BillingLot extends Model
 {
@@ -116,8 +123,47 @@ class BillingLot extends Model
         });
     }
 
+    /**
+     * Step 6.5b2a: writes the lot's TISS file once, validated against the official schema, with its SHA-256. Returns
+     * why it could not (what is missing, or that it is cancelled or already written); empty when written.
+     *
+     * @return list<string>
+     */
+    public function writeFile(User $user): array
+    {
+        return DB::transaction(function () use ($user) {
+            // The lock makes a second request wait and then see the file.
+            $lot = self::query()->lockForUpdate()->findOrFail($this->id);
+            if ($lot->status !== 'generated') {
+                return ['Este lote foi cancelado.'];
+            }
+            if ($lot->file_path !== null) {
+                return ['O arquivo deste lote já foi gerado.'];
+            }
+            $tiss = new TissLotXml($lot);
+            if (($problems = $tiss->problems()) !== []) {
+                return $problems;
+            }
+            try {
+                ['xml' => $xml, 'hash' => $hash] = $tiss->build();
+            } catch (\RuntimeException $failure) {
+                // The schema refused what the checks let through: a bug to fix, never a file to send.
+                report($failure);
+
+                return ['O arquivo não passou na validação do padrão TISS. Avise o suporte com o número do lote.'];
+            }
+            $path = "tiss/lots/{$lot->tenant_id}/{$lot->id}.xml";
+            Storage::disk('local')->put($path, $xml);
+            $sha256 = hash('sha256', $xml);
+            $lot->forceFill(['file_path' => $path, 'file_sha256' => $sha256, 'file_hash' => $hash, 'file_generated_at' => now(), 'file_generated_by_user_id' => $user->id])->save();
+            AuditEvent::record('billing_lot.file_generated', $lot->tenant_id, $lot, ['guide_count' => $lot->guide_count, 'sha256' => $sha256]);
+
+            return [];
+        });
+    }
+
     protected function casts(): array
     {
-        return ['competence' => 'date', 'created_at' => 'datetime', 'cancelled_at' => 'datetime'];
+        return ['competence' => 'date', 'created_at' => 'datetime', 'cancelled_at' => 'datetime', 'file_generated_at' => 'datetime'];
     }
 }

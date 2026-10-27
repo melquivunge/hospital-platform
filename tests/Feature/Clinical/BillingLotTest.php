@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Clinical;
 
+use App\Billing\TissLotXml;
 use App\Models\AuditEvent;
 use App\Models\BillingAccount;
 use App\Models\BillingItem;
@@ -9,15 +10,20 @@ use App\Models\BillingLot;
 use App\Models\EmergencyEpisode;
 use App\Models\Insurer;
 use App\Models\InsurerContract;
+use App\Models\JobFunction;
+use App\Models\Material;
 use App\Models\Membership;
 use App\Models\PriceEntry;
 use App\Models\PriceTable;
+use App\Models\Professional;
 use App\Models\Sector;
 use App\Models\Visit;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
+use DOMDocument;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /**
@@ -245,5 +251,97 @@ class BillingLotTest extends ClinicalTestCase
         app(CurrentTenant::class)->set($this->unit->tenant);
         $this->expectException(QueryException::class);
         DB::table('billing_lot_accounts')->insert(['tenant_id' => $original->tenant_id, 'billing_lot_id' => BillingLot::query()->value('id'), 'billing_account_id' => $private]);
+    }
+
+    public function test_the_lot_file_lists_what_is_missing_then_is_valid_tiss_written_once_and_its_download_is_logged(): void
+    {
+        Storage::fake('local');
+        // A consultation with a material billed by hand: one procedure and one other expense.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $gauze = Material::query()->create(['name' => 'Compressa', 'stock_unit' => 'pacote']);
+        $material = BillingItem::query()->create(['kind' => 'material', 'material_id' => $gauze->id, 'name' => 'Compressa – cirúrgica', 'code' => '70000123']);
+        PriceEntry::query()->create(['price_table_id' => PriceTable::query()->value('id'), 'billing_item_id' => $material->id, 'price_cents' => 250, 'valid_from' => '2026-01-01', 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        app(CurrentTenant::class)->set(null);
+        $appointment = $this->arrived($this->doctor, $this->unit, '08:20', $this->insurance());
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $appointment))->assertRedirect();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()))->assertSessionHasNoErrors();
+        $account = BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
+        $this->actingAs($this->billing->user)->post(route('billing-accounts.items.store', $account), ['billing_item_id' => $material->id, 'performed_on' => now($this->unit->timezone ?? 'UTC')->toDateString(), 'quantity' => 2, 'reason' => 'Curativo.'])->assertSessionHasNoErrors();
+        $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
+        $this->post(route('billing-lots.store'), $this->lotRequest())->assertSessionHasNoErrors();
+        $lot = BillingLot::withoutTenantScope()->sole();
+
+        // Nothing of the provider's data is filled in yet: the screen lists it and the file is refused.
+        $this->get(route('billing-lots.index'))->assertInertia(fn (Assert $page) => $page->where('lots.0.file', null)->where('lots.0.problems', [
+            'O contrato do convênio não tem o código do prestador na operadora (tela Preços).',
+            'A unidade não tem o CNES (tela Unidades).',
+            'Dra. Ana: sem conselho reconhecido pelo TISS, número (até 15) ou UF (tela Profissionais).',
+            'Dra. Ana: sem CBO aceito pelo TISS na função (tela Funções).',
+        ]));
+        $this->post(route('billing-lots.file', $lot))->assertSessionHasErrorsIn("file-{$lot->id}", 'file');
+
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        InsurerContract::query()->update(['provider_code' => '00012345']);
+        $this->unit->forceFill(['cnes' => '1234567'])->save();
+        Professional::query()->whereKey($this->doctor->id)->update(['council' => 'CRM', 'council_number' => '123456', 'council_uf' => 'SP']);
+        JobFunction::query()->update(['cbo' => '225125']);
+        app(CurrentTenant::class)->set(null);
+        $this->get(route('billing-lots.index'))->assertInertia(fn (Assert $page) => $page->where('lots.0.problems', []));
+
+        $this->post(route('billing-lots.file', $lot))->assertSessionHasNoErrors();
+        $lot = BillingLot::withoutTenantScope()->findOrFail($lot->id);
+        $xml = Storage::disk('local')->get((string) $lot->file_path);
+        $this->assertSame(hash('sha256', $xml), $lot->file_sha256);
+        $this->assertSame([], TissLotXml::schemaErrors($xml));
+        $doc = new DOMDocument;
+        $doc->loadXML($xml);
+        $this->assertSame($lot->file_hash, TissLotXml::hash($doc));
+        $this->assertSame($lot->file_hash, $doc->getElementsByTagName('hash')->item(0)?->textContent);
+        $this->assertStringStartsWith('<?xml version="1.0" encoding="ISO-8859-1"?>', $xml);
+        $value = fn (string $tag) => $doc->getElementsByTagName($tag)->item(0)?->textContent;
+        $this->assertSame([(string) $lot->id, '123456', '00012345', '1234567', '06', '35', '225125', '1', '01', '10101012', '22', '03', '19', '2.0000', '100.00', '5.00', '105.00'], [
+            $value('numeroLote'), $value('registroANS'), $value('codigoPrestadorNaOperadora'), $value('CNES'), $value('conselhoProfissional'), $value('UF'), $value('CBOS'),
+            $value('caraterAtendimento'), $value('regimeAtendimento'), $value('codigoProcedimento'), $value('codigoTabela'), $value('codigoDespesa'),
+            $doc->getElementsByTagName('codigoTabela')->item(1)?->textContent, $doc->getElementsByTagName('quantidadeExecutada')->item(1)?->textContent,
+            $value('valorProcedimentos'), $value('valorMateriais'), $value('valorTotalGeral'),
+        ]);
+        // Outside ISO-8859-1 ("–") becomes "?" in the file, so the insurer's hash reads the same text.
+        $this->assertSame('Compressa ? cirúrgica', $doc->getElementsByTagName('descricaoProcedimento')->item(1)?->textContent);
+        // The guide identifies the patient by the card only (no name since TISS 4.00.00).
+        $this->assertSame('0012 3456', $value('numeroCarteira'));
+        $this->assertStringNotContainsString('Joana', $xml);
+        $this->assertEquals(['guide_count' => 1, 'sha256' => $lot->file_sha256], AuditEvent::where('action', 'billing_lot.file_generated')->sole()->context);
+
+        // Written once: a second generation is refused, and the database refuses any change to it.
+        $this->post(route('billing-lots.file', $lot))->assertSessionHasErrorsIn("file-{$lot->id}", ['file' => 'O arquivo deste lote já foi gerado.']);
+        $this->get(route('billing-lots.index'))->assertInertia(fn (Assert $page) => $page->where('lots.0.file.sha256', $lot->file_sha256));
+
+        // The download is the stored file, and each guide's patient is logged in the trail.
+        $reads = DB::table('clinical_reads')->count();
+        $this->get(route('billing-lots.download', $lot))->assertOk()->assertHeader('Content-Type', 'application/xml; charset=ISO-8859-1')
+            ->assertDownload("lote-{$lot->id}-tiss-4.03.00.xml");
+        $this->assertSame($reads + 1, DB::table('clinical_reads')->count());
+        $this->assertTrue(AuditEvent::where('action', 'billing_lot.file_downloaded')->exists());
+        $this->actingAs($this->manager->user)->get(route('billing-lots.download', $lot))->assertForbidden();
+        $elsewhere = Membership::factory()->for($this->unit->tenant)->create();
+        $elsewhere->grant(Role::Billing, $this->other);
+        $this->actingAs($elsewhere->user)->post(route('billing-lots.file', $lot))->assertForbidden();
+
+        // Cancelled, its accounts may go into another lot: the file is no longer downloaded.
+        $this->actingAs($this->billing->user)->post(route('billing-lots.cancel', $lot), ['reason' => 'Reenvio corrigido.'])->assertSessionHasNoErrors();
+        $this->get(route('billing-lots.download', $lot))->assertNotFound();
+        $this->post(route('billing-lots.file', $lot))->assertSessionHasErrorsIn("file-{$lot->id}", ['file' => 'Este lote foi cancelado.']);
+
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->expectException(QueryException::class);
+        DB::table('billing_lots')->where('id', $lot->id)->update(['file_sha256' => str_repeat('0', 64)]);
+    }
+
+    public function test_the_epilogue_hash_is_the_md5_of_the_leaf_texts_in_iso_8859_1(): void
+    {
+        $doc = new DOMDocument;
+        $doc->loadXML('<m><a>  1</a><b><c>Ação</c><d/></b><e x="atributo">007</e><hash>ignorado</hash></m>');
+
+        $this->assertSame(md5(mb_convert_encoding('  1Ação007', 'ISO-8859-1', 'UTF-8')), TissLotXml::hash($doc));
     }
 }
