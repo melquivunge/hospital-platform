@@ -38,7 +38,8 @@ return new class extends Migration
             -- Items and answers go into an open account only.
             CREATE OR REPLACE FUNCTION billing_account_items_open_guard() RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN
-                IF NOT EXISTS (SELECT 1 FROM billing_accounts WHERE id = NEW.billing_account_id AND status = 'open') THEN
+                -- FOR SHARE: a close committing meanwhile waits, or this insert sees it closed.
+                IF NOT EXISTS (SELECT 1 FROM billing_accounts WHERE id = NEW.billing_account_id AND status = 'open' FOR SHARE) THEN
                     RAISE EXCEPTION 'a closed account takes no item nor answer' USING ERRCODE = 'P0001';
                 END IF;
                 RETURN NEW;
@@ -47,7 +48,7 @@ return new class extends Migration
             CREATE OR REPLACE FUNCTION billing_authorizations_open_guard() RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN
                 IF NOT EXISTS (SELECT 1 FROM billing_account_items i JOIN billing_accounts a ON a.id = i.billing_account_id
-                    WHERE i.id = NEW.billing_account_item_id AND a.status = 'open') THEN
+                    WHERE i.id = NEW.billing_account_item_id AND a.status = 'open' FOR SHARE OF a) THEN
                     RAISE EXCEPTION 'a closed account takes no item nor answer' USING ERRCODE = 'P0001';
                 END IF;
                 RETURN NEW;

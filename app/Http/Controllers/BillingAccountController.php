@@ -248,7 +248,10 @@ class BillingAccountController extends Controller
     public function close(Request $request, BillingAccount $account): RedirectResponse
     {
         abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
-        rescue(fn () => $account->generate());
+        // Late records first; an account already closed is not touched (its late records wait for the complement).
+        if ($account->status === 'open') {
+            rescue(fn () => $account->generate());
+        }
         $refuse = fn (string $message) => ValidationException::withMessages(['close' => $message])->errorBag('close');
 
         DB::transaction(function () use ($request, $account, $refuse) {

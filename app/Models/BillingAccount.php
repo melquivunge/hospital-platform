@@ -203,6 +203,7 @@ class BillingAccount extends Model
             ...$account->only('unit_id', 'patient_id', 'modality', 'insurer_id', 'insurance_card_number', 'insurance_card_valid_until'),
             'complement_of_id' => $account->id, 'opened_at' => now(),
         ])->save();
+        AuditEvent::record('billing_account.complement_opened', $complement->tenant_id, $complement, ['unit_id' => $complement->unit_id, 'complement_of_id' => $account->id]);
 
         return $complement;
     }

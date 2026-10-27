@@ -357,6 +357,7 @@ class BillingAccountTest extends ClinicalTestCase
         // A correction after the close: the compensation goes to a complementary account, which closes on its own.
         $this->post(route('billing-account-items.compensate', $item), ['reason' => 'Glosa prevista.'])->assertSessionHasNoErrors();
         $complement = BillingAccount::withoutTenantScope()->where('complement_of_id', $account->id)->sole();
+        $this->assertEquals(['unit_id' => $this->unit->id, 'complement_of_id' => $account->id], AuditEvent::where('action', 'billing_account.complement_opened')->sole()->context);
         $this->assertSame(['open', 'insurance', '0012 3456'], [$complement->status, $complement->modality, $complement->insurance_card_number]);
         $this->assertSame($complement->id, BillingAccountItem::withoutTenantScope()->where('origin_type', 'compensation')->sole()->billing_account_id);
         $this->get(route('billing-accounts.show', $complement))->assertInertia(fn (Assert $page) => $page
