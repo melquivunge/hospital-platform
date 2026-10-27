@@ -276,7 +276,7 @@ class BillingLotController extends Controller
     {
         abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
         $data = $request->validateWithBag('appeal', [
-            'protocol' => ['required', 'string', 'regex:/^\d{1,12}$/'],
+            'protocol' => ['required', 'string', 'regex:/^\d{1,12}\z/'],
             'items' => ['sometimes', 'array', 'max:300'],
             'items.*' => ['array:amount,justification'],
             'items.*.amount' => ['nullable', 'string', 'max:20'],

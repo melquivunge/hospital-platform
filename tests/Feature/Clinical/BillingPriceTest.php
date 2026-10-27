@@ -182,6 +182,12 @@ class BillingPriceTest extends TestCase
         $this->assertSame(9005, InsurerContract::priceFor($insurer->id, $item->id, '2026-06-01'));
         $this->put(route('insurer-contracts.save', $insurer), ['price_table_id' => $base->id, 'adjustment' => '-100'])->assertSessionHasNoErrors();
         $this->assertSame(0, InsurerContract::priceFor($insurer->id, $item->id, '2026-06-01'));
+        // Step 6.7: an adjusted price above the database's ceiling is no price (a pending item), never a failed insert.
+        $this->post(route('billing-items.store'), ['kind' => 'daily', 'bed_type' => 'icu', 'name' => 'Diária de UTI especial', 'code' => '60000999'])->assertSessionHasNoErrors();
+        $costly = BillingItem::query()->where('name', 'Diária de UTI especial')->sole();
+        $this->post(route('price-tables.prices.store', $base), ['billing_item_id' => $costly->id, 'price' => '100.000.000,00', 'valid_from' => '2026-01-01'])->assertSessionHasNoErrors();
+        $this->put(route('insurer-contracts.save', $insurer), ['price_table_id' => $base->id, 'adjustment' => '1000'])->assertSessionHasNoErrors();
+        $this->assertNull(InsurerContract::priceFor($insurer->id, $costly->id, '2026-06-01'));
         $this->put(route('insurer-contracts.save', $insurer), ['price_table_id' => $base->id, 'adjustment' => '12,5'])->assertSessionHasNoErrors();
         // The private table is not deactivated; an inactive table does not become the private one.
         $this->put(route('price-tables.update', $private), ['name' => 'Particular', 'active' => false])->assertSessionHasErrorsIn("table-{$private->id}", ['active']);

@@ -79,6 +79,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6" (todas as propostas ace
 ### 6.7 Revisão integrada
 - **Jornada num cliente novo:** atendimento por convênio com exame, internação com cirurgia e materiais, alta, conta gerada, autorização, fechamento, lote, retorno com glosa e recurso; um particular com recibo.
 - Verificação das telas, revisão de segurança independente e limites de produção no README.
+- **Feito na 6.7:** `BillingJourneyTest` percorre num cliente novo, só por rotas HTTP, o cadastro de preços (tabela particular e do convênio), convênio e contrato com autorização da diária; consulta por convênio com raio X laudado; urgência que vira internação com herniorrafia, tela e alta; autorização das diárias, fechamento, os dois lotes (SP/SADT e resumo de internação) válidos no XSD com a carteira e sem o nome; retorno com glosa, recurso (arquivo válido) e resultado; consulta particular recebida com recibo; e o relatório do gestor fechando produção, pendências zeradas, glosas e recebido, com cobrado = pago + glosado em cada lote e nenhum nome ou texto clínico na auditoria, no CSV e nos arquivos. Revisão de segurança independente da entrega (sem crítico/alto). Corrigido: preço com reajuste acima do teto do banco vira item sem preço em vez de erro 500; protocolo do recurso não aceita quebra de linha no fim. Limites e a decisão pendente (cancelamento de lote já enviado) no README.
 
 ## Fora deste plano
 
