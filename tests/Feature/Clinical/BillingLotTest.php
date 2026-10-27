@@ -3,8 +3,11 @@
 namespace Tests\Feature\Clinical;
 
 use App\Billing\TissLotXml;
+use App\Models\Admission;
 use App\Models\AuditEvent;
+use App\Models\Bed;
 use App\Models\BillingAccount;
+use App\Models\BillingAccountItem;
 use App\Models\BillingItem;
 use App\Models\BillingLot;
 use App\Models\EmergencyEpisode;
@@ -343,5 +346,67 @@ class BillingLotTest extends ClinicalTestCase
         $doc->loadXML('<m><a>  1</a><b><c>Ação</c><d/></b><e x="atributo">007</e><hash>ignorado</hash></m>');
 
         $this->assertSame(md5(mb_convert_encoding('  1Ação007', 'ISO-8859-1', 'UTF-8')), TissLotXml::hash($doc));
+    }
+
+    public function test_the_hospitalization_summary_carries_the_admission_and_the_insurers_password(): void
+    {
+        Storage::fake('local');
+        // An episode with insurance becomes an admission and is discharged; its daily rate asks for the insurer's password
+        // even though the contract lists no item needing authorization.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $daily = BillingItem::query()->create(['kind' => 'daily', 'bed_type' => 'ward', 'name' => 'Diária de enfermaria', 'code' => '60000775']);
+        PriceEntry::query()->create(['price_table_id' => PriceTable::query()->value('id'), 'billing_item_id' => $daily->id, 'price_cents' => 48000, 'valid_from' => '2026-01-01', 'created_by_user_id' => $this->manager->user_id, 'created_at' => now()]);
+        InsurerContract::query()->update(['provider_code' => '00012345']);
+        $this->unit->forceFill(['cnes' => '1234567'])->save();
+        app(CurrentTenant::class)->set(null);
+        $bedManager = Membership::factory()->for($this->unit->tenant)->create();
+        $bedManager->grant(Role::BedManagement, $this->unit);
+        $sector = Sector::withoutGlobalScopes()->where('unit_id', $this->unit->id)->firstOrFail();
+        $this->actingAs($this->manager->user)->post(route('beds.store', $this->unit), ['sector_id' => $sector->id, 'room' => '1', 'code' => 'A-1', 'type' => 'ward'])->assertSessionHasNoErrors();
+        $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, ...$this->insurance()])->assertSessionHasNoErrors();
+        $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
+        $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
+        $this->post(route('emergency.call', $episode));
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['outcome' => 'admission_requested', 'requested_sector_id' => $sector->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $admission = Admission::withoutTenantScope()->latest('id')->firstOrFail();
+        $this->actingAs($bedManager->user)->post(route('admissions.allocate', $admission), ['bed_id' => Bed::withoutGlobalScopes()->where('code', 'A-1')->value('id')])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $account = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $episode->id)->sole();
+        $dailyItem = BillingAccountItem::withoutTenantScope()->where('billing_account_id', $account->id)->where('origin_type', 'admission_day')->sole();
+        $this->assertTrue($dailyItem->needs_authorization);
+
+        // An urgency answer lets care go on, but the summary requires the insurer's password: the account does not close without it.
+        $this->actingAs($this->billing->user)->post(route('billing-accounts.authorizations.store', $account), ['item_ids' => [$dailyItem->id], 'status' => 'urgency', 'reason' => 'Internação de urgência.'])->assertSessionHasNoErrors();
+        $this->post(route('billing-accounts.close', $account))->assertSessionHasErrorsIn('close', ['close' => 'A internação pelo convênio precisa da senha antes de fechar: registre a autorização (número e validade) da diária.']);
+        $this->post(route('billing-accounts.authorizations.store', $account), ['item_ids' => [$dailyItem->id], 'status' => 'authorized', 'number' => 'SENHA-778899', 'valid_until' => '2027-01-31'])->assertSessionHasNoErrors();
+        $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
+        $this->post(route('billing-lots.store'), $this->lotRequest('hospitalization'))->assertSessionHasNoErrors();
+        $lot = BillingLot::withoutTenantScope()->sole();
+        // No professional is on the summary: the doctor's missing council and CBO do not hold it.
+        $this->get(route('billing-lots.index'))->assertInertia(fn (Assert $page) => $page->where('lots.0.problems', []));
+        $this->post(route('billing-lots.file', $lot))->assertSessionHasNoErrors();
+
+        $lot = BillingLot::withoutTenantScope()->findOrFail($lot->id);
+        $xml = Storage::disk('local')->get((string) $lot->file_path);
+        $this->assertSame([], TissLotXml::schemaErrors($xml));
+        $doc = new DOMDocument;
+        $doc->loadXML($xml);
+        $this->assertSame($lot->file_hash, TissLotXml::hash($doc));
+        $value = fn (string $tag) => $doc->getElementsByTagName($tag)->item(0)?->textContent;
+        $timezone = $this->unit->timezone ?? 'UTC';
+        $admission = $admission->fresh();
+        $this->assertSame([1, 0], [$doc->getElementsByTagName('guiaResumoInternacao')->length, $doc->getElementsByTagName('guiaSP-SADT')->length]);
+        $this->assertSame([(string) $account->id, (string) $admission->id, 'SENHA-778899', '2027-01-31', '2', '4',
+            $admission->admitted_at->setTimezone($timezone)->toDateString(), $admission->discharged_at->setTimezone($timezone)->format('H:i:s'), '1', '1', '9', '12',
+            '10101039', '05', '60000775', '18', '100.00', '480.00', '580.00'], [
+                $value('numeroGuiaPrestador'), $value('numeroGuiaSolicitacaoInternacao'), $value('senha'), $value('dataValidadeSenha'), $value('caraterAtendimento'), $value('tipoFaturamento'),
+                $value('dataInicioFaturamento'), $value('horaFinalFaturamento'), $value('tipoInternacao'), $value('regimeInternacao'), $value('indicadorAcidente'), $value('motivoEncerramento'),
+                $value('codigoProcedimento'), $value('codigoDespesa'), $doc->getElementsByTagName('codigoProcedimento')->item(1)?->textContent, $doc->getElementsByTagName('codigoTabela')->item(1)?->textContent,
+                $value('valorProcedimentos'), $value('valorDiarias'), $value('valorTotalGeral'),
+            ]);
+        // The guide's totals come before the other expenses in the summary.
+        $children = array_map(fn ($node) => $node->localName, array_values(array_filter(iterator_to_array($doc->getElementsByTagName('guiaResumoInternacao')->item(0)->childNodes), fn ($node) => $node instanceof \DOMElement)));
+        $this->assertSame(['procedimentosExecutados', 'valorTotal', 'outrasDespesas'], array_slice($children, -3));
+        $this->assertStringNotContainsString('Dra. Ana', $xml);
     }
 }

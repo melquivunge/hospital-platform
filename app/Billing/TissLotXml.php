@@ -3,22 +3,26 @@
 namespace App\Billing;
 
 use App\Models\BillingLot;
+use Carbon\CarbonImmutable;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
 use DOMXPath;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * Step 6.5b2a (ADR-0010): the XML of a lot of SP/SADT guides in the TISS 4.03.00 communication standard (ISO-8859-1),
- * with the epilogue hash, validated against the official schemas kept in resources/tiss/4.03.00. Each account is one
- * guide: the hospital requests and performs (its code at the insurer and the unit's CNES), the professional of the
- * stay's first visit is the requester, its items are the procedures and the other expenses.
+ * Step 6.5b2a (ADR-0010): the XML of a lot of guides in the TISS 4.03.00 communication standard (ISO-8859-1), with the
+ * epilogue hash, validated against the official schemas kept in resources/tiss/4.03.00. Each account is one guide, its
+ * items the procedures and the other expenses. SP/SADT: the hospital requests and performs (its code at the insurer and
+ * the unit's CNES), the professional of the stay's first visit is the requester. Step 6.5b2b, the hospitalization
+ * summary: the admission the episode became (its dates and discharge) and the insurer's authorization (password).
  *
  * The codes below come from the official TUSS domain tables, version 202609 (Representação de Conceitos em Saúde,
  * sheet "Demais terminologias"): 23 character, 25 expense, 26 council, 36 accident, 50 care type, 60 unit of measure,
- * 76 care regime, 87 tables; the UF is the IBGE code (dm_UF).
+ * 76 care regime, 87 tables, and for the hospitalization 39 discharge reason, 41 hospitalization regime, 55 billing
+ * type, 57 hospitalization type; the UF is the IBGE code (dm_UF).
  */
 final class TissLotXml
 {
@@ -38,6 +42,12 @@ final class TissLotXml
     /** Table 25 (expense code), table 87 (its TUSS table) and the guide's total each kind adds to. */
     private const EXPENSES = ['daily' => ['05', '18', 'valorDiarias'], 'material' => ['03', '19', 'valorMateriais'], 'medication' => ['02', '20', 'valorMedicamentos']];
 
+    /**
+     * Table 39, by the discharge type: improved, at request, transfer, evasion and death.
+     * ponytail: a death is "declaration by the attending doctor" (41); IML (42) or SVO (43) need a field at the discharge.
+     */
+    private const DISCHARGE_REASONS = ['improved' => '12', 'at_request' => '14', 'transfer_out' => '31', 'evasion' => '16', 'death' => '41'];
+
     /** @var array<string, mixed>|null */
     private ?array $data = null;
 
@@ -52,9 +62,6 @@ final class TissLotXml
     {
         $data = $this->data();
         $problems = [];
-        if ($this->lot->guide_type !== 'sp_sadt') {
-            $problems[] = 'O arquivo do resumo de internação chega na próxima etapa (6.5b2b).';
-        }
         if (! preg_match('/^\d{6}$/', (string) $data['ansCode'])) {
             $problems[] = 'O convênio não tem o registro ANS (6 dígitos, tela Convênios).';
         }
@@ -71,7 +78,18 @@ final class TissLotXml
                 $problems[] = "{$at} a carteira precisa ter de 1 a 20 caracteres.";
             }
             $professional = $account['professional'];
-            if ($professional === null) {
+            if ($this->lot->guide_type === 'hospitalization') {
+                // The summary names no professional: the admission and the insurer's password instead.
+                if ($account['admission']?->discharged_at === null) {
+                    $problems[] = "{$at} a internação ainda não tem alta.";
+                }
+                if ($account['authorization'] === null) {
+                    // Closing requires it since this step; an account closed before goes back by the complement (6.5c).
+                    $problems[] = "{$at} fechada sem a senha do convênio, que a guia de internação exige.";
+                } elseif (mb_strlen($account['authorization']->number) > 20) {
+                    $problems[] = "{$at} a senha de autorização passa de 20 caracteres.";
+                }
+            } elseif ($professional === null) {
                 $problems[] = "{$at} o atendimento não tem profissional.";
             } else {
                 // Said once per professional, however many guides they are in.
@@ -127,7 +145,11 @@ final class TissLotXml
         $this->add($lot, 'numeroLote', (string) $this->lot->id);
         $guides = $this->add($lot, 'guiasTISS');
         foreach ($data['accounts'] as $account) {
-            $this->guide($this->add($guides, 'guiaSP-SADT'), $account, $data);
+            if ($this->lot->guide_type === 'hospitalization') {
+                $this->hospitalizationGuide($this->add($guides, 'guiaResumoInternacao'), $account, $data);
+            } else {
+                $this->guide($this->add($guides, 'guiaSP-SADT'), $account, $data);
+            }
         }
 
         $hash = self::hash($doc);
@@ -242,9 +264,78 @@ final class TissLotXml
         $this->add($care, 'indicacaoAcidente', '9');
         $this->add($care, 'regimeAtendimento', $account['emergency'] ? '04' : '01');
 
+        $this->items($guide, $account['items'], false);
+    }
+
+    /**
+     * Step 6.5b2b: the hospitalization summary of an account whose stay became an admission.
+     *
+     * @param  array<string, mixed>  $account
+     * @param  array<string, mixed>  $data
+     */
+    private function hospitalizationGuide(DOMElement $guide, array $account, array $data): void
+    {
+        $admission = $account['admission'];
+        $authorization = $account['authorization'];
+        $header = $this->add($guide, 'cabecalhoGuia');
+        $this->add($header, 'registroANS', $data['ansCode']);
+        $this->add($header, 'numeroGuiaPrestador', (string) $account['id']);
+        // ponytail: the hospital's request is its admission; the insurer's own guide number if an insurer asks for it.
+        $this->add($guide, 'numeroGuiaSolicitacaoInternacao', (string) $admission->id);
+        $authorized = $this->add($guide, 'dadosAutorizacao');
+        $this->add($authorized, 'dataAutorizacao', CarbonImmutable::parse($authorization->created_at)->setTimezone($data['timezone'])->toDateString());
+        $this->add($authorized, 'senha', $authorization->number);
+        $this->add($authorized, 'dataValidadeSenha', $authorization->valid_until);
+        $beneficiary = $this->add($guide, 'dadosBeneficiario');
+        $this->add($beneficiary, 'numeroCarteira', $account['card']);
+        $this->add($beneficiary, 'atendimentoRN', 'N');
+        $performer = $this->add($guide, 'dadosExecutante');
+        $this->add($this->add($performer, 'contratadoExecutante'), 'codigoPrestadorNaOperadora', $data['providerCode']);
+        $this->add($performer, 'CNES', $data['cnes']);
+
+        $start = CarbonImmutable::parse($admission->admitted_at)->setTimezone($data['timezone']);
+        $end = CarbonImmutable::parse($admission->discharged_at)->setTimezone($data['timezone']);
+        $stay = $this->add($guide, 'dadosInternacao');
+        // Table 23: 2 urgency (an admission comes from the emergency episode); table 55: 4 total, 3 complementary.
+        $this->add($stay, 'caraterAtendimento', '2');
+        $this->add($stay, 'tipoFaturamento', $account['complement'] ? '3' : '4');
+        $this->add($stay, 'dataInicioFaturamento', $start->toDateString());
+        $this->add($stay, 'horaInicioFaturamento', $start->format('H:i:s'));
+        $this->add($stay, 'dataFinalFaturamento', $end->toDateString());
+        $this->add($stay, 'horaFinalFaturamento', $end->format('H:i:s'));
+        // Table 57: 2 surgical when a surgical procedure is billed, else 1 clinical; table 41: 1 hospital.
+        // ponytail: obstetric, pediatric and psychiatric (3-5) need the admission's type; add it when an insurer asks.
+        $this->add($stay, 'tipoInternacao', collect($account['items'])->contains('kind', 'procedure') ? '2' : '1');
+        $this->add($stay, 'regimeInternacao', '1');
+        $exit = $this->add($guide, 'dadosSaidaInternacao');
+        $this->add($exit, 'indicadorAcidente', '9');
+        $this->add($exit, 'motivoEncerramento', self::DISCHARGE_REASONS[$admission->discharge_type]);
+        $this->items($guide, $account['items'], true);
+    }
+
+    /**
+     * The procedures, the other expenses and the totals; the hospitalization summary puts the totals before the
+     * expenses, SP/SADT after.
+     *
+     * @param  list<object>  $items
+     */
+    private function items(DOMElement $guide, array $items, bool $totalsFirst): void
+    {
+        $procedures = array_values(array_filter($items, fn ($item) => ! isset(self::EXPENSES[$item->kind])));
+        $expenses = array_values(array_filter($items, fn ($item) => isset(self::EXPENSES[$item->kind])));
         $totals = ['valorProcedimentos' => 0, 'valorDiarias' => 0, 'valorMateriais' => 0, 'valorMedicamentos' => 0];
-        $procedures = array_values(array_filter($account['items'], fn ($item) => ! isset(self::EXPENSES[$item->kind])));
-        $expenses = array_values(array_filter($account['items'], fn ($item) => isset(self::EXPENSES[$item->kind])));
+        foreach ($items as $item) {
+            $totals[isset(self::EXPENSES[$item->kind]) ? self::EXPENSES[$item->kind][2] : 'valorProcedimentos'] += $item->quantity * $item->unit_price_cents;
+        }
+        $writeTotals = function () use ($guide, $totals): void {
+            $value = $this->add($guide, 'valorTotal');
+            foreach ($totals as $name => $cents) {
+                if ($cents > 0) {
+                    $this->add($value, $name, self::money($cents));
+                }
+            }
+            $this->add($value, 'valorTotalGeral', self::money(array_sum($totals)));
+        };
         if ($procedures !== []) {
             $list = $this->add($guide, 'procedimentosExecutados');
             foreach ($procedures as $i => $item) {
@@ -260,13 +351,15 @@ final class TissLotXml
                 $this->add($line, 'reducaoAcrescimo', '1.00');
                 $this->add($line, 'valorUnitario', self::money($item->unit_price_cents));
                 $this->add($line, 'valorTotal', self::money($item->quantity * $item->unit_price_cents));
-                $totals['valorProcedimentos'] += $item->quantity * $item->unit_price_cents;
             }
+        }
+        if ($totalsFirst) {
+            $writeTotals();
         }
         if ($expenses !== []) {
             $list = $this->add($guide, 'outrasDespesas');
             foreach ($expenses as $i => $item) {
-                [$expense, $table, $total] = self::EXPENSES[$item->kind];
+                [$expense, $table] = self::EXPENSES[$item->kind];
                 $line = $this->add($list, 'despesa');
                 $this->add($line, 'sequencialItem', (string) ($i + 1));
                 $this->add($line, 'codigoDespesa', $expense);
@@ -282,22 +375,18 @@ final class TissLotXml
                 $this->add($service, 'valorUnitario', self::money($item->unit_price_cents));
                 $this->add($service, 'valorTotal', self::money($item->quantity * $item->unit_price_cents));
                 $this->add($service, 'descricaoProcedimento', mb_substr($item->name, 0, 150));
-                $totals[$total] += $item->quantity * $item->unit_price_cents;
             }
         }
-        $value = $this->add($guide, 'valorTotal');
-        foreach ($totals as $name => $cents) {
-            if ($cents > 0) {
-                $this->add($value, $name, self::money($cents));
-            }
+        if (! $totalsFirst) {
+            $writeTotals();
         }
-        $this->add($value, 'valorTotalGeral', self::money(array_sum($totals)));
     }
 
     /**
-     * Everything the file needs, read once: the insurer, the contract, the unit, and each account with its card, the
-     * professional of its stay's first visit (with the CBO of an approved function at the unit) and its items.
-     * Pairs of an item and its compensation in the same account cancel out and are left out.
+     * Everything the file needs, read once: the insurer, the contract, the unit, and each account with its card, its
+     * items and, for SP/SADT, the professional of its stay's first visit (with the CBO of an approved function at the
+     * unit); for the hospitalization summary, the admission its episode became and the insurer's password. Pairs of an
+     * item and its compensation in the same account cancel out and are left out.
      *
      * @return array<string, mixed>
      */
@@ -318,8 +407,12 @@ final class TissLotXml
             ->groupBy('billing_account_id');
 
         $stayOf = fn ($account) => $account->complement_of_id === null ? $account : $stays->get($account->complement_of_id);
-        $professionals = self::professionals($accounts->map($stayOf)->all(), $lot->unit_id);
-        $described = $accounts->map(function ($account) use ($stayOf, $items, $professionals) {
+        $hospitalization = $lot->guide_type === 'hospitalization';
+        $professionals = $hospitalization ? [] : self::professionals($accounts->map($stayOf)->all(), $lot->unit_id);
+        $admissions = ! $hospitalization ? collect() : DB::table('admissions')->whereIn('emergency_episode_id', $accounts->map($stayOf)->pluck('emergency_episode_id')->filter()->all())
+            ->get(['id', 'emergency_episode_id', 'admitted_at', 'discharged_at', 'discharge_type'])->keyBy('emergency_episode_id');
+        $authorizations = $hospitalization ? self::passwords($accounts->map(fn ($account) => $account->complement_of_id ?? $account->id)->all()) : collect();
+        $described = $accounts->map(function ($account) use ($stayOf, $items, $professionals, $admissions, $authorizations) {
             $stay = $stayOf($account);
             $own = $items->get($account->id, collect());
             $compensated = $own->where('origin_type', 'compensation')->pluck('origin_id')->all();
@@ -329,7 +422,10 @@ final class TissLotXml
                 'id' => $account->id,
                 'card' => (string) $account->insurance_card_number,
                 'emergency' => $stay->emergency_episode_id !== null,
+                'complement' => $account->complement_of_id !== null,
                 'professional' => $professionals[$stay->appointment_id !== null ? "a{$stay->appointment_id}" : "e{$stay->emergency_episode_id}"] ?? null,
+                'admission' => $admissions->get($stay->emergency_episode_id),
+                'authorization' => $authorizations->get($account->complement_of_id ?? $account->id),
                 'foreignCompensations' => $own->where('origin_type', 'compensation')->whereNotIn('origin_id', $own->pluck('id')->all())->count(),
                 'items' => $kept->values()->all(),
             ];
@@ -343,6 +439,24 @@ final class TissLotXml
             'providerCode' => DB::table('insurer_contracts')->where('insurer_id', $lot->insurer_id)->value('provider_code'),
             'accounts' => $described,
         ];
+    }
+
+    /**
+     * Step 6.5b2b: the insurer's password of each stay (keyed by the stay's account, complements included): the latest
+     * answer of an item that is "authorized", a daily rate's first. The hospitalization summary requires it.
+     *
+     * @param  list<int>  $stayAccountIds
+     * @return Collection<int, object>
+     */
+    public static function passwords(array $stayAccountIds): Collection
+    {
+        // Ascending, so the key kept is a daily rate's latest authorization when there is one.
+        return DB::table('billing_authorizations as z')->join('billing_account_items as i', 'i.id', '=', 'z.billing_account_item_id')
+            ->join('billing_accounts as a', 'a.id', '=', 'i.billing_account_id')->leftJoin('billing_items as b', 'b.id', '=', 'i.billing_item_id')
+            ->whereIn(DB::raw('coalesce(a.complement_of_id, a.id)'), $stayAccountIds)->where('z.status', 'authorized')
+            ->whereRaw('z.id = (SELECT max(id) FROM billing_authorizations WHERE billing_account_item_id = z.billing_account_item_id)')
+            ->orderByRaw("coalesce(b.kind = 'daily', false)")->orderBy('z.id')
+            ->get([DB::raw('coalesce(a.complement_of_id, a.id) AS stay_id'), 'z.number', 'z.valid_until', 'z.created_at'])->keyBy('stay_id');
     }
 
     /**
