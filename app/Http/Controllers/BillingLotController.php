@@ -47,8 +47,7 @@ class BillingLotController extends Controller
         $lots = BillingLot::query()->where('unit_id', $unit->id)->orderByDesc('created_at')->orderByDesc('id')->limit(self::LIST_LIMIT)->get();
         $insurers = Insurer::query()->whereKey($ready->pluck('insurer_id')->merge($lots->pluck('insurer_id'))->unique()->all())->pluck('name', 'id');
         $users = User::query()->whereKey($lots->pluck('created_by_user_id')->merge($lots->pluck('cancelled_by_user_id'))->filter()->unique()->all())->pluck('name', 'id');
-        $returns = DB::table('billing_item_returns')->whereIn('billing_lot_id', $lots->pluck('id')->all())->groupBy('billing_lot_id')
-            ->selectRaw('billing_lot_id, sum(paid_cents) AS paid_cents, sum(glossed_cents) AS glossed_cents')->get()->keyBy('billing_lot_id');
+        $conciliations = BillingLot::conciliations($lots->pluck('id')->all());
 
         return Inertia::render('billing-lots/index', [
             'units' => $units->map->only('id', 'name')->values(),
@@ -80,8 +79,9 @@ class BillingLotController extends Controller
                     'generatedAt' => $lot->file_generated_at?->setTimezone($timezone)->format('d/m/Y H:i'),
                 ],
                 'problems' => $lot->status === 'generated' && $lot->file_path === null ? (new TissLotXml($lot))->problems() : [],
-                // Step 6.5c1: the conciliation, billed = paid + glossed, once the insurer's return is recorded.
-                'return' => ($return = $returns->get($lot->id)) === null ? null : ['paidCents' => (int) $return->paid_cents, 'glossedCents' => (int) $return->glossed_cents],
+                // Steps 6.5c1 and 6.5c2: the conciliation once the insurer's return is recorded, billed = paid + glossed, and
+                // of the glossed what is in appeal and what the appeals recovered.
+                'return' => $conciliations->get($lot->id),
             ])->values(),
             'guideTypes' => BillingLot::GUIDE_TYPES,
             'maxGuides' => BillingLot::MAX_GUIDES,
@@ -178,6 +178,9 @@ class BillingLotController extends Controller
         abort_if($lot->status !== 'generated' || $lot->file_path === null, 404);
         $items = $lot->guideItems();
         $returns = DB::table('billing_item_returns')->where('billing_lot_id', $lot->id)->get()->keyBy('billing_account_item_id');
+        $appeals = DB::table('billing_glosa_appeals')->where('billing_lot_id', $lot->id)->orderBy('sequence')->get()->keyBy('id');
+        $appealed = DB::table('billing_glosa_appeal_items')->whereIn('billing_glosa_appeal_id', $appeals->keys()->all())->get()->keyBy('billing_item_return_id');
+        $schemaCodes = TissLotXml::schemaGlosaCodes();
         $accounts = BillingAccount::query()->whereKey($items->pluck('billing_account_id')->unique()->all())->get();
         $patients = Patient::query()->whereKey($accounts->pluck('patient_id')->unique()->all())->get()->keyBy('id');
         foreach ($accounts as $account) {
@@ -197,14 +200,24 @@ class BillingLotController extends Controller
                     'id' => $item->id, 'code' => $item->code, 'name' => $item->name, 'quantity' => $item->quantity, 'billedCents' => $item->billed_cents,
                     'return' => ($return = $returns->get($item->id)) === null ? null : [
                         'paidCents' => (int) $return->paid_cents, 'glossedCents' => (int) $return->glossed_cents, 'code' => $return->glosa_code, 'reason' => $return->glosa_reason,
+                        // Step 6.5c2: a glosa the 4.03.00 schema knows can be appealed once.
+                        'appealable' => $return->glossed_cents > 0 && ! $appealed->has($return->id) && in_array($return->glosa_code, $schemaCodes, true),
+                        'appeal' => ($appeal = $appealed->get($return->id)) === null ? null : [
+                            'sequence' => $appeals[$appeal->billing_glosa_appeal_id]->sequence, 'appealedCents' => (int) $appeal->appealed_cents,
+                            'justification' => $appeal->justification, 'recoveredCents' => $appeal->recovered_cents === null ? null : (int) $appeal->recovered_cents,
+                        ],
                     ],
                 ])->values(),
             ])->values(),
             'recorded' => $first === null ? null : [
                 'at' => CarbonImmutable::parse($first->recorded_at)->setTimezone($timezone)->format('d/m/Y H:i'),
                 'by' => User::query()->whereKey($first->recorded_by_user_id)->value('name'),
-                'paidCents' => (int) $returns->sum('paid_cents'), 'glossedCents' => (int) $returns->sum('glossed_cents'),
+                ...BillingLot::conciliations([$lot->id])->get($lot->id),
             ],
+            'appeals' => $appeals->map(fn ($appeal) => [
+                'sequence' => $appeal->sequence, 'protocol' => $appeal->protocol_number, 'appealedCents' => (int) $appeal->appealed_cents,
+                'at' => CarbonImmutable::parse($appeal->created_at)->setTimezone($timezone)->format('d/m/Y H:i'),
+            ])->values(),
             'glosaCodes' => BillingLot::glosaCodes(),
         ]);
     }
@@ -253,5 +266,111 @@ class BillingLotController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => "Retorno do lote {$lot->id} registrado."]);
 
         return to_route('billing-lots.return', $lot);
+    }
+
+    /**
+     * Step 6.5c2: the glosa appeal of glossed items, with the insurer's protocol of the lot; its TISS file is written
+     * with it. Only the items marked are sent (a justification each; the value is the whole glosa unless given).
+     */
+    public function storeAppeal(Request $request, BillingLot $lot): RedirectResponse
+    {
+        abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $data = $request->validateWithBag('appeal', [
+            'protocol' => ['required', 'string', 'regex:/^\d{1,12}$/'],
+            'items' => ['sometimes', 'array', 'max:300'],
+            'items.*' => ['array:amount,justification'],
+            'items.*.amount' => ['nullable', 'string', 'max:20'],
+            'items.*.justification' => ['nullable', 'string', 'max:500'],
+        ], ['protocol.required' => 'Informe o número do protocolo do lote na operadora.', 'protocol.regex' => 'O protocolo tem só números (até 12).'],
+            ['items.*.justification' => 'justificativa']);
+        $items = [];
+        $errors = [];
+        foreach ($data['items'] ?? [] as $id => $item) {
+            $amount = trim((string) ($item['amount'] ?? ''));
+            // Control characters would fail the TISS schema: the file's text is one line.
+            $justification = trim((string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string) ($item['justification'] ?? '')));
+            if ($amount === '' && $justification === '') {
+                continue;
+            }
+            $cents = $amount === '' ? null : PriceEntry::cents($amount);
+            if (! ctype_digit((string) $id)) {
+                $errors['appeal'] = 'Item inválido.';
+            } elseif ($amount !== '' && ($cents === null || $cents === 0)) {
+                $errors["items.{$id}.amount"] = 'Informe o valor do recurso (ex.: 12,50) ou deixe em branco para recorrer da glosa toda.';
+            } elseif ($justification === '') {
+                $errors["items.{$id}.justification"] = 'Escreva a justificativa do recurso.';
+            } else {
+                $items[(int) $id] = ['cents' => $cents, 'justification' => $justification];
+            }
+        }
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors)->errorBag('appeal');
+        }
+        if (($refusal = $lot->recordAppeal($data['protocol'], $items, $request->user())) !== []) {
+            throw ValidationException::withMessages(['appeal' => $refusal])->errorBag('appeal');
+        }
+        Inertia::flash('toast', ['type' => 'success', 'message' => "Recurso de glosa do lote {$lot->id} gerado."]);
+
+        return to_route('billing-lots.return', $lot);
+    }
+
+    /**
+     * Step 6.5c2: the insurer's answer to appealed items, what it recovered (0 when denied), once per item.
+     */
+    public function storeAppealResults(Request $request, BillingLot $lot): RedirectResponse
+    {
+        abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $data = $request->validateWithBag('appealResult', [
+            'results' => ['sometimes', 'array', 'max:300'],
+            'results.*' => ['nullable', 'string', 'max:20'],
+        ]);
+        $recovered = [];
+        $errors = [];
+        foreach ($data['results'] ?? [] as $id => $amount) {
+            $amount = trim((string) $amount);
+            if ($amount === '') {
+                continue;
+            }
+            $cents = PriceEntry::cents($amount);
+            if (! ctype_digit((string) $id)) {
+                $errors['appealResult'] = 'Item inválido.';
+            } elseif ($cents === null) {
+                $errors["results.{$id}"] = 'Informe o valor recuperado (ex.: 12,50; 0 quando negado).';
+            } else {
+                $recovered[(int) $id] = $cents;
+            }
+        }
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors)->errorBag('appealResult');
+        }
+        if (($refusal = $lot->recordAppealResults($recovered, $request->user())) !== []) {
+            throw ValidationException::withMessages(['appealResult' => $refusal])->errorBag('appealResult');
+        }
+        Inertia::flash('toast', ['type' => 'success', 'message' => "Resultado do recurso do lote {$lot->id} registrado."]);
+
+        return to_route('billing-lots.return', $lot);
+    }
+
+    /**
+     * Step 6.5c2: the appeal's TISS file, for the insurer's portal; each patient of its guides is logged in the trail.
+     */
+    public function downloadAppeal(Request $request, BillingLot $lot, int $sequence): SymfonyResponse
+    {
+        abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $appeal = DB::table('billing_glosa_appeals')->where('billing_lot_id', $lot->id)->where('sequence', $sequence)->first();
+        abort_if($appeal === null || ! Storage::disk('local')->exists($appeal->file_path), 404);
+        $accounts = BillingAccount::query()->whereIn('id', DB::table('billing_glosa_appeal_items as a')->join('billing_item_returns as r', 'r.id', '=', 'a.billing_item_return_id')
+            ->join('billing_account_items as i', 'i.id', '=', 'r.billing_account_item_id')->where('a.billing_glosa_appeal_id', $appeal->id)->select('i.billing_account_id'))->get();
+        $patients = Patient::query()->whereKey($accounts->pluck('patient_id')->unique()->all())->get()->keyBy('id');
+        foreach ($accounts as $account) {
+            ClinicalAccess::recordRead($request->user(), $patients->get($account->patient_id), $account);
+        }
+        AuditEvent::record('billing_lot.appeal_downloaded', $lot->tenant_id, $lot, ['sequence' => $sequence, 'sha256' => $appeal->file_sha256]);
+
+        return response((string) Storage::disk('local')->get($appeal->file_path), 200, [
+            'Content-Type' => 'application/xml; charset=ISO-8859-1',
+            'Content-Disposition' => "attachment; filename=\"lote-{$lot->id}-recurso-{$sequence}-tiss-{$lot->tiss_version}.xml\"",
+            'Cache-Control' => 'no-store',
+        ]);
     }
 }

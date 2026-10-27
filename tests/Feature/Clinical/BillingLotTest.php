@@ -471,9 +471,9 @@ class BillingLotTest extends ClinicalTestCase
             $row->billing_account_item_id, $row->billed_cents, $row->paid_cents, $row->glossed_cents, $row->glosa_code, $row->glosa_reason,
         ])->all());
         $this->assertEquals(['paid_cents' => 17000, 'glossed_cents' => 3000, 'glossed_items' => 1], AuditEvent::where('action', 'billing_lot.return_recorded')->sole()->context);
-        $this->get(route('billing-lots.index'))->assertInertia(fn (Assert $page) => $page->where('lots.0.return', ['paidCents' => 17000, 'glossedCents' => 3000]));
+        $this->get(route('billing-lots.index'))->assertInertia(fn (Assert $page) => $page->where('lots.0.return', ['paidCents' => 17000, 'glossedCents' => 3000, 'appealingCents' => 0, 'recoveredCents' => 0]));
         $this->get(route('billing-lots.return', $lot))->assertInertia(fn (Assert $page) => $page->where('recorded.paidCents', 17000)->where('recorded.glossedCents', 3000)
-            ->where('accounts.0.items.0.return', ['paidCents' => 7000, 'glossedCents' => 3000, 'code' => '1001', 'reason' => 'Carteira vencida.']));
+            ->where('accounts.0.items.0.return', ['paidCents' => 7000, 'glossedCents' => 3000, 'code' => '1001', 'reason' => 'Carteira vencida.', 'appealable' => true, 'appeal' => null]));
 
         // Once: a second return and the cancellation are refused.
         $this->post(route('billing-lots.return.store', $lot), [])->assertSessionHasErrorsIn('return', ['return' => 'O retorno deste lote já foi registrado.']);
@@ -524,5 +524,103 @@ class BillingLotTest extends ClinicalTestCase
         }
         DB::table('billing_item_returns')->insert($row);
         $this->assertSame(1, DB::table('billing_item_returns')->count());
+    }
+
+    /**
+     * Step 6.5c2: a glossed item is appealed once, with the lot's protocol at the insurer, in a TISS 4.03.00 file; the
+     * insurer's answer is recorded once and the conciliation shows what is in appeal and what was recovered.
+     */
+    public function test_a_glosa_appeal_is_a_valid_tiss_file_and_its_answer_reconciles_the_lot(): void
+    {
+        $lot = $this->sentLot();
+        [$first, $second] = $lot->guideItems()->pluck('id')->all();
+        // 5063 is in TUSS table 38 (202609) but not in the 4.03.00 schema: no appeal file can carry it.
+        $this->post(route('billing-lots.return.store', $lot), ['glosas' => [
+            $first => ['amount' => '30,00', 'code' => '1001', 'reason' => 'Carteira vencida.'],
+            $second => ['amount' => '100,00', 'code' => '5063'],
+        ]])->assertSessionHasNoErrors();
+        $appeal = fn (array $items, ?string $protocol = '987654321') => $this->post(route('billing-lots.appeals.store', $lot), ['protocol' => $protocol, 'items' => $items]);
+        $why = ['amount' => '', 'justification' => 'Carteira válida na data do atendimento.'];
+
+        // Refusals; nothing is written meanwhile.
+        $appeal([$first => $why], null)->assertSessionHasErrorsIn('appeal', 'protocol');
+        $appeal([$first => $why], '12a')->assertSessionHasErrorsIn('appeal', 'protocol');
+        $appeal([$first => ['amount' => '10,00', 'justification' => ' ']])->assertSessionHasErrorsIn('appeal', "items.{$first}.justification");
+        $appeal([$first => ['amount' => '0', 'justification' => 'x']])->assertSessionHasErrorsIn('appeal', "items.{$first}.amount");
+        $appeal([])->assertSessionHasErrorsIn('appeal', ['appeal' => 'Marque ao menos um item glosado para recorrer.']);
+        $appeal([$first => [...$why, 'amount' => '30,01']])->assertSessionHasErrorsIn('appeal', ['appeal' => 'O valor do recurso de um item passa da glosa dele.']);
+        $appeal([$second => $why])->assertSessionHasErrorsIn('appeal', ['appeal' => 'A glosa 5063 não existe no padrão TISS 4.03.00: recorra desse item no portal da operadora.']);
+        $appeal([$first + $second + 1000 => $why])->assertSessionHasErrorsIn('appeal', ['appeal' => 'Um item do recurso não foi glosado neste lote. Atualize a página e confira.']);
+        $this->assertSame(0, DB::table('billing_glosa_appeals')->count());
+
+        // Appealed by the whole glosa: a valid TISS file of the guide item, with its line, code and value.
+        $appeal([$first => $why, $second => ['amount' => '', 'justification' => '']])->assertSessionHasNoErrors()->assertRedirect(route('billing-lots.return', $lot));
+        $row = DB::table('billing_glosa_appeals')->sole();
+        $this->assertSame([1, '987654321', 3000], [$row->sequence, $row->protocol_number, $row->appealed_cents]);
+        $xml = (string) Storage::disk('local')->get($row->file_path);
+        $this->assertSame([], TissLotXml::schemaErrors($xml));
+        $this->assertSame($row->file_sha256, hash('sha256', $xml));
+        $doc = new DOMDocument;
+        $doc->loadXML($xml);
+        $this->assertSame($row->file_hash, TissLotXml::hash($doc));
+        $value = fn (string $tag) => $doc->getElementsByTagName($tag)->item(0)?->textContent;
+        $account = DB::table('billing_account_items')->where('id', $first)->value('billing_account_id');
+        $this->assertSame(['RECURSO_GLOSA', "{$lot->id}-1", 'Saúde Boa', '2', (string) $lot->id, '987654321', (string) $account, '1', '22', '10101012', '1001', '30.00', 'Carteira válida na data do atendimento.', '30.00'], [
+            $value('tipoTransacao'), $value('numeroGuiaRecGlosaPrestador'), $value('nomeOperadora'), $value('objetoRecurso'), $value('numeroLote'), $value('numeroProtocolo'),
+            $value('numeroGuiaOrigem'), $value('sequencialItem'), $value('codigoTabela'), $value('codigoProcedimento'), $value('codGlosaItem'), $value('valorRecursado'),
+            $value('justificativaItem'), $value('valorTotalRecursado'),
+        ]);
+        $this->assertEquals(['sequence' => 1, 'appealed_cents' => 3000, 'items' => 1], AuditEvent::where('action', 'billing_lot.appeal_generated')->sole()->context);
+        $appeal([$first => $why])->assertSessionHasErrorsIn('appeal', ['appeal' => 'Um item do recurso já está num recurso deste lote.']);
+
+        // In appeal: on the return page and in the lots' conciliation.
+        $this->get(route('billing-lots.return', $lot))->assertInertia(fn (Assert $page) => $page
+            ->where('accounts.0.items.0.return.appealable', false)
+            ->where('accounts.0.items.0.return.appeal', ['sequence' => 1, 'appealedCents' => 3000, 'justification' => 'Carteira válida na data do atendimento.', 'recoveredCents' => null])
+            ->where('accounts.1.items.0.return.appealable', false)
+            ->where('recorded.appealingCents', 3000)->where('appeals.0.protocol', '987654321'));
+        $this->get(route('billing-lots.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('lots.0.return', ['paidCents' => 7000, 'glossedCents' => 13000, 'appealingCents' => 3000, 'recoveredCents' => 0]));
+
+        // The download is the stored file, and the guide's patient is logged in the trail.
+        $reads = DB::table('clinical_reads')->count();
+        $this->get(route('billing-lots.appeals.download', [$lot, 1]))->assertOk()->assertDownload("lote-{$lot->id}-recurso-1-tiss-4.03.00.xml");
+        $this->assertSame($reads + 1, DB::table('clinical_reads')->count());
+        $this->get(route('billing-lots.appeals.download', [$lot, 2]))->assertNotFound();
+
+        // The insurer's answer: up to the appeal, of an item in appeal, once.
+        $answer = fn (array $results) => $this->post(route('billing-lots.appeals.results', $lot), ['results' => $results]);
+        $answer([$first => 'x'])->assertSessionHasErrorsIn('appealResult', "results.{$first}");
+        $answer([$first => '30,01'])->assertSessionHasErrorsIn('appealResult', ['appealResult' => 'O valor recuperado de um item passa do valor do recurso.']);
+        $answer([$second => '0'])->assertSessionHasErrorsIn('appealResult', ['appealResult' => 'Um item não está em recurso pendente neste lote. Atualize a página e confira.']);
+        $answer([$first => '20,00', $second => ''])->assertSessionHasNoErrors();
+        $this->assertSame(2000, DB::table('billing_glosa_appeal_items')->value('recovered_cents'));
+        $this->assertEquals(['recovered_cents' => 2000, 'items' => 1], AuditEvent::where('action', 'billing_lot.appeal_answered')->sole()->context);
+        $answer([$first => '0'])->assertSessionHasErrorsIn('appealResult', 'appealResult');
+        $this->get(route('billing-lots.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('lots.0.return', ['paidCents' => 7000, 'glossedCents' => 13000, 'appealingCents' => 0, 'recoveredCents' => 2000]));
+
+        // Only billing of the unit (or the network admin).
+        $this->actingAs($this->manager->user)->post(route('billing-lots.appeals.store', $lot), ['protocol' => '1'])->assertForbidden();
+        $this->actingAs($this->manager->user)->get(route('billing-lots.appeals.download', [$lot, 1]))->assertForbidden();
+        $this->actingAs($this->manager->user)->post(route('billing-lots.appeals.results', $lot))->assertForbidden();
+
+        // The database keeps it: no change to the appeal, nor a second answer, nor a deletion, nor an appeal off the glosa.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $secondReturn = DB::table('billing_item_returns')->where('billing_account_item_id', $second)->value('id');
+        foreach ([
+            fn () => DB::table('billing_glosa_appeals')->update(['protocol_number' => '1']),
+            fn () => DB::table('billing_glosa_appeals')->delete(),
+            fn () => DB::table('billing_glosa_appeal_items')->update(['recovered_cents' => 0]),
+            fn () => DB::table('billing_glosa_appeal_items')->delete(),
+            fn () => DB::table('billing_glosa_appeal_items')->insert(['tenant_id' => $lot->tenant_id, 'billing_glosa_appeal_id' => $row->id, 'billing_item_return_id' => $secondReturn,
+                'appealed_cents' => 10001, 'justification' => 'Acima da glosa.']),
+        ] as $change) {
+            try {
+                DB::transaction($change);
+                $this->fail('The database accepted a change to an appeal.');
+            } catch (QueryException) {
+            }
+        }
     }
 }
