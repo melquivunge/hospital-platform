@@ -39,6 +39,7 @@ import {
     Users,
     UsersRound,
     Wallet,
+    Package,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
@@ -63,6 +64,7 @@ import { index as examQueue } from '@/routes/exam-queue';
 import { index as examOverdue } from '@/routes/exam-overdue';
 import { index as exams } from '@/routes/exams';
 import { index as billingAccounts } from '@/routes/billing-accounts';
+import { index as billingLots } from '@/routes/billing-lots';
 import { index as billingPrices } from '@/routes/billing-prices';
 import { index as surgeryCatalog } from '@/routes/surgery-catalog';
 import { index as stock } from '@/routes/stock';
@@ -247,7 +249,10 @@ export function AppSidebar() {
             ? [{ title: 'Fila de exames', href: examQueue(), icon: TestTube }]
             : []),
         ...(canUseBilling
-            ? [{ title: 'Contas', href: billingAccounts(), icon: Wallet }]
+            ? [
+                  { title: 'Contas', href: billingAccounts(), icon: Wallet },
+                  { title: 'Lotes TISS', href: billingLots(), icon: Package },
+              ]
             : []),
         ...(canUseSurgerySchedule
             ? [

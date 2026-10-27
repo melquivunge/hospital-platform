@@ -7,6 +7,7 @@ use App\Http\Controllers\AttendanceOccurrenceController;
 use App\Http\Controllers\AttendancePointController;
 use App\Http\Controllers\BedController;
 use App\Http\Controllers\BillingAccountController;
+use App\Http\Controllers\BillingLotController;
 use App\Http\Controllers\BillingPriceController;
 use App\Http\Controllers\CensusController;
 use App\Http\Controllers\ClinicalDocumentController;
@@ -133,6 +134,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('billing-accounts/{account}/payment', [BillingAccountController::class, 'receive'])->middleware('throttle:30,1')->name('billing-accounts.payment.store');
     Route::get('billing-accounts/{account}/receipt', [BillingAccountController::class, 'receipt'])->middleware('throttle:30,1')->name('billing-accounts.receipt');
     Route::post('billing-account-items/{item}/compensate', [BillingAccountController::class, 'compensate'])->middleware('throttle:60,1')->name('billing-account-items.compensate');
+    // Step 6.5b1: the TISS lots of a unit.
+    Route::get('billing-lots', [BillingLotController::class, 'index'])->middleware('throttle:120,1')->name('billing-lots.index');
+    Route::post('billing-lots', [BillingLotController::class, 'store'])->middleware('throttle:30,1')->name('billing-lots.store');
+    Route::post('billing-lots/{lot}/cancel', [BillingLotController::class, 'cancel'])->middleware('throttle:30,1')->name('billing-lots.cancel');
     Route::get('pharmacy', [PharmacyController::class, 'index'])->middleware('throttle:120,1')->name('pharmacy.index');
     Route::get('pharmacy/prescriptions/{prescription}', [PharmacyController::class, 'show'])->middleware('throttle:120,1')->name('pharmacy.show');
     Route::post('pharmacy/items/{item}/review', [PharmacyController::class, 'review'])->middleware('throttle:120,1')->name('pharmacy.review');
