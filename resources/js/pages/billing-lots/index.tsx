@@ -1,4 +1,4 @@
-import { Form, Head, router, usePage } from '@inertiajs/react';
+import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import BillingLotController from '@/actions/App/Http/Controllers/BillingLotController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -34,6 +34,7 @@ type Lot = {
     cancelReason: string | null;
     file: { sha256: string; generatedAt: string } | null;
     problems: string[];
+    return: { paidCents: number; glossedCents: number } | null;
 };
 
 /** "2026-10" → "10/2026". */
@@ -265,7 +266,7 @@ function LotItem({
                 </span>
             </div>
             {!cancelled && <LotFile lot={lot} />}
-            {!cancelled && (
+            {!cancelled && !lot.return && (
                 <details>
                     <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary">
                         Cancelar lote
@@ -323,10 +324,23 @@ function LotFile({ lot }: { lot: Lot }) {
                 >
                     Baixar arquivo TISS
                 </a>
+                <Link
+                    href={BillingLotController.showReturn.url(lot.id)}
+                    className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                    {lot.return ? 'Ver retorno' : 'Registrar retorno'}
+                </Link>
                 <span className="text-sm break-all text-muted-foreground">
                     Gerado em {lot.file.generatedAt} · SHA-256{' '}
                     <span className="font-mono">{lot.file.sha256}</span>
                 </span>
+                {lot.return && (
+                    <span className="basis-full text-sm">
+                        Cobrado {money(lot.totalCents)} = pago{' '}
+                        {money(lot.return.paidCents)} + glosado{' '}
+                        {money(lot.return.glossedCents)}
+                    </span>
+                )}
             </div>
         );
     }

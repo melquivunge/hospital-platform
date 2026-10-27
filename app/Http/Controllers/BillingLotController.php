@@ -9,6 +9,7 @@ use App\Models\BillingAccount;
 use App\Models\BillingLot;
 use App\Models\Insurer;
 use App\Models\Patient;
+use App\Models\PriceEntry;
 use App\Models\Unit;
 use App\Models\User;
 use App\Policies\UnitPolicy;
@@ -46,6 +47,8 @@ class BillingLotController extends Controller
         $lots = BillingLot::query()->where('unit_id', $unit->id)->orderByDesc('created_at')->orderByDesc('id')->limit(self::LIST_LIMIT)->get();
         $insurers = Insurer::query()->whereKey($ready->pluck('insurer_id')->merge($lots->pluck('insurer_id'))->unique()->all())->pluck('name', 'id');
         $users = User::query()->whereKey($lots->pluck('created_by_user_id')->merge($lots->pluck('cancelled_by_user_id'))->filter()->unique()->all())->pluck('name', 'id');
+        $returns = DB::table('billing_item_returns')->whereIn('billing_lot_id', $lots->pluck('id')->all())->groupBy('billing_lot_id')
+            ->selectRaw('billing_lot_id, sum(paid_cents) AS paid_cents, sum(glossed_cents) AS glossed_cents')->get()->keyBy('billing_lot_id');
 
         return Inertia::render('billing-lots/index', [
             'units' => $units->map->only('id', 'name')->values(),
@@ -77,6 +80,8 @@ class BillingLotController extends Controller
                     'generatedAt' => $lot->file_generated_at?->setTimezone($timezone)->format('d/m/Y H:i'),
                 ],
                 'problems' => $lot->status === 'generated' && $lot->file_path === null ? (new TissLotXml($lot))->problems() : [],
+                // Step 6.5c1: the conciliation, billed = paid + glossed, once the insurer's return is recorded.
+                'return' => ($return = $returns->get($lot->id)) === null ? null : ['paidCents' => (int) $return->paid_cents, 'glossedCents' => (int) $return->glossed_cents],
             ])->values(),
             'guideTypes' => BillingLot::GUIDE_TYPES,
             'maxGuides' => BillingLot::MAX_GUIDES,
@@ -115,8 +120,8 @@ class BillingLotController extends Controller
         abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
         $bag = "cancel-{$lot->id}";
         $data = $request->validateWithBag($bag, ['reason' => ['required', 'string', 'max:500']], [], ['reason' => 'motivo']);
-        if (! $lot->cancel(trim((string) $data['reason']), $request->user())) {
-            throw ValidationException::withMessages(['reason' => 'Este lote já foi cancelado.'])->errorBag($bag);
+        if (($refusal = $lot->cancel(trim((string) $data['reason']), $request->user())) !== null) {
+            throw ValidationException::withMessages(['reason' => $refusal])->errorBag($bag);
         }
         Inertia::flash('toast', ['type' => 'success', 'message' => "Lote {$lot->id} cancelado; as contas voltaram para as prontas."]);
 
@@ -160,5 +165,93 @@ class BillingLotController extends Controller
             'Content-Disposition' => "attachment; filename=\"lote-{$lot->id}-tiss-{$lot->tiss_version}.xml\"",
             'Cache-Control' => 'no-store',
         ]);
+    }
+
+    /**
+     * Step 6.5c1: the guide items of a sent lot, to record the insurer's return (what each item had glossed, with the
+     * TUSS table 38 code and the reason), or the return recorded. It shows what was done to each guide's patient: each
+     * one is logged in the access trail ("billing").
+     */
+    public function showReturn(Request $request, BillingLot $lot): Response
+    {
+        abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        abort_if($lot->status !== 'generated' || $lot->file_path === null, 404);
+        $items = $lot->guideItems();
+        $returns = DB::table('billing_item_returns')->where('billing_lot_id', $lot->id)->get()->keyBy('billing_account_item_id');
+        $accounts = BillingAccount::query()->whereKey($items->pluck('billing_account_id')->unique()->all())->get();
+        $patients = Patient::query()->whereKey($accounts->pluck('patient_id')->unique()->all())->get()->keyBy('id');
+        foreach ($accounts as $account) {
+            ClinicalAccess::recordRead($request->user(), $patients->get($account->patient_id), $account);
+        }
+        $first = $returns->first();
+        $timezone = Unit::query()->whereKey($lot->unit_id)->value('timezone') ?? 'UTC';
+
+        return Inertia::render('billing-lots/return', [
+            'lot' => [
+                'id' => $lot->id, 'insurer' => Insurer::query()->whereKey($lot->insurer_id)->value('name'), 'competence' => $lot->competence->format('m/Y'),
+                'guideType' => BillingLot::GUIDE_TYPES[$lot->guide_type] ?? $lot->guide_type, 'totalCents' => $lot->total_cents, 'unitId' => $lot->unit_id,
+            ],
+            'accounts' => $items->groupBy('billing_account_id')->map(fn ($own, $accountId) => [
+                'id' => (int) $accountId,
+                'items' => $own->map(fn ($item) => [
+                    'id' => $item->id, 'code' => $item->code, 'name' => $item->name, 'quantity' => $item->quantity, 'billedCents' => $item->billed_cents,
+                    'return' => ($return = $returns->get($item->id)) === null ? null : [
+                        'paidCents' => (int) $return->paid_cents, 'glossedCents' => (int) $return->glossed_cents, 'code' => $return->glosa_code, 'reason' => $return->glosa_reason,
+                    ],
+                ])->values(),
+            ])->values(),
+            'recorded' => $first === null ? null : [
+                'at' => CarbonImmutable::parse($first->recorded_at)->setTimezone($timezone)->format('d/m/Y H:i'),
+                'by' => User::query()->whereKey($first->recorded_by_user_id)->value('name'),
+                'paidCents' => (int) $returns->sum('paid_cents'), 'glossedCents' => (int) $returns->sum('glossed_cents'),
+            ],
+            'glosaCodes' => BillingLot::glosaCodes(),
+        ]);
+    }
+
+    /**
+     * Step 6.5c1: records the insurer's return once. Only the glossed items are sent (value, code, reason); every other
+     * item of the guides is paid in full.
+     */
+    public function storeReturn(Request $request, BillingLot $lot): RedirectResponse
+    {
+        abort_unless(in_array($lot->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $data = $request->validateWithBag('return', [
+            'glosas' => ['sometimes', 'array', 'max:300'],
+            'glosas.*' => ['array:amount,code,reason'],
+            'glosas.*.amount' => ['nullable', 'string', 'max:20'],
+            'glosas.*.code' => ['nullable', 'string', 'max:4'],
+            'glosas.*.reason' => ['nullable', 'string', 'max:500'],
+        ], [], ['glosas.*.reason' => 'motivo']);
+        $codes = BillingLot::glosaCodes();
+        $glosas = [];
+        $errors = [];
+        foreach ($data['glosas'] ?? [] as $id => $glosa) {
+            $amount = trim((string) ($glosa['amount'] ?? ''));
+            $code = trim((string) ($glosa['code'] ?? ''));
+            $reason = trim((string) ($glosa['reason'] ?? ''));
+            if ($amount === '' && $code === '' && $reason === '') {
+                continue;
+            }
+            $cents = PriceEntry::cents($amount);
+            if (! ctype_digit((string) $id)) {
+                $errors['return'] = 'Item inválido.';
+            } elseif ($cents === null || $cents === 0) {
+                $errors["glosas.{$id}.amount"] = 'Informe o valor glosado (ex.: 12,50).';
+            } elseif (! isset($codes[$code])) {
+                $errors["glosas.{$id}.code"] = 'Informe o código da glosa da tabela TUSS 38.';
+            } else {
+                $glosas[(int) $id] = ['cents' => $cents, 'code' => $code, 'reason' => $reason === '' ? null : $reason];
+            }
+        }
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors)->errorBag('return');
+        }
+        if (($refusal = $lot->recordReturn($glosas, $request->user())) !== []) {
+            throw ValidationException::withMessages(['return' => $refusal])->errorBag('return');
+        }
+        Inertia::flash('toast', ['type' => 'success', 'message' => "Retorno do lote {$lot->id} registrado."]);
+
+        return to_route('billing-lots.return', $lot);
     }
 }

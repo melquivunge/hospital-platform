@@ -18,6 +18,9 @@ terminologias", consultada em 27/10/2026. Usados em `app/Billing/TissLotXml.php`
 acidente), 50 (04 consulta), 60 (036 unidade), 76 (regime: 01 ambulatorial, 04 pronto-socorro) e 87 (tabelas: 00
 própria, 18, 19, 20, 22). A UF é o código do IBGE (dm_UF) e o CBO aceito é a lista dm_CBOS do próprio XSD.
 
+`glosas.json` é a tabela 38 (mensagens: glosas, negativas e outras), os 470 termos vigentes da mesma planilha
+(código de 4 dígitos e termo, espaços repetidos reduzidos a um), usada no retorno da operadora (etapa 6.5c).
+
 Hash do epílogo: MD5 do texto de cada elemento folha, em ordem, sem tags, atributos nem indentação, em ISO-8859-1
 (como o arquivo, segundo o Componente Organizacional). Há implementações que calculam sobre UTF-8: conferir no
 validador da primeira operadora.
