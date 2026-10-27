@@ -43,3 +43,7 @@ A entrega 6 (contrato da entrega 6 no PRODUCT.md, todas as propostas aceitas pel
 ### Riscos
 - **Versão do TISS:** o esquema oficial precisa ser obtido no site da ANS na etapa do lote; sem ele, o arquivo não é validado. Mitigação: validar o XML contra o XSD oficial no teste.
 - **Itens sem preço na tabela:** a conta não fecha com item sem preço; o faturamento vê a pendência.
+
+## Revisão (27/10/2026, decisão do usuário)
+
+O administrador de rede também usa a tela "Contas" de todas as unidades da rede, sem precisar do papel Faturamento. Ele lê o mesmo que o Faturamento (sem prontuário), e cada abertura de conta continua gravada na trilha com o motivo "billing".

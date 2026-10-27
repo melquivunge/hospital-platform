@@ -175,10 +175,15 @@ class BillingAccountTest extends ClinicalTestCase
         $this->actingAs($stranger->user)->get(route('billing-accounts.show', $account))->assertNotFound();
         $this->actingAs($this->doctorAccount->user)->get(route('billing-accounts.index'))->assertForbidden();
         $this->actingAs($this->manager->user)->get(route('billing-accounts.show', $account))->assertForbidden();
+        // The network admin bills every unit of the network (user's decision, 27/10/2026); the opening is logged too.
+        $admin = Membership::query()->withoutGlobalScopes()->where('tenant_id', $this->unit->tenant_id)->whereHas('roleAssignments', fn ($query) => $query->where('role', Role::NetworkAdmin->value))->firstOrFail();
+        $this->actingAs($admin->user)->get(route('billing-accounts.show', $account))->assertOk();
+        $this->assertSame(2, DB::table('clinical_reads')->where('reason', 'billing')->count());
+        $this->actingAs($billing->user);
         $billing->roleAssignments()->where('role', Role::Billing)->delete();
         $this->actingAs($billing->user)->get(route('billing-accounts.index'))->assertForbidden();
         $this->get(route('billing-accounts.show', $account))->assertForbidden();
-        $this->assertSame(1, DB::table('clinical_reads')->where('reason', 'billing')->count());
+        $this->assertSame(2, DB::table('clinical_reads')->where('reason', 'billing')->count());
     }
 
     public function test_billing_adds_a_manual_item_and_compensates_an_item_once_with_the_reason(): void

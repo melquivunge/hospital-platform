@@ -324,7 +324,8 @@ class BillingAccountController extends Controller
     }
 
     /**
-     * The units where the membership has the Billing role.
+     * The units where the membership bills: those of its Billing role, or every unit of the network for the network
+     * admin (user's decision, 27/10/2026). Each opening of an account is still logged in the trail.
      *
      * @return list<int>
      */
@@ -332,6 +333,9 @@ class BillingAccountController extends Controller
     {
         if ($membership === null || $membership->revoked_at !== null) {
             return [];
+        }
+        if ($membership->hasRole(Role::NetworkAdmin)) {
+            return array_values(array_map('intval', Unit::query()->where('tenant_id', $membership->tenant_id)->pluck('id')->all()));
         }
 
         return array_values(array_unique($membership->roleAssignments
