@@ -58,7 +58,7 @@ class BillingPriceController extends Controller
                 'id' => $insurer->id,
                 'name' => $insurer->name,
                 'contract' => ($contract = $contracts->get($insurer->id)) === null ? null : [
-                    'id' => $contract->id, 'tableId' => $contract->price_table_id, 'adjustmentBp' => $contract->adjustment_bp,
+                    'id' => $contract->id, 'tableId' => $contract->price_table_id, 'adjustmentBp' => $contract->adjustment_bp, 'providerCode' => $contract->provider_code,
                     'authorizationItemIds' => ($authorizations->get($contract->id) ?? collect())->pluck('billing_item_id')->map(fn ($id) => (int) $id)->values(),
                 ],
             ])->values(),
@@ -219,24 +219,27 @@ class BillingPriceController extends Controller
         $data = $request->validateWithBag($bag, [
             'price_table_id' => ['required', 'integer', Rule::exists('price_tables', 'id')->where('tenant_id', $insurer->tenant_id)->where('active', true)],
             'adjustment' => ['nullable', 'string', 'max:10'],
-        ], [], ['price_table_id' => 'tabela', 'adjustment' => 'ajuste']);
+            // Step 6.5a: the hospital's code at this insurer (codigoPrestadorNaOperadora, TISS).
+            'provider_code' => ['nullable', 'string', 'max:14'],
+        ], [], ['price_table_id' => 'tabela', 'adjustment' => 'ajuste', 'provider_code' => 'código do prestador na operadora']);
+        $providerCode = trim((string) ($data['provider_code'] ?? '')) === '' ? null : trim((string) $data['provider_code']);
         $points = ($data['adjustment'] ?? '') === '' ? 0 : InsurerContract::basisPoints($data['adjustment']);
         if ($points === null || $points < -10000 || $points > 100000) {
             throw ValidationException::withMessages(['adjustment' => 'Escreva o ajuste em porcentagem, de -100 a 1000, como 12,5.'])->errorBag($bag);
         }
         // The first save of two at once: one creates the contract, the other updates it (unique insurer_id, savepoint).
         try {
-            DB::transaction(function () use ($insurer, $data, $points) {
-                $contract = InsurerContract::query()->firstOrCreate(['insurer_id' => $insurer->id], ['price_table_id' => (int) $data['price_table_id'], 'adjustment_bp' => $points]);
+            DB::transaction(function () use ($insurer, $data, $points, $providerCode) {
+                $contract = InsurerContract::query()->firstOrCreate(['insurer_id' => $insurer->id], ['price_table_id' => (int) $data['price_table_id'], 'adjustment_bp' => $points, 'provider_code' => $providerCode]);
                 if ($contract->wasRecentlyCreated) {
                     AuditEvent::record('insurer_contract.saved', $contract->tenant_id, $contract, ['insurer_id' => $insurer->id, 'fields' => ['insurer_id', 'price_table_id', 'adjustment_bp'], 'price_table_id' => $contract->price_table_id, 'adjustment_bp' => $points]);
                 }
             });
         } catch (UniqueConstraintViolationException) {
         }
-        DB::transaction(function () use ($insurer, $data, $points) {
+        DB::transaction(function () use ($insurer, $data, $points, $providerCode) {
             $contract = InsurerContract::query()->lockForUpdate()->where('insurer_id', $insurer->id)->firstOrFail();
-            $contract->fill(['price_table_id' => (int) $data['price_table_id'], 'adjustment_bp' => $points]);
+            $contract->fill(['price_table_id' => (int) $data['price_table_id'], 'adjustment_bp' => $points, 'provider_code' => $providerCode]);
             $changed = array_values(array_diff(array_keys($contract->getDirty()), ['updated_at']));
             $contract->save();
             if ($changed !== []) {

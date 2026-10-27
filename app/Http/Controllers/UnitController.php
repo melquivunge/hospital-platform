@@ -87,7 +87,7 @@ class UnitController extends Controller
     {
         Gate::authorize('update', $unit);
 
-        return Inertia::render('units/form', ['unit' => $unit->only('id', 'name', 'uf', 'timezone'), ...self::options()]);
+        return Inertia::render('units/form', ['unit' => $unit->only('id', 'name', 'uf', 'timezone', 'cnes'), ...self::options()]);
     }
 
     public function update(UnitRequest $request, Unit $unit): RedirectResponse

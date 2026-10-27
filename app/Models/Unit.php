@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $uf
  * @property string|null $timezone
  */
-#[Fillable(['tenant_id', 'name', 'uf', 'timezone'])]
+#[Fillable(['tenant_id', 'name', 'uf', 'timezone', 'cnes'])]
 class Unit extends Model
 {
     /** @use HasFactory<UnitFactory> */

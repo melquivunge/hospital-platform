@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
  * @property int $price_table_id
  * @property int $adjustment_bp
  */
-#[Fillable(['insurer_id', 'price_table_id', 'adjustment_bp'])]
+#[Fillable(['insurer_id', 'price_table_id', 'adjustment_bp', 'provider_code'])]
 class InsurerContract extends Model
 {
     use BelongsToTenant;

@@ -24,14 +24,14 @@ class JobFunctionController extends Controller
         Gate::authorize('manage', JobFunction::class);
 
         return Inertia::render('job-functions/index', [
-            'functions' => JobFunction::query()->orderBy('name')->get(['id', 'name', 'attends_patients']),
+            'functions' => JobFunction::query()->orderBy('name')->get(['id', 'name', 'attends_patients', 'cbo']),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         Gate::authorize('manage', JobFunction::class);
-        $validated = $request->validateWithBag('newFunction', ['name' => self::nameRules(null), 'attends_patients' => ['boolean']]);
+        $validated = $request->validateWithBag('newFunction', ['name' => self::nameRules(null), 'attends_patients' => ['boolean'], 'cbo' => ['nullable', 'regex:/^[0-9]{6}$/']]);
 
         self::saving(fn () => DB::transaction(function () use ($validated) {
             $function = JobFunction::create($validated);
@@ -47,7 +47,7 @@ class JobFunctionController extends Controller
     {
         Gate::authorize('manage', JobFunction::class);
         $bag = "function-{$jobFunction->id}";
-        $validated = $request->validateWithBag($bag, ['name' => self::nameRules($jobFunction), 'attends_patients' => ['boolean']]);
+        $validated = $request->validateWithBag($bag, ['name' => self::nameRules($jobFunction), 'attends_patients' => ['boolean'], 'cbo' => ['nullable', 'regex:/^[0-9]{6}$/']]);
 
         self::saving(fn () => DB::transaction(function () use ($validated, $jobFunction) {
             $jobFunction->fill($validated);
