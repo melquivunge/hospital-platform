@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $name
  * @property bool $attends_patients step 4.9: calls patients from the emergency queue
  */
-#[Fillable(['name', 'attends_patients'])]
+#[Fillable(['name', 'attends_patients', 'cbo'])]
 class JobFunction extends Model
 {
     /** @use HasFactory<JobFunctionFactory> */

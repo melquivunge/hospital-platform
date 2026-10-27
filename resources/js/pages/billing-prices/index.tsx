@@ -28,6 +28,7 @@ type InsurerRow = {
         id: number;
         tableId: number;
         adjustmentBp: number;
+        providerCode: string | null;
         authorizationItemIds: number[];
     } | null;
 };
@@ -630,7 +631,7 @@ function InsurerContractItem({
                     {...BillingPriceController.saveContract.form(insurer.id)}
                     errorBag={`contract-${insurer.id}`}
                     options={{ preserveScroll: true }}
-                    className="grid gap-3 sm:grid-cols-[2fr_1fr_auto] sm:items-end"
+                    className="grid gap-3 sm:grid-cols-[2fr_1fr_1.5fr_auto] sm:items-end"
                 >
                     {({ processing, errors }) => (
                         <>
@@ -674,6 +675,23 @@ function InsurerContractItem({
                                     className="h-11"
                                 />
                                 <InputError message={errors.adjustment} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label
+                                    htmlFor={`contract-${insurer.id}-provider`}
+                                >
+                                    Código do prestador
+                                </Label>
+                                <Input
+                                    id={`contract-${insurer.id}-provider`}
+                                    name="provider_code"
+                                    maxLength={14}
+                                    defaultValue={contract?.providerCode ?? ''}
+                                    aria-invalid={!!errors.provider_code}
+                                    title="Código do hospital nesta operadora, vai nas guias TISS"
+                                    className="h-11"
+                                />
+                                <InputError message={errors.provider_code} />
                             </div>
                             <Button
                                 type="submit"

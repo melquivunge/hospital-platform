@@ -13,6 +13,7 @@ type Unit = {
     name: string;
     uf: string | null;
     timezone: string | null;
+    cnes?: string | null;
 };
 
 const selectClassName =
@@ -137,6 +138,29 @@ export default function UnitForm({
                                             message={errors.timezone}
                                         />
                                     </div>
+                                </div>
+
+                                <div className="grid gap-2 sm:max-w-xs">
+                                    <Label htmlFor="cnes">CNES</Label>
+                                    <Input
+                                        id="cnes"
+                                        name="cnes"
+                                        inputMode="numeric"
+                                        maxLength={7}
+                                        pattern="[0-9]{7}"
+                                        defaultValue={unit?.cnes ?? ''}
+                                        aria-invalid={!!errors.cnes}
+                                        aria-describedby="cnes-hint"
+                                        className="h-11"
+                                    />
+                                    <p
+                                        id="cnes-hint"
+                                        className="text-sm text-muted-foreground"
+                                    >
+                                        7 dígitos. Vai nas guias dos convênios
+                                        (TISS).
+                                    </p>
+                                    <InputError message={errors.cnes} />
                                 </div>
                             </div>
 

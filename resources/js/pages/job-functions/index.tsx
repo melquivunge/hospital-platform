@@ -9,7 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { index } from '@/routes/job-functions';
 
-type JobFunction = { id: number; name: string; attends_patients: boolean };
+type JobFunction = {
+    id: number;
+    name: string;
+    attends_patients: boolean;
+    cbo: string | null;
+};
 
 /** Step 4.9: only functions that attend patients call from the emergency queue (it opens the record). */
 function AttendsCheck({ checked }: { checked: boolean }) {
@@ -25,6 +30,36 @@ function AttendsCheck({ checked }: { checked: boolean }) {
             />
             Atende pacientes (chama da fila da urgência)
         </label>
+    );
+}
+
+/** Step 6.5a: the occupation's CBO (6 digits) goes in the insurers' guides (TISS). */
+function CboInput({
+    id,
+    value,
+    error,
+}: {
+    id: string;
+    value: string | null;
+    error?: string;
+}) {
+    return (
+        <div className="grid gap-1">
+            <Label htmlFor={id} className="text-sm">
+                CBO (6 dígitos, vai nas guias TISS)
+            </Label>
+            <Input
+                id={id}
+                name="cbo"
+                inputMode="numeric"
+                maxLength={6}
+                pattern="[0-9]{6}"
+                defaultValue={value ?? ''}
+                aria-invalid={!!error}
+                className="h-11 max-w-40 bg-card"
+            />
+            <InputError message={error} />
+        </div>
     );
 }
 
@@ -119,6 +154,11 @@ export default function JobFunctionsIndex({
                                     </Button>
                                 </div>
                                 <AttendsCheck checked />
+                                <CboInput
+                                    id="new-function-cbo"
+                                    value={null}
+                                    error={errors.cbo}
+                                />
                                 <InputError
                                     id="new-function-error"
                                     message={errors.name}
@@ -172,6 +212,11 @@ function RenameForm({ jobFunction }: { jobFunction: JobFunction }) {
                         </Button>
                     </div>
                     <AttendsCheck checked={jobFunction.attends_patients} />
+                    <CboInput
+                        id={`${inputId}-cbo`}
+                        value={jobFunction.cbo}
+                        error={errors.cbo}
+                    />
                     <InputError id={`${inputId}-error`} message={errors.name} />
                 </>
             )}

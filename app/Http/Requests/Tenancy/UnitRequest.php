@@ -43,6 +43,8 @@ class UnitRequest extends FormRequest
             }],
             'uf' => ['nullable', Rule::in(Unit::UFS)],
             'timezone' => ['nullable', 'timezone:per_country,BR'],
+            // Step 6.5a: the unit's CNES, for the insurers' guides (TISS).
+            'cnes' => ['nullable', 'regex:/^[0-9]{7}$/'],
         ];
     }
 
@@ -51,6 +53,6 @@ class UnitRequest extends FormRequest
      */
     public function attributes(): array
     {
-        return ['uf' => 'UF', 'timezone' => 'fuso horário'];
+        return ['uf' => 'UF', 'timezone' => 'fuso horário', 'cnes' => 'CNES'];
     }
 }
