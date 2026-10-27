@@ -409,4 +409,120 @@ class BillingLotTest extends ClinicalTestCase
         $this->assertSame(['procedimentosExecutados', 'valorTotal', 'outrasDespesas'], array_slice($children, -3));
         $this->assertStringNotContainsString('Dra. Ana', $xml);
     }
+
+    /**
+     * Step 6.5c1: a lot of two consultations (one item of 100,00 each) with its TISS file written.
+     */
+    private function sentLot(): BillingLot
+    {
+        Storage::fake('local');
+        $this->closedConsultation('08:20');
+        $this->closedConsultation('09:20');
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        InsurerContract::query()->update(['provider_code' => '00012345']);
+        $this->unit->forceFill(['cnes' => '1234567'])->save();
+        Professional::query()->whereKey($this->doctor->id)->update(['council' => 'CRM', 'council_number' => '123456', 'council_uf' => 'SP']);
+        JobFunction::query()->update(['cbo' => '225125']);
+        app(CurrentTenant::class)->set(null);
+        $this->actingAs($this->billing->user)->post(route('billing-lots.store'), $this->lotRequest())->assertSessionHasNoErrors();
+        $lot = BillingLot::withoutTenantScope()->sole();
+
+        // Not sent yet: no return.
+        $this->get(route('billing-lots.return', $lot))->assertNotFound();
+        $this->post(route('billing-lots.return.store', $lot))->assertSessionHasErrorsIn('return', 'return');
+        $this->post(route('billing-lots.file', $lot))->assertSessionHasNoErrors();
+
+        return BillingLot::withoutTenantScope()->findOrFail($lot->id);
+    }
+
+    public function test_the_insurers_return_is_recorded_once_per_item_and_reconciles_the_lot(): void
+    {
+        $lot = $this->sentLot();
+        [$first, $second] = $lot->guideItems()->pluck('id')->all();
+
+        $reads = DB::table('clinical_reads')->count();
+        $this->get(route('billing-lots.return', $lot))->assertInertia(fn (Assert $page) => $page->component('billing-lots/return')
+            ->where('lot.totalCents', 20000)->where('recorded', null)->has('accounts', 2)
+            ->where('accounts.0.items.0', ['id' => $first, 'code' => '10101012', 'name' => 'Consulta em consultório', 'quantity' => 1, 'billedCents' => 10000, 'return' => null])
+            ->where('glosaCodes.1001', 'NÚMERO DA CARTEIRA INVÁLIDO'));
+        // Each guide's patient is logged in the trail.
+        $this->assertSame($reads + 2, DB::table('clinical_reads')->count());
+
+        // A glosa needs a value up to the billed one and a code of TUSS table 38; nothing is recorded meanwhile.
+        $this->post(route('billing-lots.return.store', $lot), ['glosas' => [$first => ['amount' => 'abc', 'code' => '1001']]])
+            ->assertSessionHasErrorsIn('return', "glosas.{$first}.amount");
+        $this->post(route('billing-lots.return.store', $lot), ['glosas' => [$first => ['amount' => '30,00', 'code' => '9999']]])
+            ->assertSessionHasErrorsIn('return', "glosas.{$first}.code");
+        $this->post(route('billing-lots.return.store', $lot), ['glosas' => [$first => ['amount' => '', 'code' => '', 'reason' => 'Só o motivo.']]])
+            ->assertSessionHasErrorsIn('return', "glosas.{$first}.amount");
+        $this->post(route('billing-lots.return.store', $lot), ['glosas' => [$first => ['amount' => '100,01', 'code' => '1001']]])
+            ->assertSessionHasErrorsIn('return', ['return' => 'A glosa de um item passa do valor cobrado.']);
+        $this->post(route('billing-lots.return.store', $lot), ['glosas' => [$first + $second + 1000 => ['amount' => '1,00', 'code' => '1001']]])
+            ->assertSessionHasErrorsIn('return', ['return' => 'Um item glosado não é deste lote. Atualize a página e confira.']);
+        $this->assertSame(0, DB::table('billing_item_returns')->count());
+
+        // Recorded: the glossed item with its code and reason, the other paid in full.
+        $this->post(route('billing-lots.return.store', $lot), ['glosas' => [
+            $first => ['amount' => '30,00', 'code' => '1001', 'reason' => '  Carteira vencida.  '],
+            $second => ['amount' => '', 'code' => '', 'reason' => ''],
+        ]])->assertSessionHasNoErrors()->assertRedirect(route('billing-lots.return', $lot));
+        $rows = DB::table('billing_item_returns')->orderBy('billing_account_item_id')->get();
+        $this->assertSame([[$first, 10000, 7000, 3000, '1001', 'Carteira vencida.'], [$second, 10000, 10000, 0, null, null]], $rows->map(fn ($row) => [
+            $row->billing_account_item_id, $row->billed_cents, $row->paid_cents, $row->glossed_cents, $row->glosa_code, $row->glosa_reason,
+        ])->all());
+        $this->assertEquals(['paid_cents' => 17000, 'glossed_cents' => 3000, 'glossed_items' => 1], AuditEvent::where('action', 'billing_lot.return_recorded')->sole()->context);
+        $this->get(route('billing-lots.index'))->assertInertia(fn (Assert $page) => $page->where('lots.0.return', ['paidCents' => 17000, 'glossedCents' => 3000]));
+        $this->get(route('billing-lots.return', $lot))->assertInertia(fn (Assert $page) => $page->where('recorded.paidCents', 17000)->where('recorded.glossedCents', 3000)
+            ->where('accounts.0.items.0.return', ['paidCents' => 7000, 'glossedCents' => 3000, 'code' => '1001', 'reason' => 'Carteira vencida.']));
+
+        // Once: a second return and the cancellation are refused.
+        $this->post(route('billing-lots.return.store', $lot), [])->assertSessionHasErrorsIn('return', ['return' => 'O retorno deste lote já foi registrado.']);
+        $this->post(route('billing-lots.cancel', $lot), ['reason' => 'Reenvio.'])
+            ->assertSessionHasErrorsIn("cancel-{$lot->id}", ['reason' => 'O retorno da operadora já foi registrado: o lote não é mais cancelado.']);
+
+        // Only billing of the unit (or the network admin).
+        $this->actingAs($this->manager->user)->get(route('billing-lots.return', $lot))->assertForbidden();
+        $elsewhere = Membership::factory()->for($this->unit->tenant)->create();
+        $elsewhere->grant(Role::Billing, $this->other);
+        $this->actingAs($elsewhere->user)->post(route('billing-lots.return.store', $lot), [])->assertForbidden();
+
+        // The database keeps it: no change, no deletion, no cancellation, no return off the item's value.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        foreach ([
+            fn () => DB::table('billing_item_returns')->where('billing_account_item_id', $first)->update(['paid_cents' => 10000, 'glossed_cents' => 0, 'glosa_code' => null, 'glosa_reason' => null]),
+            fn () => DB::table('billing_item_returns')->delete(),
+            fn () => DB::table('billing_lots')->where('id', $lot->id)->update(['status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by_user_id' => $this->billing->user_id, 'cancel_reason' => 'x']),
+            fn () => DB::table('billing_item_returns')->insert(['tenant_id' => $lot->tenant_id, 'billing_lot_id' => $lot->id, 'billing_account_item_id' => $second,
+                'billed_cents' => 10000, 'paid_cents' => 10000, 'glossed_cents' => 0, 'recorded_by_user_id' => $this->billing->user_id, 'recorded_at' => now()]),
+        ] as $change) {
+            try {
+                DB::transaction($change);
+                $this->fail('The database accepted a change to a return.');
+            } catch (QueryException) {
+            }
+        }
+    }
+
+    public function test_a_return_is_only_of_a_guide_item_at_its_value(): void
+    {
+        $lot = $this->sentLot();
+        [$first] = $lot->guideItems()->pluck('id')->all();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $row = ['tenant_id' => $lot->tenant_id, 'billing_lot_id' => $lot->id, 'billing_account_item_id' => $first, 'billed_cents' => 10000, 'paid_cents' => 10000,
+            'glossed_cents' => 0, 'recorded_by_user_id' => $this->billing->user_id, 'recorded_at' => now()];
+        foreach ([
+            ['billed_cents' => 9000, 'paid_cents' => 9000],
+            ['paid_cents' => 7000, 'glossed_cents' => 3000],
+            ['paid_cents' => 7000, 'glossed_cents' => 3000, 'glosa_code' => '10A1'],
+            ['glosa_reason' => 'Sem glosa.'],
+        ] as $override) {
+            try {
+                DB::transaction(fn () => DB::table('billing_item_returns')->insert([...$row, ...$override]));
+                $this->fail('The database accepted a return off its item.');
+            } catch (QueryException) {
+            }
+        }
+        DB::table('billing_item_returns')->insert($row);
+        $this->assertSame(1, DB::table('billing_item_returns')->count());
+    }
 }
