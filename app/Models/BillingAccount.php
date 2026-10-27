@@ -20,12 +20,15 @@ use Illuminate\Support\Facades\DB;
  * @property int $patient_id
  * @property int|null $appointment_id
  * @property int|null $emergency_episode_id
- * @property string $status open
+ * @property string $status open | closed (step 6.4a: immutable in the database)
  * @property string|null $modality private | insurance | sus; null for an episode from before step 6.2a0
  * @property int|null $insurer_id
  * @property string|null $insurance_card_number
  * @property Carbon|null $insurance_card_valid_until
  * @property Carbon $opened_at
+ * @property Carbon|null $closed_at
+ * @property int|null $closed_by_user_id
+ * @property int|null $complement_of_id the account it complements (step 6.4a): what the stay produced after it closed
  */
 class BillingAccount extends Model
 {
@@ -85,10 +88,11 @@ class BillingAccount extends Model
     public function generate(): int
     {
         return DB::transaction(function () {
-            // Serializes runs of the same account; the unique origin is the guarantee across accounts.
-            $account = self::query()->whereKey($this->id)->lockForUpdate()->firstOrFail();
+            // The stay's account (a complementary one runs its account's): its lock serializes runs of the whole family;
+            // the unique origin is the guarantee across accounts.
+            $account = self::query()->whereKey($this->complement_of_id ?? $this->id)->lockForUpdate()->firstOrFail();
             // ponytail: SUS has its own codes and files (delivery 6b); a stay without modality waits for it.
-            if ($account->status !== 'open' || ! in_array($account->modality, ['private', 'insurance'], true)) {
+            if (! in_array($account->modality, ['private', 'insurance'], true)) {
                 return 0;
             }
             $timezone = Unit::query()->whereKey($account->unit_id)->value('timezone') ?? 'UTC';
@@ -147,7 +151,8 @@ class BillingAccount extends Model
             // An admission day is billed once per day; any other record, once.
             $key = fn (string $type, int $id, string $date) => $type === 'admission_day' ? "{$type}:{$id}:{$date}" : "{$type}:{$id}";
             // Manual items and compensations (step 6.3a) are billing's own, not care records.
-            $billed = BillingAccountItem::query()->where('billing_account_id', $account->id)->whereNotIn('origin_type', ['manual', 'compensation'])
+            $family = self::query()->where('id', $account->id)->orWhere('complement_of_id', $account->id)->pluck('id')->all();
+            $billed = BillingAccountItem::query()->whereIn('billing_account_id', $family)->whereNotIn('origin_type', ['manual', 'compensation'])
                 ->get(['origin_type', 'origin_id', 'performed_on'])
                 ->map(fn (BillingAccountItem $item) => $key($item->origin_type, $item->origin_id, $item->performed_on->toDateString()))->flip();
             $rows = [];
@@ -170,8 +175,55 @@ class BillingAccount extends Model
                 ];
             }
 
-            return $rows === [] ? 0 : BillingAccountItem::query()->insertOrIgnore($rows);
+            if ($rows === []) {
+                return 0;
+            }
+            // Step 6.4a: after the account closed, into its open complementary account.
+            $target = self::target($account);
+
+            return BillingAccountItem::query()->insertOrIgnore(array_map(fn (array $row) => [...$row, 'billing_account_id' => $target->id], $rows));
         });
+    }
+
+    /**
+     * Step 6.4a: the account that receives what comes now, under the stay's account lock: itself while open, else its
+     * open complementary account, opened when needed with the same patient, unit, modality and card.
+     */
+    public static function target(self $account): self
+    {
+        if ($account->status === 'open') {
+            return $account;
+        }
+        $complement = self::query()->where('complement_of_id', $account->id)->where('status', 'open')->first();
+        if ($complement !== null) {
+            return $complement;
+        }
+        $complement = new self;
+        $complement->forceFill([
+            ...$account->only('unit_id', 'patient_id', 'modality', 'insurer_id', 'insurance_card_number', 'insurance_card_valid_until'),
+            'complement_of_id' => $account->id, 'opened_at' => now(),
+        ])->save();
+        AuditEvent::record('billing_account.complement_opened', $complement->tenant_id, $complement, ['unit_id' => $complement->unit_id, 'complement_of_id' => $account->id]);
+
+        return $complement;
+    }
+
+    /**
+     * Step 6.4a: whether the stay ended (nothing more is expected from it): the consultation's visit closed, or the
+     * emergency episode ended and, when it became an admission, the patient discharged. A complementary account's is
+     * its account's.
+     */
+    public function stayEnded(): bool
+    {
+        $account = $this->complement_of_id === null ? $this : self::query()->findOrFail($this->complement_of_id);
+        if ($account->appointment_id !== null) {
+            return Visit::query()->where('appointment_id', $account->appointment_id)->whereNotNull('closed_at')->exists();
+        }
+        if (EmergencyEpisode::query()->whereKey($account->emergency_episode_id)->whereNull('ended_at')->exists()) {
+            return false;
+        }
+
+        return ! Admission::query()->where('emergency_episode_id', $account->emergency_episode_id)->where('status', '<>', 'discharged')->exists();
     }
 
     /**
@@ -218,6 +270,6 @@ class BillingAccount extends Model
      */
     protected function casts(): array
     {
-        return ['opened_at' => 'datetime', 'insurance_card_valid_until' => 'date'];
+        return ['opened_at' => 'datetime', 'closed_at' => 'datetime', 'insurance_card_valid_until' => 'date'];
     }
 }

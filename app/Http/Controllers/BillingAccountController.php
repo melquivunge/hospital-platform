@@ -47,17 +47,19 @@ class BillingAccountController extends Controller
         $units = Unit::query()->whereKey(self::unitIds(UnitPolicy::currentMembership($request->user())))->orderBy('name')->get(['id', 'name', 'timezone']);
         abort_if($units->isEmpty(), 403);
         $unit = $units->firstWhere('id', $request->integer('unit')) ?? $units->first();
-        $pendingOnly = $request->boolean('pending');
+        $closedOnly = $request->boolean('closed');
+        $pendingOnly = ! $closedOnly && $request->boolean('pending');
         // Patients' names and stays: kept out of the browser's history in plain text.
         Inertia::encryptHistory();
-        $accounts = self::withTotals()->where('unit_id', $unit->id)->where('status', 'open')
+        $accounts = self::withTotals()->where('unit_id', $unit->id)->where('status', $closedOnly ? 'closed' : 'open')
             ->when($pendingOnly, fn ($query) => $query->whereHas('items', self::pending(...)))
-            ->orderByDesc('opened_at')->orderByDesc('id')->limit(self::LIST_LIMIT)->get();
+            ->orderByDesc($closedOnly ? 'closed_at' : 'opened_at')->orderByDesc('id')->limit(self::LIST_LIMIT)->get();
 
         return Inertia::render('billing-accounts/index', [
             'units' => $units->map->only('id', 'name')->values(),
             'unitId' => $unit->id,
             'pendingOnly' => $pendingOnly,
+            'closedOnly' => $closedOnly,
             'accounts' => self::describe(array_values($accounts->all()), $unit->timezone ?? 'UTC'),
         ]);
     }
@@ -106,6 +108,10 @@ class BillingAccountController extends Controller
                 ],
             ])->values(),
             'canChange' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance'], true),
+            // Step 6.4a: an item of a closed account is compensated in the complementary account.
+            'canCompensate' => in_array($account->modality, ['private', 'insurance'], true),
+            'canClose' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance'], true) && $account->stayEnded(),
+            'complements' => BillingAccount::query()->where('complement_of_id', $account->complement_of_id ?? $account->id)->orderBy('id')->pluck('id')->all(),
             'billableItems' => BillingItem::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'code'])->values(),
             'today' => now($timezone)->toDateString(),
         ]);
@@ -165,7 +171,12 @@ class BillingAccountController extends Controller
 
         try {
             DB::transaction(function () use ($request, $account, $item, $data, $bag, $taken) {
-                $locked = self::lockOpen($account, 'reason', $bag);
+                // Step 6.4a: an item of a closed account is compensated in its open complementary account.
+                $family = BillingAccount::query()->lockForUpdate()->findOrFail($account->complement_of_id ?? $account->id);
+                if (! in_array($family->modality, ['private', 'insurance'], true)) {
+                    throw ValidationException::withMessages(['reason' => 'Esta conta não recebe mudanças: é do SUS ou não tem modalidade.'])->errorBag($bag);
+                }
+                $locked = BillingAccount::target($family);
                 if (BillingAccountItem::query()->where('origin_type', 'compensation')->where('origin_id', $item->id)->exists()) {
                     throw $taken;
                 }
@@ -225,6 +236,49 @@ class BillingAccountController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => match ($data['status']) {
             'authorized' => 'Autorização registrada.', 'denied' => 'Negativa registrada.', default => 'Urgência registrada.',
         }]);
+
+        return back();
+    }
+
+    /**
+     * Step 6.4a: billing closes the account once the stay ended and nothing is pending (an item without a price, or one
+     * waiting for the insurer's authorization, urgency excepted); late records are billed first. A closed account is
+     * immutable in the database; what comes afterwards goes to a complementary account. Closing twice closes once.
+     */
+    public function close(Request $request, BillingAccount $account): RedirectResponse
+    {
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        // Late records first; an account already closed is not touched (its late records wait for the complement).
+        if ($account->status === 'open') {
+            rescue(fn () => $account->generate());
+        }
+        $refuse = fn (string $message) => ValidationException::withMessages(['close' => $message])->errorBag('close');
+
+        DB::transaction(function () use ($request, $account, $refuse) {
+            // The stay's account first, as the generation: nothing lands in this account while it closes.
+            BillingAccount::query()->lockForUpdate()->findOrFail($account->complement_of_id ?? $account->id);
+            $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
+            if ($locked->status !== 'open') {
+                throw $refuse('Esta conta já foi fechada.');
+            }
+            if (! in_array($locked->modality, ['private', 'insurance'], true)) {
+                throw $refuse('Contas do SUS ou sem modalidade ficam para a entrega do SUS.');
+            }
+            if (! $locked->stayEnded()) {
+                throw $refuse('O atendimento ainda não terminou: a conta fecha depois do encerramento ou da alta.');
+            }
+            $items = BillingAccountItem::query()->where('billing_account_id', $locked->id);
+            if (! (clone $items)->exists()) {
+                throw $refuse('A conta não tem itens.');
+            }
+            if ((clone $items)->where(fn (Builder $query) => self::pending($query))->exists()) {
+                throw $refuse('Resolva as pendências antes de fechar: itens sem preço ou sem autorização do convênio.');
+            }
+            $locked->forceFill(['status' => 'closed', 'closed_at' => now(), 'closed_by_user_id' => $request->user()->id])->save();
+            $total = (int) (clone $items)->sum(DB::raw('quantity * unit_price_cents'));
+            AuditEvent::record('billing_account.closed', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'total_cents' => $total, 'complement_of_id' => $locked->complement_of_id]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Conta fechada.']);
 
         return back();
     }
@@ -296,10 +350,14 @@ class BillingAccountController extends Controller
         $patients = Patient::query()->whereKey(array_map(fn (BillingAccount $account) => $account->patient_id, $accounts))->get(['id', 'name', 'social_name', 'merged_into_id'])->keyBy('id');
         $primaries = Patient::query()->whereKey($patients->pluck('merged_into_id')->filter()->all())->get(['id', 'name', 'social_name'])->keyBy('id');
         $insurers = Insurer::query()->whereKey(array_filter(array_map(fn (BillingAccount $account) => $account->insurer_id, $accounts)))->pluck('name', 'id');
-        $admitted = Admission::query()->whereIn('emergency_episode_id', array_filter(array_map(fn (BillingAccount $account) => $account->emergency_episode_id, $accounts)))
+        // A complementary account's stay is its account's.
+        $originals = BillingAccount::query()->whereKey(array_filter(array_map(fn (BillingAccount $account) => $account->complement_of_id, $accounts)))
+            ->get(['id', 'appointment_id', 'emergency_episode_id'])->keyBy('id');
+        $stayOf = fn (BillingAccount $account) => $account->complement_of_id === null ? $account : $originals->get($account->complement_of_id);
+        $admitted = Admission::query()->whereIn('emergency_episode_id', array_filter(array_map(fn (BillingAccount $account) => $stayOf($account)?->emergency_episode_id, $accounts)))
             ->pluck('emergency_episode_id')->flip();
 
-        return array_map(function (BillingAccount $account) use ($patients, $primaries, $insurers, $admitted, $timezone) {
+        return array_map(function (BillingAccount $account) use ($patients, $primaries, $insurers, $admitted, $timezone, $stayOf) {
             $patient = $patients->get($account->patient_id);
             // A registration merged later: the primary one's name.
             $patient = $patient?->merged_into_id !== null ? $primaries->get($patient->merged_into_id) : $patient;
@@ -307,7 +365,9 @@ class BillingAccountController extends Controller
             return [
                 'id' => $account->id,
                 'patient' => $patient === null ? null : ($patient->social_name ?? $patient->name),
-                'stay' => $account->appointment_id !== null ? 'Consulta' : ($admitted->has($account->emergency_episode_id) ? 'Internação' : 'Urgência'),
+                'stay' => ($stay = $stayOf($account))?->appointment_id !== null ? 'Consulta' : ($admitted->has($stay?->emergency_episode_id) ? 'Internação' : 'Urgência'),
+                'complementOf' => $account->complement_of_id,
+                'closedAt' => $account->closed_at?->setTimezone($timezone)->format('d/m/Y H:i'),
                 'modality' => $account->modality === null ? null : self::MODALITIES[$account->modality],
                 'insurer' => $account->insurer_id === null ? null : $insurers->get($account->insurer_id),
                 'status' => $account->status,

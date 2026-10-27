@@ -17,6 +17,8 @@ export type AccountSummary = {
     items: number;
     pending: number;
     totalCents: number;
+    complementOf: number | null;
+    closedAt: string | null;
 };
 
 /**
@@ -27,17 +29,24 @@ export default function BillingAccountsIndex({
     units,
     unitId,
     pendingOnly,
+    closedOnly,
     accounts,
 }: {
     units: { id: number; name: string }[];
     unitId: number;
     pendingOnly: boolean;
+    closedOnly: boolean;
     accounts: AccountSummary[];
 }) {
     const unit = units.find((option) => option.id === unitId);
     const filters = [
-        { label: 'Abertas', pending: false },
-        { label: 'Com pendências', pending: true },
+        { label: 'Abertas', query: {}, current: !pendingOnly && !closedOnly },
+        {
+            label: 'Com pendências',
+            query: { pending: 1 },
+            current: pendingOnly,
+        },
+        { label: 'Fechadas', query: { closed: 1 }, current: closedOnly },
     ];
 
     return (
@@ -47,7 +56,7 @@ export default function BillingAccountsIndex({
                 <PageHeader
                     eyebrow={unit?.name}
                     title="Contas"
-                    description="Contas abertas da unidade, com os itens gerados do atendimento. Abrir uma conta fica registrado na trilha de acesso."
+                    description="Contas da unidade, com os itens gerados do atendimento. Abrir uma conta fica registrado na trilha de acesso."
                 />
                 <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
                     <nav
@@ -61,20 +70,16 @@ export default function BillingAccountsIndex({
                                     index({
                                         query: {
                                             unit: unitId,
-                                            ...(filter.pending
-                                                ? { pending: 1 }
-                                                : {}),
+                                            ...filter.query,
                                         },
                                     }).url
                                 }
                                 aria-current={
-                                    filter.pending === pendingOnly
-                                        ? 'page'
-                                        : undefined
+                                    filter.current ? 'page' : undefined
                                 }
                                 className={cn(
                                     'flex min-h-11 items-center rounded-md px-4 text-sm font-medium text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                                    filter.pending === pendingOnly &&
+                                    filter.current &&
                                         'bg-background text-foreground shadow-sm',
                                 )}
                             >
@@ -108,9 +113,11 @@ export default function BillingAccountsIndex({
                 </div>
                 {accounts.length === 0 ? (
                     <p className="rounded-xl border bg-card px-5 py-12 text-center text-muted-foreground">
-                        {pendingOnly
-                            ? 'Nenhuma conta com pendências nesta unidade.'
-                            : 'Nenhuma conta aberta nesta unidade.'}
+                        {closedOnly
+                            ? 'Nenhuma conta fechada nesta unidade.'
+                            : pendingOnly
+                              ? 'Nenhuma conta com pendências nesta unidade.'
+                              : 'Nenhuma conta aberta nesta unidade.'}
                     </p>
                 ) : (
                     <ul className="divide-y rounded-xl border bg-card">
@@ -128,8 +135,12 @@ export default function BillingAccountsIndex({
                                         </span>
                                         <span className="text-sm text-muted-foreground">
                                             {account.stay} ·{' '}
-                                            {stayModality(account)} · aberta em{' '}
-                                            {account.openedAt}
+                                            {stayModality(account)} ·{' '}
+                                            {account.closedAt
+                                                ? `fechada em ${account.closedAt}`
+                                                : `aberta em ${account.openedAt}`}
+                                            {account.complementOf &&
+                                                ` · complementar da conta ${account.complementOf}`}
                                         </span>
                                     </span>
                                     <span className="flex items-center gap-3">
