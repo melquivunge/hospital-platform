@@ -53,8 +53,9 @@ class JobFunctionController extends Controller
             $jobFunction->fill($validated);
 
             if ($jobFunction->isDirty()) {
+                $changed = array_keys($jobFunction->getDirty());
                 $jobFunction->save();
-                AuditEvent::record('job_function.updated', $jobFunction->tenant_id, $jobFunction);
+                AuditEvent::record('job_function.updated', $jobFunction->tenant_id, $jobFunction, ['fields' => $changed]);
             }
         }), $bag);
 

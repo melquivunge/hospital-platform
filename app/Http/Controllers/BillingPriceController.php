@@ -232,7 +232,7 @@ class BillingPriceController extends Controller
             DB::transaction(function () use ($insurer, $data, $points, $providerCode) {
                 $contract = InsurerContract::query()->firstOrCreate(['insurer_id' => $insurer->id], ['price_table_id' => (int) $data['price_table_id'], 'adjustment_bp' => $points, 'provider_code' => $providerCode]);
                 if ($contract->wasRecentlyCreated) {
-                    AuditEvent::record('insurer_contract.saved', $contract->tenant_id, $contract, ['insurer_id' => $insurer->id, 'fields' => ['insurer_id', 'price_table_id', 'adjustment_bp'], 'price_table_id' => $contract->price_table_id, 'adjustment_bp' => $points]);
+                    AuditEvent::record('insurer_contract.saved', $contract->tenant_id, $contract, ['insurer_id' => $insurer->id, 'fields' => ['insurer_id', 'price_table_id', 'adjustment_bp', ...($providerCode === null ? [] : ['provider_code'])], 'price_table_id' => $contract->price_table_id, 'adjustment_bp' => $points]);
                 }
             });
         } catch (UniqueConstraintViolationException) {
