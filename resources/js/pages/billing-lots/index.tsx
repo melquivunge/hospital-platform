@@ -296,9 +296,23 @@ function LotItem({
                                     className="h-11"
                                 />
                                 <InputError message={errors.reason} />
+                                {lot.file && (
+                                    <label className="flex min-h-11 items-center gap-3 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            name="insurer_refused"
+                                            value="1"
+                                            required
+                                            className="size-5"
+                                        />
+                                        A operadora recusou o arquivo deste lote
+                                    </label>
+                                )}
                                 <p className="text-sm text-muted-foreground">
                                     As contas voltam para as prontas e podem
                                     entrar num novo lote.
+                                    {lot.file &&
+                                        ' Se o arquivo foi aceito, não cancele: as guias seriam cobradas duas vezes.'}
                                 </p>
                                 <Button
                                     type="submit"
