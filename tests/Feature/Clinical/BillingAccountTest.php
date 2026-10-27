@@ -397,11 +397,11 @@ class BillingAccountTest extends ClinicalTestCase
         }
         app(CurrentTenant::class)->set(null);
         $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
-            ->where('payment.method', 'Pix')->where('payment.amountCents', 15000)->where('canReceive', true));
+            ->where('payment.method', 'Pix')->where('payment.amountCents', 15000)->where('canReceive', false));
 
         // The receipt: a PDF, logged as a read of the account and in the audit (ids only).
         $reads = DB::table('clinical_reads')->where('reason', 'billing')->count();
-        $this->get(route('billing-accounts.receipt', $account))->assertOk()->assertHeader('Content-Type', 'application/pdf')
+        $this->get(route('billing-accounts.receipt', $account))->assertOk()->assertHeader('Content-Type', 'application/pdf')->assertHeader('Cache-Control', 'no-store, private')
             ->assertHeader('Content-Disposition', "attachment; filename=\"recibo-{$payment->id}.pdf\"");
         $this->assertSame($reads + 1, DB::table('clinical_reads')->where('reason', 'billing')->count());
         $this->assertEquals(['payment_id' => $payment->id], AuditEvent::where('action', 'billing_payment.receipt')->sole()->context);
@@ -412,5 +412,8 @@ class BillingAccountTest extends ClinicalTestCase
         $elsewhere->grant(Role::Billing, $this->other);
         $this->actingAs($elsewhere->user)->get(route('billing-accounts.receipt', $account))->assertForbidden();
         $this->post(route('billing-accounts.payment.store', $account), ['method' => 'pix'])->assertForbidden();
+        // The network admin prints it too (user's decision, 27/10/2026).
+        $admin = Membership::query()->withoutGlobalScopes()->where('tenant_id', $this->unit->tenant_id)->whereHas('roleAssignments', fn ($query) => $query->where('role', Role::NetworkAdmin->value))->firstOrFail();
+        $this->actingAs($admin->user)->get(route('billing-accounts.receipt', $account))->assertOk();
     }
 }

@@ -123,7 +123,7 @@ class BillingAccountController extends Controller
                 'receivedAt' => CarbonImmutable::parse($payment->received_at)->setTimezone($timezone)->format('d/m/Y H:i'),
                 'by' => User::query()->whereKey($payment->received_by_user_id)->value('name'),
             ],
-            'canReceive' => $account->status === 'closed' && $account->modality === 'private' && (int) $account->getAttribute('total_cents') > 0,
+            'canReceive' => $payment === null && $account->status === 'closed' && $account->modality === 'private' && (int) $account->getAttribute('total_cents') > 0,
             'methods' => self::METHODS,
             'complements' => BillingAccount::query()->where('complement_of_id', $account->complement_of_id ?? $account->id)->orderBy('id')->pluck('id')->all(),
             'billableItems' => BillingItem::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'code'])->values(),
