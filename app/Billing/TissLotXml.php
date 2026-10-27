@@ -128,18 +128,7 @@ final class TissLotXml
         }
         $data = $this->data();
         $doc = new DOMDocument('1.0', 'ISO-8859-1');
-        $message = $doc->appendChild($doc->createElementNS(self::NS, 'ans:mensagemTISS'));
-        $now = now($data['timezone']);
-
-        $header = $this->add($message, 'cabecalho');
-        $transaction = $this->add($header, 'identificacaoTransacao');
-        $this->add($transaction, 'tipoTransacao', 'ENVIO_LOTE_GUIAS');
-        $this->add($transaction, 'sequencialTransacao', (string) $this->lot->id);
-        $this->add($transaction, 'dataRegistroTransacao', $now->toDateString());
-        $this->add($transaction, 'horaRegistroTransacao', $now->format('H:i:s'));
-        $this->add($this->add($this->add($header, 'origem'), 'identificacaoPrestador'), 'codigoPrestadorNaOperadora', $data['providerCode']);
-        $this->add($this->add($header, 'destino'), 'registroANS', $data['ansCode']);
-        $this->add($header, 'Padrao', BillingLot::TISS_VERSION);
+        $message = $this->message($doc, 'ENVIO_LOTE_GUIAS', (string) $this->lot->id);
 
         $lot = $this->add($this->add($message, 'prestadorParaOperadora'), 'loteGuias');
         $this->add($lot, 'numeroLote', (string) $this->lot->id);
@@ -152,15 +141,147 @@ final class TissLotXml
             }
         }
 
+        return $this->seal($doc, $message);
+    }
+
+    /**
+     * Step 6.5c2: the XML of a glosa appeal of this lot (recursoGlosa by guide item, dm_objetoRecurso 2) and its
+     * epilogue hash. Each item is a guide item of the lot with what is appealed, the glosa's code and the justification.
+     *
+     * @param  array<int, array{cents: int, code: string, justification: string}>  $items  keyed by the guide item
+     * @return array{xml: string, hash: string}
+     */
+    public function appeal(int $sequence, string $protocol, array $items, string $insurerName): array
+    {
+        $data = $this->data();
+        $lines = $this->lines();
+        $doc = new DOMDocument('1.0', 'ISO-8859-1');
+        $message = $this->message($doc, 'RECURSO_GLOSA', "{$this->lot->id}-{$sequence}");
+
+        $appeal = $this->add($this->add($this->add($message, 'prestadorParaOperadora'), 'recursoGlosa'), 'guiaRecursoGlosa');
+        $this->add($appeal, 'registroANS', $data['ansCode']);
+        $this->add($appeal, 'numeroGuiaRecGlosaPrestador', "{$this->lot->id}-{$sequence}");
+        $this->add($appeal, 'nomeOperadora', mb_substr($insurerName, 0, 70));
+        $this->add($appeal, 'objetoRecurso', '2');
+        $this->add($this->add($appeal, 'dadosContratado'), 'codigoPrestadorNaOperadora', $data['providerCode']);
+        $this->add($appeal, 'numeroLote', (string) $this->lot->id);
+        $this->add($appeal, 'numeroProtocolo', $protocol);
+        $choice = $this->add($appeal, 'opcaoRecurso');
+        $byGuide = collect($items)->map(fn ($item, $id) => [...$item, 'line' => $lines[$id] ?? throw new RuntimeException("Item {$id} is not of the lot.")])
+            ->sortBy(fn ($item) => [$item['line']['guide'], isset(self::EXPENSES[$item['line']['item']->kind]), $item['line']['sequence']])->groupBy(fn ($item) => $item['line']['guide']);
+        foreach ($byGuide as $guide => $guideItems) {
+            $node = $this->add($choice, 'recursoGuia');
+            $this->add($node, 'numeroGuiaOrigem', (string) $guide);
+            $options = $this->add($node, 'opcaoRecursoGuia');
+            foreach ($guideItems as $item) {
+                ['sequence' => $line, 'table' => $table, 'item' => $billed] = $item['line'];
+                $node = $this->add($options, 'itensGuia');
+                $this->add($node, 'sequencialItem', (string) $line);
+                $this->add($node, 'dataInicio', $billed->performed_on);
+                $procedure = $this->add($node, 'procRecurso');
+                $this->add($procedure, 'codigoTabela', $table);
+                $this->add($procedure, 'codigoProcedimento', $billed->code);
+                $this->add($procedure, 'descricaoProcedimento', mb_substr($billed->name, 0, 150));
+                $this->add($node, 'codGlosaItem', $item['code']);
+                $this->add($node, 'valorRecursado', self::money($item['cents']));
+                $this->add($node, 'justificativaItem', mb_substr($item['justification'], 0, 500));
+            }
+        }
+        $this->add($appeal, 'valorTotalRecursado', self::money(array_sum(array_column($items, 'cents'))));
+        $this->add($appeal, 'dataRecurso', now($data['timezone'])->toDateString());
+
+        return $this->seal($doc, $message);
+    }
+
+    /**
+     * Step 6.5c2: each kept guide item of the lot, keyed by its id: its guide (the account), its line in the guide as
+     * the lot file numbered it (procedures and other expenses each from 1) and its TUSS table.
+     *
+     * @return array<int, array{guide: int, sequence: int, table: string, item: object}>
+     */
+    public function lines(): array
+    {
+        $lines = [];
+        foreach ($this->data()['accounts'] as $account) {
+            foreach ([false, true] as $expense) {
+                $own = array_values(array_filter($account['items'], fn ($item) => isset(self::EXPENSES[$item->kind]) === $expense));
+                foreach ($own as $i => $item) {
+                    $lines[$item->id] = ['guide' => $account['id'], 'sequence' => $i + 1, 'table' => self::table($item), 'item' => $item];
+                }
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The glosa codes the 4.03.00 schema accepts (dm_tipoGlosa): TUSS table 38 has newer ones the schema refuses.
+     *
+     * @return list<string>
+     */
+    public static function schemaGlosaCodes(): array
+    {
+        static $codes = null;
+        if ($codes === null) {
+            $xsd = new DOMDocument;
+            $xsd->load(base_path('resources/tiss/4.03.00/tissSimpleTypesV4_03_00.xsd'));
+            $codes = [];
+            foreach ((new DOMXPath($xsd))->query('//*[@name="dm_tipoGlosa"]//*[local-name()="enumeration"]/@value') ?: [] as $value) {
+                $codes[] = $value->nodeValue;
+            }
+        }
+
+        return $codes;
+    }
+
+    private function message(DOMDocument $doc, string $type, string $sequence): DOMElement
+    {
+        $data = $this->data();
+        $message = $doc->appendChild($doc->createElementNS(self::NS, 'ans:mensagemTISS'));
+        $now = now($data['timezone']);
+        $header = $this->add($message, 'cabecalho');
+        $transaction = $this->add($header, 'identificacaoTransacao');
+        $this->add($transaction, 'tipoTransacao', $type);
+        $this->add($transaction, 'sequencialTransacao', $sequence);
+        $this->add($transaction, 'dataRegistroTransacao', $now->toDateString());
+        $this->add($transaction, 'horaRegistroTransacao', $now->format('H:i:s'));
+        $this->add($this->add($this->add($header, 'origem'), 'identificacaoPrestador'), 'codigoPrestadorNaOperadora', $data['providerCode']);
+        $this->add($this->add($header, 'destino'), 'registroANS', $data['ansCode']);
+        $this->add($header, 'Padrao', BillingLot::TISS_VERSION);
+
+        return $message;
+    }
+
+    /**
+     * The epilogue hash, then the schema: an XML the schema refuses is a bug here, never sent.
+     *
+     * @return array{xml: string, hash: string}
+     */
+    private function seal(DOMDocument $doc, DOMElement $message): array
+    {
         $hash = self::hash($doc);
         $this->add($this->add($message, 'epilogo'), 'hash', $hash);
         $xml = (string) $doc->saveXML();
         $errors = self::schemaErrors($xml);
         if ($errors !== []) {
-            throw new RuntimeException('The lot XML does not match the TISS schema: '.implode(' | ', array_slice($errors, 0, 5)));
+            throw new RuntimeException('The XML does not match the TISS schema: '.implode(' | ', array_slice($errors, 0, 5)));
         }
 
         return ['xml' => $xml, 'hash' => $hash];
+    }
+
+    /**
+     * Table 87 of an item: a procedure's 8-digit code is TUSS 22, an expense's numeric code the TUSS table of its kind;
+     * any other code is the insurer's own table (00).
+     * ponytail: read from the code's shape; a per-item table field if insurers disagree.
+     */
+    private static function table(object $item): string
+    {
+        if (isset(self::EXPENSES[$item->kind])) {
+            return ctype_digit($item->code) ? self::EXPENSES[$item->kind][1] : '00';
+        }
+
+        return preg_match('/^\d{8}$/', $item->code) ? '22' : '00';
     }
 
     /**
@@ -343,8 +464,7 @@ final class TissLotXml
                 $this->add($line, 'sequencialItem', (string) ($i + 1));
                 $this->add($line, 'dataExecucao', $item->performed_on);
                 $procedure = $this->add($line, 'procedimento');
-                // ponytail: an 8-digit code is read as TUSS 22, any other as the insurer's own table (00); a per-item table field if insurers disagree.
-                $this->add($procedure, 'codigoTabela', preg_match('/^\d{8}$/', $item->code) ? '22' : '00');
+                $this->add($procedure, 'codigoTabela', self::table($item));
                 $this->add($procedure, 'codigoProcedimento', $item->code);
                 $this->add($procedure, 'descricaoProcedimento', mb_substr($item->name, 0, 150));
                 $this->add($line, 'quantidadeExecutada', (string) $item->quantity);
@@ -359,14 +479,13 @@ final class TissLotXml
         if ($expenses !== []) {
             $list = $this->add($guide, 'outrasDespesas');
             foreach ($expenses as $i => $item) {
-                [$expense, $table] = self::EXPENSES[$item->kind];
+                $expense = self::EXPENSES[$item->kind][0];
                 $line = $this->add($list, 'despesa');
                 $this->add($line, 'sequencialItem', (string) ($i + 1));
                 $this->add($line, 'codigoDespesa', $expense);
                 $service = $this->add($line, 'servicosExecutados');
                 $this->add($service, 'dataExecucao', $item->performed_on);
-                // ponytail: a numeric code is read as the TUSS table of its kind, any other as the insurer's own (00).
-                $this->add($service, 'codigoTabela', ctype_digit($item->code) ? $table : '00');
+                $this->add($service, 'codigoTabela', self::table($item));
                 $this->add($service, 'codigoProcedimento', $item->code);
                 $this->add($service, 'quantidadeExecutada', $item->quantity.'.0000');
                 // Table 60: 036 unit.

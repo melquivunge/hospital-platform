@@ -144,6 +144,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Step 6.5c1: the insurer's return of a sent lot.
     Route::get('billing-lots/{lot}/return', [BillingLotController::class, 'showReturn'])->middleware('throttle:120,1')->name('billing-lots.return');
     Route::post('billing-lots/{lot}/return', [BillingLotController::class, 'storeReturn'])->middleware('throttle:30,1')->name('billing-lots.return.store');
+    // Step 6.5c2: the glosa appeal, its file and the insurer's answer.
+    Route::post('billing-lots/{lot}/appeals', [BillingLotController::class, 'storeAppeal'])->middleware('throttle:30,1')->name('billing-lots.appeals.store');
+    Route::post('billing-lots/{lot}/appeals/results', [BillingLotController::class, 'storeAppealResults'])->middleware('throttle:30,1')->name('billing-lots.appeals.results');
+    Route::get('billing-lots/{lot}/appeals/{sequence}/file', [BillingLotController::class, 'downloadAppeal'])->whereNumber('sequence')->middleware('throttle:30,1')->name('billing-lots.appeals.download');
     Route::get('pharmacy', [PharmacyController::class, 'index'])->middleware('throttle:120,1')->name('pharmacy.index');
     Route::get('pharmacy/prescriptions/{prescription}', [PharmacyController::class, 'show'])->middleware('throttle:120,1')->name('pharmacy.show');
     Route::post('pharmacy/items/{item}/review', [PharmacyController::class, 'review'])->middleware('throttle:120,1')->name('pharmacy.review');

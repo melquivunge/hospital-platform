@@ -252,6 +252,123 @@ class BillingLot extends Model
         });
     }
 
+    /**
+     * Step 6.5c2: the glosa appeal of glossed items of the returned lot, with the insurer's protocol of the lot. Each item
+     * (keyed by its guide item) is appealed once, by its whole glosa unless a smaller value is given, with a
+     * justification; the TISS file is written with the appeal. Refusals in words for billing; empty when appealed.
+     *
+     * @param  array<int, array{cents: int|null, justification: string}>  $items
+     * @return list<string>
+     */
+    public function recordAppeal(string $protocol, array $items, User $user): array
+    {
+        return DB::transaction(function () use ($protocol, $items, $user) {
+            // The lock serializes the appeals of the lot: the same item twice waits and is refused.
+            $lot = self::query()->lockForUpdate()->findOrFail($this->id);
+            if ($items === []) {
+                return ['Marque ao menos um item glosado para recorrer.'];
+            }
+            $returns = DB::table('billing_item_returns as r')->leftJoin('billing_glosa_appeal_items as a', 'a.billing_item_return_id', '=', 'r.id')
+                ->where('r.billing_lot_id', $lot->id)->get(['r.id', 'r.billing_account_item_id', 'r.glossed_cents', 'r.glosa_code', 'a.id as appeal_item_id'])
+                ->keyBy('billing_account_item_id');
+            $schemaCodes = TissLotXml::schemaGlosaCodes();
+            $appealed = [];
+            foreach ($items as $id => $item) {
+                $return = $returns->get($id);
+                if ($return === null || $return->glossed_cents === 0) {
+                    return ['Um item do recurso não foi glosado neste lote. Atualize a página e confira.'];
+                }
+                if ($return->appeal_item_id !== null) {
+                    return ['Um item do recurso já está num recurso deste lote.'];
+                }
+                $cents = $item['cents'] ?? $return->glossed_cents;
+                if ($cents > $return->glossed_cents) {
+                    return ['O valor do recurso de um item passa da glosa dele.'];
+                }
+                if (! in_array($return->glosa_code, $schemaCodes, true)) {
+                    return ["A glosa {$return->glosa_code} não existe no padrão TISS {$lot->tiss_version}: recorra desse item no portal da operadora."];
+                }
+                $appealed[$id] = ['return' => $return->id, 'cents' => $cents, 'code' => $return->glosa_code, 'justification' => $item['justification']];
+            }
+            $sequence = (int) DB::table('billing_glosa_appeals')->where('billing_lot_id', $lot->id)->max('sequence') + 1;
+            try {
+                ['xml' => $xml, 'hash' => $hash] = (new TissLotXml($lot))->appeal($sequence, $protocol, $appealed, (string) Insurer::query()->whereKey($lot->insurer_id)->value('name'));
+            } catch (\RuntimeException $failure) {
+                report($failure);
+
+                return ['O arquivo do recurso não passou na validação do padrão TISS. Avise o suporte com o número do lote.'];
+            }
+            $path = "tiss/appeals/{$lot->tenant_id}/{$lot->id}-{$sequence}.xml";
+            Storage::disk('local')->put($path, $xml);
+            $total = array_sum(array_column($appealed, 'cents'));
+            $appealId = DB::table('billing_glosa_appeals')->insertGetId([
+                'tenant_id' => $lot->tenant_id, 'billing_lot_id' => $lot->id, 'sequence' => $sequence, 'protocol_number' => $protocol, 'appealed_cents' => $total,
+                'file_path' => $path, 'file_sha256' => hash('sha256', $xml), 'file_hash' => $hash, 'created_by_user_id' => $user->id, 'created_at' => now(),
+            ]);
+            DB::table('billing_glosa_appeal_items')->insert(array_map(fn ($item) => [
+                'tenant_id' => $lot->tenant_id, 'billing_glosa_appeal_id' => $appealId, 'billing_item_return_id' => $item['return'],
+                'appealed_cents' => $item['cents'], 'justification' => $item['justification'],
+            ], array_values($appealed)));
+            AuditEvent::record('billing_lot.appeal_generated', $lot->tenant_id, $lot, ['sequence' => $sequence, 'appealed_cents' => $total, 'items' => count($appealed)]);
+
+            return [];
+        });
+    }
+
+    /**
+     * Step 6.5c2: the insurer's answer to appealed items (keyed by the guide item): what it recovered, 0 when denied, up
+     * to the appealed value; recorded once per item.
+     *
+     * @param  array<int, int>  $recovered
+     * @return list<string>
+     */
+    public function recordAppealResults(array $recovered, User $user): array
+    {
+        return DB::transaction(function () use ($recovered, $user) {
+            $lot = self::query()->lockForUpdate()->findOrFail($this->id);
+            if ($recovered === []) {
+                return ['Informe o resultado de ao menos um item em recurso.'];
+            }
+            $pending = DB::table('billing_glosa_appeal_items as a')->join('billing_item_returns as r', 'r.id', '=', 'a.billing_item_return_id')
+                ->where('r.billing_lot_id', $lot->id)->whereNull('a.recovered_cents')->get(['a.id', 'a.appealed_cents', 'r.billing_account_item_id'])
+                ->keyBy('billing_account_item_id');
+            foreach ($recovered as $id => $cents) {
+                if (! $pending->has($id)) {
+                    return ['Um item não está em recurso pendente neste lote. Atualize a página e confira.'];
+                }
+                if ($cents > $pending[$id]->appealed_cents) {
+                    return ['O valor recuperado de um item passa do valor do recurso.'];
+                }
+            }
+            $now = now();
+            foreach ($recovered as $id => $cents) {
+                DB::table('billing_glosa_appeal_items')->where('id', $pending[$id]->id)
+                    ->update(['recovered_cents' => $cents, 'result_recorded_at' => $now, 'result_recorded_by_user_id' => $user->id]);
+            }
+            AuditEvent::record('billing_lot.appeal_answered', $lot->tenant_id, $lot, ['recovered_cents' => array_sum($recovered), 'items' => count($recovered)]);
+
+            return [];
+        });
+    }
+
+    /**
+     * Steps 6.5c1 and 6.5c2: the conciliation of returned lots, keyed by lot: billed = paid + glossed, and of the glossed
+     * what is in appeal and what the appeals recovered (the rest is the glosa kept).
+     *
+     * @param  list<int>  $lotIds
+     * @return Collection<int, array{paidCents: int, glossedCents: int, appealingCents: int, recoveredCents: int}>
+     */
+    public static function conciliations(array $lotIds): Collection
+    {
+        return DB::table('billing_item_returns as r')->leftJoin('billing_glosa_appeal_items as a', 'a.billing_item_return_id', '=', 'r.id')
+            ->whereIn('r.billing_lot_id', $lotIds)->groupBy('r.billing_lot_id')
+            ->selectRaw('r.billing_lot_id, sum(r.paid_cents) AS paid, sum(r.glossed_cents) AS glossed')
+            ->selectRaw('coalesce(sum(a.appealed_cents) FILTER (WHERE a.id IS NOT NULL AND a.recovered_cents IS NULL), 0) AS appealing, coalesce(sum(a.recovered_cents), 0) AS recovered')
+            ->get()->mapWithKeys(fn ($row) => [(int) $row->billing_lot_id => [
+                'paidCents' => (int) $row->paid, 'glossedCents' => (int) $row->glossed, 'appealingCents' => (int) $row->appealing, 'recoveredCents' => (int) $row->recovered,
+            ]]);
+    }
+
     protected function casts(): array
     {
         return ['competence' => 'date', 'created_at' => 'datetime', 'cancelled_at' => 'datetime', 'file_generated_at' => 'datetime'];

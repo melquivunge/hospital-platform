@@ -34,7 +34,12 @@ type Lot = {
     cancelReason: string | null;
     file: { sha256: string; generatedAt: string } | null;
     problems: string[];
-    return: { paidCents: number; glossedCents: number } | null;
+    return: {
+        paidCents: number;
+        glossedCents: number;
+        appealingCents: number;
+        recoveredCents: number;
+    } | null;
 };
 
 /** "2026-10" → "10/2026". */
@@ -339,6 +344,9 @@ function LotFile({ lot }: { lot: Lot }) {
                         Cobrado {money(lot.totalCents)} = pago{' '}
                         {money(lot.return.paidCents)} + glosado{' '}
                         {money(lot.return.glossedCents)}
+                        {(lot.return.appealingCents > 0 ||
+                            lot.return.recoveredCents > 0) &&
+                            ` · do glosado: em recurso ${money(lot.return.appealingCents)}, recuperado ${money(lot.return.recoveredCents)}`}
                     </span>
                 )}
             </div>
