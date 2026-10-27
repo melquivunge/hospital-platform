@@ -58,6 +58,8 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6" (todas as propostas ace
 - Retorno por item (pago, glosado, código e motivo da glosa) e recurso de glosa, que gera novo envio.
 - **Saída:** uma conta em no máximo um lote ativo (corrida real); valores conciliados (cobrado = pago + glosado + em recurso).
 
+- Divisão (27/10/2026, a pedido do usuário de fazer 6.5 a 6.7 de uma vez; merges esperam o CI): esquema oficial obtido — Padrão TISS de setembro/2026, componente de comunicação **4.03.00** (XSDs em `resources/tiss/4.03.00`, origem e hash em `ORIGEM.md`). Um lote leva um só tipo de guia (até 100). **6.5a** dados do prestador para o TISS: no contrato do convênio, o código do hospital na operadora (`codigoPrestadorNaOperadora`) e o CNES da unidade; o CBO e o conselho do profissional executante. **6.5b** lote por convênio, competência e tipo de guia (consulta e urgência como SP/SADT; internação como resumo de internação) com contas fechadas, uma conta em no máximo um lote ativo (índice único, corrida real); XML 4.03.00 com o hash do epílogo, validado contra o XSD no teste; arquivo guardado com SHA-256 e baixado para o portal da operadora. **6.5c** retorno por item (pago, glosado com código e motivo), recurso de glosa que gera novo envio, conciliação (cobrado = pago + glosado + em recurso).
+
 ### 6.6 Relatórios
 - Gestor da unidade: produção por período e modalidade, contas pendentes, glosas por motivo e recebido; só números, CSV com proteção contra fórmula.
 
