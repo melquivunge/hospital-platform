@@ -251,4 +251,67 @@ class BillingAccountTest extends ClinicalTestCase
         $this->actingAs($billing->user)->post(route('billing-accounts.items.store', $sus), ['billing_item_id' => $this->consultation->id, 'performed_on' => '2026-11-16', 'quantity' => 1, 'reason' => 'Teste.'])
             ->assertSessionHasErrorsIn('item', ['item']);
     }
+
+    public function test_billing_records_the_insurers_answer_by_item_or_guide_and_only_authorized_or_urgency_clears_it(): void
+    {
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $account = $this->closedConsultation(['modality' => 'insurance', 'insurer_id' => $this->insurer->id, 'insurance_card_number' => '0012 3456', 'insurance_card_valid_until' => '2027-03-31']);
+        $visitItem = BillingAccountItem::withoutTenantScope()->sole();
+        $pending = fn () => $this->get(route('billing-accounts.index'))->assertInertia(fn (Assert $page) => $page)->viewData('page')['props']['accounts'][0]['pending'];
+        $answer = fn (array $data) => $this->post(route('billing-accounts.authorizations.store', $account), $data);
+
+        $this->actingAs($billing->user);
+        $this->assertSame(1, $pending());
+        $answer(['status' => 'authorized', 'number' => 'G-1', 'valid_until' => '2026-12-31'])->assertSessionHasErrorsIn('authorization', ['item_ids']);
+        $answer(['item_ids' => [$visitItem->id], 'status' => 'authorized', 'valid_until' => '2026-12-31'])->assertSessionHasErrorsIn('authorization', ['number']);
+        $answer(['item_ids' => [$visitItem->id], 'status' => 'denied'])->assertSessionHasErrorsIn('authorization', ['reason']);
+        $answer(['item_ids' => [$visitItem->id], 'status' => 'authorized', 'number' => 'G-1', 'valid_until' => '2026-11-15'])
+            ->assertSessionHasErrorsIn('authorization', ['valid_until' => 'A validade não cobre a data de todos os itens escolhidos.']);
+        $answer(['item_ids' => [$visitItem->id + 999], 'status' => 'denied', 'reason' => 'X.'])
+            ->assertSessionHasErrorsIn('authorization', ['item_ids' => 'Escolha itens desta conta que exigem autorização do convênio.']);
+
+        // Denied: still pending; then authorized on appeal: cleared. The latest answer is the state; both stay.
+        $answer(['item_ids' => [$visitItem->id], 'status' => 'denied', 'reason' => 'Carência do plano.'])->assertSessionHasNoErrors()->assertInertiaFlash('toast.message', 'Negativa registrada.');
+        $this->assertSame(1, $pending());
+        $answer(['item_ids' => [$visitItem->id], 'status' => 'authorized', 'number' => 'G-77', 'valid_until' => '2026-12-31'])->assertSessionHasNoErrors();
+        $this->assertSame(0, $pending());
+
+        // A guide covers several items at once; urgency clears one without authorization, with the reason.
+        $this->post(route('billing-accounts.items.store', $account), ['billing_item_id' => $this->consultation->id, 'performed_on' => '2026-11-16', 'quantity' => 1, 'reason' => 'Retorno.'])->assertSessionHasNoErrors();
+        $manual = BillingAccountItem::withoutTenantScope()->where('origin_type', 'manual')->sole();
+        $this->assertTrue($manual->needs_authorization);
+        $this->assertSame(1, $pending());
+        $answer(['item_ids' => [$manual->id], 'status' => 'urgency', 'reason' => 'Atendimento de urgência.'])->assertSessionHasNoErrors();
+        $this->assertSame(0, $pending());
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('items.0.authorization.status', 'authorized')->where('items.0.authorization.number', 'G-77')->where('items.0.authorization.validUntil', '31/12/2026')
+            ->where('items.1.authorization.status', 'urgency')->where('items.1.authorization.reason', 'Atendimento de urgência.'));
+        $this->assertEquals(['item_ids' => [$manual->id], 'status' => 'urgency'], AuditEvent::where('action', 'billing_item.authorization')->latest('id')->first()->context);
+
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->assertSame(3, DB::table('billing_authorizations')->count());
+        try {
+            DB::transaction(fn () => DB::table('billing_authorizations')->update(['status' => 'denied', 'number' => null, 'valid_until' => null, 'reason' => 'X']));
+            $this->fail('The database must refuse it.');
+        } catch (QueryException $e) {
+            $this->assertStringContainsString('insert-only', $e->getMessage());
+        }
+        app(CurrentTenant::class)->set(null);
+
+        // Billing of another unit cannot answer; a compensated item is no longer a target.
+        $elsewhere = Membership::factory()->for($this->unit->tenant)->create();
+        $elsewhere->grant(Role::Billing, $this->other);
+        $this->actingAs($elsewhere->user)->post(route('billing-accounts.authorizations.store', $account), ['item_ids' => [$manual->id], 'status' => 'urgency', 'reason' => 'X.'])->assertForbidden();
+        $this->actingAs($billing->user)->post(route('billing-account-items.compensate', $manual), ['reason' => 'Lançado errado.'])->assertSessionHasNoErrors();
+        $answer(['item_ids' => [$manual->id], 'status' => 'denied', 'reason' => 'X.'])->assertSessionHasErrorsIn('authorization', ['item_ids']);
+        $answer(['item_ids' => [$visitItem->id], 'status' => 'approved'])->assertSessionHasErrorsIn('authorization', ['status']);
+
+        // A private account has no insurer to answer.
+        $this->travelTo('2026-11-13 12:00:00');
+        $private = $this->closedConsultation(['modality' => 'private'], '09:00');
+        $item = BillingAccountItem::withoutTenantScope()->where('billing_account_id', $private->id)->sole();
+        $this->actingAs($billing->user)->post(route('billing-accounts.authorizations.store', $private), ['item_ids' => [$item->id], 'status' => 'urgency', 'reason' => 'X.'])
+            ->assertSessionHasErrorsIn('authorization', ['item_ids']);
+    }
 }

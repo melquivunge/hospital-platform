@@ -17,6 +17,7 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Policies\UnitPolicy;
 use App\Tenancy\Role;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -73,6 +74,9 @@ class BillingAccountController extends Controller
         $items = BillingAccountItem::query()->where('billing_account_id', $account->id)->orderBy('performed_on')->orderBy('id')->get();
         $authors = User::query()->whereKey($items->pluck('author_user_id')->filter()->unique()->all())->pluck('name', 'id');
         $compensated = $items->where('origin_type', 'compensation')->pluck('origin_id')->flip();
+        // Step 6.3b: the latest answer of each item (insert-only records).
+        $answers = DB::table('billing_authorizations')->whereIn('billing_account_item_id', $items->modelKeys())->orderBy('id')->get()->keyBy('billing_account_item_id');
+        $authors = $authors->union(User::query()->whereKey($answers->pluck('author_user_id')->unique()->all())->pluck('name', 'id'));
 
         return Inertia::render('billing-accounts/show', [
             'account' => [
@@ -93,6 +97,13 @@ class BillingAccountController extends Controller
                 'reason' => $item->reason,
                 'author' => $item->author_user_id === null ? null : $authors->get($item->author_user_id),
                 'compensated' => $compensated->has($item->id),
+                'authorization' => ($answer = $answers->get($item->id)) === null ? null : [
+                    'status' => $answer->status,
+                    'number' => $answer->number,
+                    'validUntil' => $answer->valid_until === null ? null : CarbonImmutable::parse($answer->valid_until)->format('d/m/Y'),
+                    'reason' => $answer->reason,
+                    'author' => $authors->get($answer->author_user_id),
+                ],
             ])->values(),
             'canChange' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance'], true),
             'billableItems' => BillingItem::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'code'])->values(),
@@ -176,6 +187,49 @@ class BillingAccountController extends Controller
     }
 
     /**
+     * Step 6.3b: the insurer's answer for items that need it, by item or by guide (several items, one number):
+     * authorized (number and validity, valid on the day of each item), denied (reason) or urgency without it (reason).
+     * Insert-only: the latest answer is the item's state. Only in an insurer's open account.
+     */
+    public function authorizeItems(Request $request, BillingAccount $account): RedirectResponse
+    {
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $data = $request->validateWithBag('authorization', [
+            'item_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'item_ids.*' => ['integer', 'distinct'],
+            'status' => ['required', Rule::in(['authorized', 'denied', 'urgency'])],
+            'number' => ['exclude_unless:status,authorized', 'required', 'string', 'max:40'],
+            'valid_until' => ['exclude_unless:status,authorized', 'required', 'date_format:Y-m-d'],
+            'reason' => ['exclude_if:status,authorized', 'required', 'string', 'max:500'],
+        ], [], ['item_ids' => 'itens', 'status' => 'resposta', 'number' => 'número da autorização', 'valid_until' => 'validade', 'reason' => 'motivo']);
+
+        DB::transaction(function () use ($request, $account, $data) {
+            $locked = self::lockOpen($account, 'item_ids', 'authorization');
+            $items = BillingAccountItem::query()->where('billing_account_id', $locked->id)->whereKey($data['item_ids'])
+                ->where('needs_authorization', true)->where('origin_type', '<>', 'compensation')
+                ->whereNotIn('id', BillingAccountItem::query()->where('origin_type', 'compensation')->select('origin_id'))->get();
+            if ($locked->insurer_id === null || $items->count() !== count($data['item_ids'])) {
+                throw ValidationException::withMessages(['item_ids' => 'Escolha itens desta conta que exigem autorização do convênio.'])->errorBag('authorization');
+            }
+            if (isset($data['valid_until']) && $items->contains(fn (BillingAccountItem $item) => $item->performed_on->toDateString() > $data['valid_until'])) {
+                throw ValidationException::withMessages(['valid_until' => 'A validade não cobre a data de todos os itens escolhidos.'])->errorBag('authorization');
+            }
+            DB::table('billing_authorizations')->insert($items->map(fn (BillingAccountItem $item) => [
+                'tenant_id' => $locked->tenant_id, 'billing_account_item_id' => $item->id, 'status' => $data['status'],
+                'number' => isset($data['number']) ? trim($data['number']) : null, 'valid_until' => $data['valid_until'] ?? null,
+                'reason' => isset($data['reason']) ? trim($data['reason']) : null, 'author_user_id' => $request->user()->id, 'created_at' => now(),
+            ])->all());
+            // Ids and the answer only.
+            AuditEvent::record('billing_item.authorization', $locked->tenant_id, $locked, ['item_ids' => $items->modelKeys(), 'status' => $data['status']]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => match ($data['status']) {
+            'authorized' => 'Autorização registrada.', 'denied' => 'Negativa registrada.', default => 'Urgência registrada.',
+        }]);
+
+        return back();
+    }
+
+    /**
      * Inside the transaction: the account, locked, while it is open and its modality is billed here.
      */
     private static function lockOpen(BillingAccount $account, string $field, string $bag = 'item'): BillingAccount
@@ -207,7 +261,9 @@ class BillingAccountController extends Controller
      */
     private static function pending(Builder $items): void
     {
-        $items->where(fn (Builder $item) => $item->whereNull('unit_price_cents')->orWhere('needs_authorization', true))
+        // Step 6.3b: an item that needs authorization stops pending when its latest answer is authorized or urgency.
+        $items->where(fn (Builder $item) => $item->whereNull('unit_price_cents')->orWhere(fn (Builder $needs) => $needs->where('needs_authorization', true)
+            ->whereRaw("coalesce((SELECT status FROM billing_authorizations WHERE billing_account_item_id = billing_account_items.id ORDER BY id DESC LIMIT 1), '') NOT IN ('authorized', 'urgency')")))
             ->where('origin_type', '<>', 'compensation')
             ->whereNotExists(fn ($compensations) => $compensations->from('billing_account_items as compensations')
                 ->where('compensations.origin_type', 'compensation')->whereColumn('compensations.origin_id', 'billing_account_items.id'));
