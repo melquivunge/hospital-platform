@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Billing\TissLotXml;
 use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
 use App\Models\AuditEvent;
@@ -287,6 +288,12 @@ class BillingAccountController extends Controller
             }
             if ((clone $items)->where(fn (Builder $query) => self::pending($query))->exists()) {
                 throw $refuse('Resolva as pendências antes de fechar: itens sem preço ou sem autorização do convênio.');
+            }
+            // Step 6.5b2b: the hospitalization summary requires the insurer's password (its daily rates always ask for
+            // it); once closed, no answer lands. A complement uses its stay's.
+            if ($locked->complement_of_id === null && $locked->modality === 'insurance' && Admission::query()->where('emergency_episode_id', $locked->emergency_episode_id ?? 0)->exists()
+                && TissLotXml::passwords([$locked->id])->isEmpty()) {
+                throw $refuse('A internação pelo convênio precisa da senha antes de fechar: registre a autorização (número e validade) da diária.');
             }
             $locked->forceFill(['status' => 'closed', 'closed_at' => now(), 'closed_by_user_id' => $request->user()->id])->save();
             $total = (int) (clone $items)->sum(DB::raw('quantity * unit_price_cents'));

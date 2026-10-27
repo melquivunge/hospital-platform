@@ -170,7 +170,8 @@ class BillingAccount extends Model
                     'tenant_id' => $account->tenant_id, 'billing_account_id' => $account->id, 'origin_type' => $type, 'origin_id' => $id,
                     'billing_item_id' => $item?->id, 'code' => $item?->code, 'name' => $item->name ?? $name, 'quantity' => $quantity,
                     'unit_price_cents' => $item === null ? null : InsurerContract::priceFor($account->insurer_id, $item->id, $priceDay),
-                    'needs_authorization' => $item !== null && $account->insurer_id !== null && InsurerContract::needsAuthorization($account->insurer_id, $item->id),
+                    // Step 6.5b2b: an insurance admission's daily rate always carries the insurer's password (the summary requires it).
+                    'needs_authorization' => $item !== null && $account->insurer_id !== null && ($type === 'admission_day' || InsurerContract::needsAuthorization($account->insurer_id, $item->id)),
                     'performed_on' => $date, 'created_at' => now(),
                 ];
             }
