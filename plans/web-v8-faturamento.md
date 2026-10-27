@@ -74,6 +74,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6" (todas as propostas ace
 
 ### 6.6 Relatórios
 - Gestor da unidade: produção por período e modalidade, contas pendentes, glosas por motivo e recebido; só números, CSV com proteção contra fórmula.
+- **Feito na 6.6:** tela "Relatórios de faturamento" para o gestor da unidade (o administrador de rede tem o papel em memória em todas as unidades), com unidade e período no fuso da unidade (até 366 dias; padrão, últimos 30). Produção: itens realizados no período por modalidade e convênio, com contas, itens e itens sem preço (o estorno desconta o item e o valor). Contas pendentes hoje: abertas, convênio fechadas aguardando lote, em lote aguardando retorno, particular fechadas aguardando pagamento. Glosas por código da tabela TUSS 38 nos retornos do período, com o que está em recurso e o recuperado. Recebido no período: pagamentos particulares, pago nos retornos e recuperado em recurso, por convênio. CSV com os mesmos números (proteção contra fórmula; exportação auditada). Só números agregados, sem paciente nem conta. Limites: valor negativo no CSV sai como texto (a proteção contra fórmula prefixa o sinal de menos); a classificação das pendentes percorre o histórico de contas da unidade a cada leitura (agregar por período ou materializar se uma unidade crescer muito).
 
 ### 6.7 Revisão integrada
 - **Jornada num cliente novo:** atendimento por convênio com exame, internação com cirurgia e materiais, alta, conta gerada, autorização, fechamento, lote, retorno com glosa e recurso; um particular com recibo.

@@ -92,6 +92,8 @@ class HandleInertiaRequests extends Middleware
             // Step 6.2c (ADR-0010): the Billing role in some unit.
             'canUseBilling' => fn () => $request->user() !== null
                 && BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())) !== [],
+            // Step 6.6: the unit manager (the network admin holds the role in memory).
+            'canViewBillingReports' => fn () => $request->user() !== null && StockInventoryController::managerUnitIds($request->user()) !== [],
             'canUsePharmacy' => fn () => $request->user() !== null
                 && PharmacyController::unitIds(UnitPolicy::currentMembership($request->user())) !== [],
             // Step 5.3 (ADR-0008): the Laboratory or the Imaging role in some unit.

@@ -9,6 +9,7 @@ use App\Http\Controllers\BedController;
 use App\Http\Controllers\BillingAccountController;
 use App\Http\Controllers\BillingLotController;
 use App\Http\Controllers\BillingPriceController;
+use App\Http\Controllers\BillingReportController;
 use App\Http\Controllers\CensusController;
 use App\Http\Controllers\ClinicalDocumentController;
 use App\Http\Controllers\ClinicalRecordController;
@@ -144,6 +145,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Step 6.5c1: the insurer's return of a sent lot.
     Route::get('billing-lots/{lot}/return', [BillingLotController::class, 'showReturn'])->middleware('throttle:120,1')->name('billing-lots.return');
     Route::post('billing-lots/{lot}/return', [BillingLotController::class, 'storeReturn'])->middleware('throttle:30,1')->name('billing-lots.return.store');
+    // Step 6.6: the unit manager's billing reports (numbers only) and their CSV.
+    Route::get('billing-reports', [BillingReportController::class, 'index'])->middleware('throttle:120,1')->name('billing-reports.index');
+    Route::get('billing-reports.csv', [BillingReportController::class, 'csv'])->middleware('throttle:20,1')->name('billing-reports.csv');
     // Step 6.5c2: the glosa appeal, its file and the insurer's answer.
     Route::post('billing-lots/{lot}/appeals', [BillingLotController::class, 'storeAppeal'])->middleware('throttle:30,1')->name('billing-lots.appeals.store');
     Route::post('billing-lots/{lot}/appeals/results', [BillingLotController::class, 'storeAppealResults'])->middleware('throttle:30,1')->name('billing-lots.appeals.results');
