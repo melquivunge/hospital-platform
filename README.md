@@ -157,6 +157,21 @@ Pedido, agenda de salas, checklist de cirurgia segura, termo, descrição e mate
 - **Estados:** as transições da cirurgia (pedida, agendada, em andamento, concluída, cancelada) são conferidas pela aplicação; o banco só congela a concluída.
 - **Garantias no banco:** sala sem sobreposição de cirurgias ativas; etapas do checklist em ordem, nunca alteradas; termo ou dispensa antes da primeira etapa, dispensa só na urgência; descrição e adendos nunca alterados, uma descrição por cirurgia, só depois da terceira etapa; cirurgia concluída só com a descrição e nunca alterada depois; consumo só de lote de material válido da unidade da cirurgia; estorno até o consumido; saldo nunca negativo.
 
+### Limites conhecidos da entrega 6, faturamento (revisão integrada, etapa 6.7)
+
+Preços, contratos, contas, autorização, fechamento, recebimento particular, lotes TISS 4.03.00, retorno, recurso de glosa e relatórios ([ADR-0010](docs/adr/0010-billing-access-and-item-origin.md)). Pendentes antes de uso com pacientes reais, além dos limites anteriores:
+
+- **Sem integração online:** os arquivos TISS (lote, resumo de internação e recurso) são gerados, validados no XSD oficial e baixados para o portal da operadora; não há webservice, elegibilidade online, retorno nem demonstrativo importados em XML (o retorno e o resultado do recurso são digitados). Sem SUS (BPA, AIH, APAC: entrega 6b), NFS-e, gateway de pagamento, tabelas licenciadas (Brasíndice, Simpro), contabilidade nem repasse médico.
+- **Códigos:** a tabela do item no TISS vem do formato do código (8 dígitos de procedimento = TUSS 22; código numérico de despesa = tabela TUSS do tipo; outro = tabela própria 00). 24 códigos de glosa da TUSS 202609 (5063 a 5086) não existem no XSD 4.03.00: o recurso desses itens é recusado e deve ir pelo portal da operadora.
+- **Lote enviado e cancelado:** um lote com arquivo gerado ainda pode ser cancelado (com motivo) até o registro do retorno, para corrigir um envio recusado pela operadora; se o arquivo já tiver sido aceito, cancelar e mandar as contas noutro lote cobraria duas vezes. A aplicação não sabe se o arquivo foi aceito; o download fica na auditoria. **Decisão de produto pendente:** exigir confirmação de recusa da operadora ou bloquear o cancelamento depois do download.
+- **Retorno e recurso:** o retorno é registrado uma vez por lote e não é corrigido (um erro de digitação só se corrige pelo recurso); o recurso é por item (não por protocolo nem guia inteira), um por item, e o resultado é registrado uma vez.
+- **Administrador de rede:** trabalha as contas e os lotes de todas as unidades com o papel Faturamento em memória (decisão de 27/10/2026), além de cadastrar preços e contratos; não há segregação entre quem define o preço e quem fecha e recebe. A auditoria registra cada ação; revise-a periodicamente. A lista de contas mostra o nome dos pacientes sem gravar leitura (a leitura é gravada ao abrir a conta).
+- **Tela da conta:** abrir a conta gera os itens que faltarem (idempotente) e grava a leitura, numa requisição GET.
+- **Arquivos:** os XML dos lotes e dos recursos ficam no disco privado (`storage/app/private`), em texto, com a carteira e os procedimentos (o recibo é gerado na hora, não gravado); precisam do mesmo backup do banco e, em produção, de criptografia em repouso no volume.
+- **Isolamento:** as tabelas de contas, itens, autorizações, pagamentos, lotes, retornos e recursos têm RLS; o catálogo de preços, convênios e contratos (sem dado de paciente) fica no escopo da aplicação por cliente, sem RLS ([ADR-0003](docs/adr/0003-rls-on-clinical-tables.md)). Os gatilhos que congelam conta fechada, lote, retorno e recurso dependem de a aplicação não ser dona das tabelas (checklist acima: `app_runtime`).
+- **Relatórios:** só números agregados para o gestor; valor negativo no CSV sai como texto (proteção contra fórmula); a classificação das contas pendentes percorre o histórico da unidade a cada leitura.
+- **Preço acima do teto:** um preço com reajuste do contrato acima de R$ 1 bilhão vira item sem preço (pendência na conta), não erro.
+
 ## Verificações
 
 O CI executa testes PHP com PostgreSQL descartável, Pint, PHPStan, TypeScript, lint/formatação, build, auditorias de dependências e smoke test dos containers. As credenciais do serviço de teste em CI são descartáveis, sem relação com ambientes reais.

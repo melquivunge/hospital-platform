@@ -36,7 +36,10 @@ class InsurerContract extends Model
             return $price;
         }
 
-        return intdiv($price * (10000 + $contract->adjustment_bp) + 5000, 10000);
+        $adjusted = intdiv($price * (10000 + $contract->adjustment_bp) + 5000, 10000);
+
+        // Above the database's ceiling the item would fail its insert: no price, a pending item billing sees (6.7).
+        return $adjusted > PriceEntry::MAX_CENTS ? null : $adjusted;
     }
 
     /**
