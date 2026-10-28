@@ -123,7 +123,7 @@ class InpatientJourneyTest extends TestCase
         $visit = Visit::withoutTenantScope()->sole();
         $this->post(route('visits.notes.store', $visit), ['body' => 'Suspeita de tromboembolismo pulmonar.'])->assertSessionHasNoErrors();
         $this->post(route('clinical-notes.sign', ClinicalNote::withoutTenantScope()->sole()), ['body' => 'Suspeita de tromboembolismo pulmonar.', 'password' => 'password'])->assertSessionHasNoErrors();
-        $this->post(route('visits.close', $visit), ['outcome' => 'admission_requested', 'requested_sector_id' => $wardBed->sector_id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $wardBed->sector_id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->sole();
 
         // 5. Bed management allocates the ward bed; the ward team writes, the ICU team does not read.
@@ -160,7 +160,7 @@ class InpatientJourneyTest extends TestCase
 
         // 8. Discharge with the signed summary at the south unit; access ends, the bed goes to cleaning.
         $this->at('2026-11-16 15:00');
-        $this->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Anticoagulado, estável em ar ambiente.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Anticoagulado, estável em ar ambiente.', 'password' => 'password'])->assertSessionHasNoErrors();
         $admission = $admission->fresh();
         $this->assertSame(['discharged', $south->id, $southBed->id], [$admission->status, $admission->unit_id, $admission->bed_id]);
         $this->get(route('ward.show', $admission))->assertForbidden();

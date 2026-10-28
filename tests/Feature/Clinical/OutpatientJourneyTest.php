@@ -136,7 +136,7 @@ class OutpatientJourneyTest extends TestCase
         $document = ClinicalDocument::withoutTenantScope()->sole();
         $this->get(route('clinical-documents.download', $document))->assertOk();
         $this->get(route('visits.show', $visit))->assertInertia(fn (Assert $page) => $page->has('record', 1)->has('record.0.addenda', 1)->has('documents', 1));
-        $this->post(route('visits.close', $visit))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         $this->assertSame('completed', $appointment->fresh()->status);
 
         // 8. Neither reception nor management read the record; the nurse in the other unit reads it in an emergency.

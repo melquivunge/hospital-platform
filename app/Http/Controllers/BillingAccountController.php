@@ -9,6 +9,7 @@ use App\Models\AuditEvent;
 use App\Models\BillingAccount;
 use App\Models\BillingAccountItem;
 use App\Models\BillingItem;
+use App\Models\Diagnosis;
 use App\Models\Insurer;
 use App\Models\InsurerContract;
 use App\Models\Membership;
@@ -126,6 +127,8 @@ class BillingAccountController extends Controller
             ],
             'canReceive' => $payment === null && $account->status === 'closed' && $account->modality === 'private' && (int) $account->getAttribute('total_cents') > 0,
             'methods' => self::METHODS,
+            // Step 6b.2 (ADR-0011): the SUS account shows the CID-10 codes of its stay, never the record.
+            'diagnoses' => $account->modality === 'sus' ? self::diagnoses($account) : [],
             'complements' => BillingAccount::query()->where('complement_of_id', $account->complement_of_id ?? $account->id)->orderBy('id')->pluck('id')->all(),
             'billableItems' => BillingItem::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'code'])->values(),
             'today' => now($timezone)->toDateString(),
@@ -478,5 +481,25 @@ class BillingAccountController extends Controller
                 'totalCents' => (int) $account->getAttribute('total_cents'),
             ];
         }, $accounts);
+    }
+
+    /**
+     * Step 6b.2: the CID-10 codes of the account's stay (the complement's own stay): the discharge's when the
+     * episode became an admission and was discharged, else the visit's close.
+     *
+     * @return list<array{code: string, name: string|null, principal: bool}>
+     */
+    private static function diagnoses(BillingAccount $account): array
+    {
+        $stay = $account->complement_of_id === null ? $account : BillingAccount::query()->findOrFail($account->complement_of_id);
+        $admission = $stay->emergency_episode_id === null ? null : DB::table('admissions')->where('emergency_episode_id', $stay->emergency_episode_id)->value('id');
+        // Until the discharge records its own, the stay's codes are the visit's.
+        if ($admission !== null && ($codes = Diagnosis::current('admission_id', (int) $admission)) !== []) {
+            return $codes;
+        }
+        $visit = DB::table('visits')->when($stay->appointment_id !== null, fn ($query) => $query->where('appointment_id', $stay->appointment_id),
+            fn ($query) => $query->where('emergency_episode_id', $stay->emergency_episode_id))->orderByDesc('id')->value('id');
+
+        return $visit === null ? [] : Diagnosis::current('visit_id', (int) $visit);
     }
 }

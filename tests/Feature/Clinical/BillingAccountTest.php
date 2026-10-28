@@ -53,7 +53,7 @@ class BillingAccountTest extends ClinicalTestCase
     {
         $appointment = $this->arrived($this->doctor, $this->unit, $time, $modality);
         $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $appointment))->assertRedirect();
-        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
 
         return BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
     }
@@ -118,7 +118,7 @@ class BillingAccountTest extends ClinicalTestCase
         $this->assertNotNull($account->emergency_episode_id);
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $account->emergency_episode_id), ['level' => 3, 'complaint' => 'Febre.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $account->emergency_episode_id))->assertSessionHasNoErrors();
-        $this->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['outcome' => 'discharged'])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['cid_principal' => 'J18.9', 'outcome' => 'discharged'])->assertSessionHasNoErrors();
 
         // No billable item for an emergency consultation: the item exists with the catalog name and no price.
         $item = BillingAccountItem::withoutTenantScope()->sole();
@@ -138,7 +138,7 @@ class BillingAccountTest extends ClinicalTestCase
         $account = BillingAccount::withoutTenantScope()->sole();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $account->emergency_episode_id), ['level' => 3, 'complaint' => 'Queixa sigilosa.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $account->emergency_episode_id))->assertSessionHasNoErrors();
-        $this->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['outcome' => 'discharged'])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['cid_principal' => 'J18.9', 'outcome' => 'discharged'])->assertSessionHasNoErrors();
         app(CurrentTenant::class)->set($this->unit->tenant);
         DB::table('billing_accounts')->update(['modality' => 'private']);
         app(CurrentTenant::class)->set(null);
@@ -331,7 +331,7 @@ class BillingAccountTest extends ClinicalTestCase
 
         // While the visit is open, the stay has not ended.
         $close()->assertSessionHasErrorsIn('close', ['close' => 'O atendimento ainda não terminou: a conta fecha depois do encerramento ou da alta.']);
-        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', Visit::withoutTenantScope()->sole()))->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         // The consultation needs the insurer's authorization: pending until answered.
         $close()->assertSessionHasErrorsIn('close', ['close' => 'Resolva as pendências antes de fechar: itens sem preço ou sem autorização do convênio.']);
         $item = BillingAccountItem::withoutTenantScope()->sole();

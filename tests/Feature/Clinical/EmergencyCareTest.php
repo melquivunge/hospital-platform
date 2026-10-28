@@ -65,10 +65,10 @@ class EmergencyCareTest extends ClinicalTestCase
         $this->post(route('visits.notes.store', $visit), ['body' => 'Hidratação e antitérmico.']);
         $note = ClinicalNote::withoutTenantScope()->sole();
 
-        $this->post(route('visits.close', $visit))->assertSessionHasErrors('outcome');
-        $this->post(route('visits.close', $visit), ['outcome' => 'discharged'])->assertSessionHasErrors('visit');
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9'])->assertSessionHasErrors('outcome');
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'discharged'])->assertSessionHasErrors('visit');
         $this->post(route('clinical-notes.sign', $note), ['body' => 'Hidratação e antitérmico.', 'password' => 'password'])->assertSessionHasNoErrors();
-        $this->post(route('visits.close', $visit), ['outcome' => 'discharged'])->assertRedirect(route('emergency.index', ['unit' => $this->unit->id]));
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'discharged'])->assertRedirect(route('emergency.index', ['unit' => $this->unit->id]));
 
         $episode = $episode->fresh();
         $this->assertSame(['discharged', $this->doctorAccount->user_id], [$episode->status, $episode->ended_by_user_id]);
@@ -115,7 +115,7 @@ class EmergencyCareTest extends ClinicalTestCase
         $second = $this->waiting();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.call', $second));
         $this->actingAs($this->reception->user)->post(route('emergency.evade', $second))->assertSessionHasErrors('call');
-        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['outcome' => 'evaded'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['cid_principal' => 'J18.9', 'outcome' => 'evaded'])->assertSessionHasNoErrors();
         $this->assertSame('evaded', $second->fresh()->status);
 
         // An admission request (sector and doctor, step 4.4a) keeps the patient in the department until the bed.
@@ -123,7 +123,7 @@ class EmergencyCareTest extends ClinicalTestCase
         $this->actingAs($this->manager->user)->post(route('beds.store', $this->unit), ['sector_id' => $ward->id, 'room' => '1', 'code' => '1-A', 'type' => 'ward'])->assertSessionHasNoErrors();
         $third = $this->waiting();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.call', $third));
-        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $this->assertSame('admission_requested', $third->fresh()->status);
         $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->other), ['patient_id' => $this->patient->id, 'modality' => 'sus'])->assertSessionHasErrors('patient_id');
         $this->get(route('emergency.index', ['unit' => $this->unit->id]))->assertInertia(fn (Assert $page) => $page->where('episodes.0.status', 'admission_requested'));

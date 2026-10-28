@@ -128,7 +128,7 @@ class SurgeryOrderTest extends ClinicalTestCase
         $sector = Sector::withoutGlobalScopes()->where('unit_id', $this->unit->id)->firstOrFail();
         $this->actingAs($this->manager->user)->post(route('beds.store', $this->unit), ['sector_id' => $sector->id, 'room' => '1', 'code' => 'L1', 'type' => 'ward'])->assertSessionHasNoErrors();
         $this->actingAs($this->doctorAccount->user);
-        $this->post(route('visits.close', $this->visit), ['outcome' => 'admission_requested', 'requested_sector_id' => $sector->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $this->visit), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $sector->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->sole();
 
         $this->get(route('surgery-orders.visit', $this->visit))->assertForbidden();

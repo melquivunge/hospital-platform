@@ -85,7 +85,7 @@ class WardTest extends ClinicalTestCase
         $this->post(route('emergency.call', $episode));
         $visit = Visit::withoutTenantScope()->latest('id')->firstOrFail();
         $this->post(route('clinical-documents.store', $visit), ['file' => UploadedFile::fake()->createWithContent('raio-x.pdf', self::PDF)])->assertSessionHasNoErrors();
-        $this->post(route('visits.close', $visit), ['outcome' => 'admission_requested', 'requested_sector_id' => $this->ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $this->ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->latest('id')->firstOrFail();
         if ($bed !== null) {
             $this->actingAs($this->bedManager->user)->post(route('admissions.allocate', $admission), ['bed_id' => $bed->id])->assertSessionHasNoErrors();
@@ -251,7 +251,7 @@ class WardTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $appointment));
         $visit = Visit::withoutTenantScope()->latest('id')->firstOrFail();
         $this->get(route('visits.show', $visit))->assertInertia(fn (Assert $page) => $page->has('drafts', 0));
-        $this->post(route('visits.close', $visit))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
     }
 
     public function test_only_the_bed_sector_team_and_the_responsible_doctor_read(): void

@@ -165,7 +165,7 @@ class BillingJourneyTest extends TestCase
         $this->actingAs($doctorUser)->post(route('visits.open', Appointment::withoutTenantScope()->sole()))->assertRedirect();
         $visit = Visit::withoutTenantScope()->sole();
         $this->post(route('exam-orders.visit.store', $visit), ['exam_ids' => [$exam], 'priority' => 'routine', 'indication' => 'Tosse persistente.', 'password' => 'password'])->assertSessionHasNoErrors();
-        $this->post(route('visits.close', $visit))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         $xray = ExamOrderItem::withoutTenantScope()->sole();
         $this->actingAs($doctorUser)->post(route('exam-queue.collect', $xray))->assertSessionHasNoErrors();
         $this->post(route('exam-results.release', $xray), ['version' => 1, 'report' => 'Pulmões sem consolidação.', 'file' => UploadedFile::fake()->createWithContent('rx.pdf', self::PDF), 'password' => 'password'])->assertRedirect()->assertSessionHasNoErrors();
@@ -176,7 +176,7 @@ class BillingJourneyTest extends TestCase
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($doctorUser)->post(route('emergency.triage', $episode), ['level' => 3, 'complaint' => 'Abaulamento inguinal doloroso.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();
-        $this->post(route('visits.close', Visit::withoutTenantScope()->whereNotNull('emergency_episode_id')->sole()), ['outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->whereNotNull('emergency_episode_id')->sole()), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->sole();
         $this->actingAs($users['leitos'])->post(route('admissions.allocate', $admission), ['bed_id' => $bed->id])->assertSessionHasNoErrors();
         $this->actingAs($users['farmacia'])->post(route('stock.entries.store'), ['unit_id' => $unit->id, 'material_id' => $mesh, 'lot_code' => 'TP-1', 'expires_on' => '2028-06-30', 'quantity' => 10])->assertSessionHasNoErrors();
@@ -197,7 +197,7 @@ class BillingJourneyTest extends TestCase
             'findings' => 'Hérnia indireta.', 'technique' => 'Lichtenstein com tela.', 'complications' => 'Nenhuma.', 'password' => 'password',
         ])->assertSessionHasNoErrors();
         $this->at('2026-11-18 14:00');
-        $this->actingAs($doctorUser)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Ferida limpa, deambulando.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($doctorUser)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Ferida limpa, deambulando.', 'password' => 'password'])->assertSessionHasNoErrors();
         $stay = BillingAccount::withoutTenantScope()->whereNotNull('emergency_episode_id')->sole();
 
         // 8. Billing: the stay's accounts as generated, the insurer's password for the daily rates, then both closed.
@@ -246,7 +246,7 @@ class BillingJourneyTest extends TestCase
         $privateAppointment = Appointment::withoutTenantScope()->latest('id')->firstOrFail();
         $this->post(route('appointments.arrive', $privateAppointment), ['modality' => 'private'])->assertSessionHasNoErrors();
         $this->actingAs($doctorUser)->post(route('visits.open', $privateAppointment))->assertRedirect();
-        $this->post(route('visits.close', Visit::withoutTenantScope()->where('appointment_id', $privateAppointment->id)->sole()))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->where('appointment_id', $privateAppointment->id)->sole()), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         $privateAccount = BillingAccount::withoutTenantScope()->where('appointment_id', $privateAppointment->id)->sole();
         $this->actingAs($users['faturamento'])->post(route('billing-accounts.close', $privateAccount))->assertSessionHasNoErrors();
         $this->post(route('billing-accounts.payment.store', $privateAccount), ['method' => 'pix'])->assertSessionHasNoErrors();

@@ -19,6 +19,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6b" (todas as propostas ac
 ### 6b.2 Diagnóstico no atendimento e na alta
 - CID principal (obrigatório no SUS; nas outras modalidades, decidido na etapa) e secundários ao encerrar a consulta e a urgência e na alta; correção por novo registro, anterior preservado.
 - Tabela clínica só de inserção, RLS; a conta mostra ao faturamento só o código e o nome do CID.
+- **Feito na 6b.2:** decisão do usuário (27/10/2026): CID obrigatório só no SUS, opcional nas outras modalidades. Quem atende informa o CID principal e até 5 secundários ao encerrar a consulta e o atendimento de urgência e na alta (campo com sugestões da tabela oficial, busca `cid10.search`); o código é conferido na tabela CID-10 e no sexo do paciente. Tabela `diagnoses` (migração 008800, RLS), só de inserção, por versão (correção = nova versão; uma principal por versão no banco). A conta SUS mostra ao faturamento só os códigos e nomes; a auditoria nunca leva o CID. Os testes que fechavam atendimento SUS passaram a informar o CID. Em aberto: tela de correção do CID depois do encerramento (fica para quando a pendência aparecer na conta, 6b.4).
 
 ### 6b.3 SIGTAP por competência
 - Importação do ZIP oficial pelo administrador de rede (procedimentos, valores SA/SH/SP, instrumento de registro, compatibilidades de CID e CBO), por competência, com prévia e aplicação, como os CSVs existentes.

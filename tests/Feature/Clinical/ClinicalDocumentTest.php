@@ -98,7 +98,7 @@ class ClinicalDocumentTest extends ClinicalTestCase
         $this->actingAs($stranger->user)->get(route('clinical-documents.download', $document))->assertNotFound();
 
         // After the visit closes, the doctor no longer downloads it.
-        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit))->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         $this->get(route('clinical-documents.download', $document))->assertForbidden();
     }
 
@@ -116,7 +116,7 @@ class ClinicalDocumentTest extends ClinicalTestCase
         $other = $this->attach('outro.pdf', self::PDF);
         $this->post(route('clinical-documents.withdraw', $other), ['reason' => 'Duplicado'])->assertSessionHasNoErrors();
         $this->post(route('clinical-documents.withdraw', $other), ['reason' => 'De novo'])->assertSessionHasErrors('reason');
-        $this->post(route('visits.close', $this->visit))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $this->visit), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         $this->travelTo('2026-11-13 12:00:00');
         $next = $this->arrived($this->doctor, $this->unit, '10:00');
         $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $next));

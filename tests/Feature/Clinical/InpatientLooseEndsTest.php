@@ -53,7 +53,7 @@ class InpatientLooseEndsTest extends ClinicalTestCase
         $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));
-        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['outcome' => 'admission_requested', 'requested_sector_id' => $bed->sector_id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $bed->sector_id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
 
         return Admission::withoutTenantScope()->latest('id')->firstOrFail();
     }
@@ -82,12 +82,12 @@ class InpatientLooseEndsTest extends ClinicalTestCase
         $admission = $this->requested($this->bed($this->unit, 'A-1'));
         // Only the responsible doctor discharges: not bed management, not another professional.
         foreach ([$this->originBeds, $this->nurseAccount] as $member) {
-            $this->actingAs($member->user)->post(route('ward.discharge', $admission), ['type' => 'evasion', 'occurred_at' => now($this->unit->timezone)->format('Y-m-d\TH:i')])->assertForbidden();
+            $this->actingAs($member->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'evasion', 'occurred_at' => now($this->unit->timezone)->format('Y-m-d\TH:i')])->assertForbidden();
         }
         $this->actingAs($this->doctorAccount->user)->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->has('discharge.types', 5));
 
         $this->travel(5)->minutes();
-        $this->post(route('ward.discharge', $admission), ['type' => 'evasion', 'occurred_at' => now($this->unit->timezone)->format('Y-m-d\TH:i')])->assertSessionHasNoErrors();
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'evasion', 'occurred_at' => now($this->unit->timezone)->format('Y-m-d\TH:i')])->assertSessionHasNoErrors();
         $admission = $admission->fresh();
         $this->assertSame(['discharged', 'evasion', null, null], [$admission->status, $admission->discharge_type, $admission->bed_id, $admission->admitted_at]);
         $this->assertSame('evaded', EmergencyEpisode::withoutTenantScope()->sole()->status);
@@ -105,8 +105,8 @@ class InpatientLooseEndsTest extends ClinicalTestCase
 
         // Not before the departure.
         $this->travel(10)->minutes();
-        $this->post(route('ward.discharge', $admission), ['type' => 'death', 'occurred_at' => $transfer->fresh()->departed_at->subMinutes(5)->setTimezone($this->unit->timezone)->format('Y-m-d\TH:i')])->assertSessionHasErrors('occurred_at');
-        $this->post(route('ward.discharge', $admission), ['type' => 'death', 'occurred_at' => now($this->unit->timezone)->format('Y-m-d\TH:i')])->assertSessionHasNoErrors();
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'death', 'occurred_at' => $transfer->fresh()->departed_at->subMinutes(5)->setTimezone($this->unit->timezone)->format('Y-m-d\TH:i')])->assertSessionHasErrors('occurred_at');
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'death', 'occurred_at' => now($this->unit->timezone)->format('Y-m-d\TH:i')])->assertSessionHasNoErrors();
         $this->assertSame(['discharged', 'death'], [$admission->fresh()->status, $admission->fresh()->discharge_type]);
         $transfer = $transfer->fresh();
         $this->assertSame(['cancelled', null], [$transfer->status, $transfer->reserved_bed_id]);

@@ -23,6 +23,7 @@ import { PatientAllergies } from '@/components/patient-allergies';
 import type { PrescriptionPanelData } from '@/components/prescription-panel';
 import { PrescriptionPanel } from '@/components/prescription-panel';
 import PrescriptionController from '@/actions/App/Http/Controllers/PrescriptionController';
+import { CidField } from '@/components/cid-field';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
@@ -262,6 +263,7 @@ type DischargeOptions = {
     types: { value: string; label: string; summary: boolean }[];
     otherDrafts: number;
     now: string;
+    cidRequired: boolean;
 };
 
 /**
@@ -368,6 +370,10 @@ function Discharge({
                                 <InputError message={errors.occurred_at} />
                             </div>
                         )}
+                        <CidField
+                            required={options.cidRequired}
+                            errors={errors}
+                        />
                         <p className="text-sm text-muted-foreground">
                             A alta encerra a internação: o leito vai para
                             higienização e a equipe deixa de ler o prontuário

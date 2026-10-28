@@ -54,7 +54,7 @@ class AdmissionTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));
         $visit = Visit::withoutTenantScope()->latest('id')->firstOrFail();
-        $this->post(route('visits.close', $visit), ['outcome' => 'admission_requested', 'requested_sector_id' => $this->ward->id, 'responsible_professional_id' => $this->doctor->id, 'isolation' => $isolation])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $this->ward->id, 'responsible_professional_id' => $this->doctor->id, 'isolation' => $isolation])->assertSessionHasNoErrors();
 
         return Admission::withoutTenantScope()->latest('id')->firstOrFail();
     }
@@ -71,10 +71,10 @@ class AdmissionTest extends ClinicalTestCase
         $this->get(route('visits.show', $visit))->assertInertia(fn (Assert $page) => $page
             ->where('admissionOptions.sectors.0.id', $this->ward->id)->where('admissionOptions.me', $this->doctor->id));
         // The sector and the responsible doctor are required, and must belong to the unit.
-        $this->post(route('visits.close', $visit), ['outcome' => 'admission_requested'])->assertSessionHasErrors(['requested_sector_id', 'responsible_professional_id']);
-        $this->post(route('visits.close', $visit), ['outcome' => 'admission_requested', 'requested_sector_id' => $this->ward->id, 'responsible_professional_id' => $this->nurse->id])->assertSessionHasErrors('responsible_professional_id');
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested'])->assertSessionHasErrors(['requested_sector_id', 'responsible_professional_id']);
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $this->ward->id, 'responsible_professional_id' => $this->nurse->id])->assertSessionHasErrors('responsible_professional_id');
         $this->assertNull($visit->fresh()->closed_at);
-        $this->post(route('visits.close', $visit), ['outcome' => 'admission_requested', 'requested_sector_id' => $this->ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $this->ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->sole();
         $this->assertSame(['requested', $this->ward->id, $this->doctor->id], [$admission->status, $admission->requested_sector_id, $admission->responsible_professional_id]);
 

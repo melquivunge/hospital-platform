@@ -67,7 +67,7 @@ class MedicationAdministrationTest extends ClinicalTestCase
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dor.']);
         $this->post(route('emergency.call', $episode));
-        $this->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $this->admission = Admission::withoutTenantScope()->sole();
         $bedManager = Membership::factory()->for($this->unit->tenant)->create();
         $bedManager->grant(Role::BedManagement, $this->unit);
@@ -246,7 +246,7 @@ class MedicationAdministrationTest extends ClinicalTestCase
         // Discharged: nothing is administered.
         $renewed = DB::table('prescription_doses')->join('prescription_items', 'prescription_items.id', '=', 'prescription_doses.prescription_item_id')
             ->where('prescription_items.prescription_id', Prescription::withoutTenantScope()->latest('id')->value('id'))->orderBy('scheduled_at')->value('prescription_doses.id');
-        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $this->admission), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $this->admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
         $this->actingAs($this->wardNurse->user)->post(route('medication.dose', $renewed), ['outcome' => 'not_done', 'reason' => 'x'])->assertForbidden();
         $this->assertSame(0, MedicationAdministration::withoutTenantScope()->count());
     }

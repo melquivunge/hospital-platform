@@ -121,7 +121,7 @@ class SurgeryJourneyTest extends TestCase
         $this->actingAs($doctorUser)->post(route('emergency.triage', $episode), ['level' => 3, 'complaint' => 'Dor em hipocôndrio direito.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();
         $visit = Visit::withoutTenantScope()->sole();
-        $this->post(route('visits.close', $visit), ['outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->sole();
         $this->actingAs($users['leitos'])->post(route('admissions.allocate', $admission), ['bed_id' => $bed->id])->assertSessionHasNoErrors();
 

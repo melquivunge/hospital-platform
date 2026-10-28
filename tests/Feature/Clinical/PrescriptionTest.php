@@ -172,7 +172,7 @@ class PrescriptionTest extends ClinicalTestCase
         app(CurrentTenant::class)->set($this->unit->tenant);
         $this->doctor->forceFill(['council' => 'CRM', 'council_number' => '123456', 'council_uf' => 'SP'])->save();
         app(CurrentTenant::class)->set(null);
-        $this->post(route('visits.close', $this->visit), ['outcome' => 'discharged'])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $this->visit), ['cid_principal' => 'J18.9', 'outcome' => 'discharged'])->assertSessionHasNoErrors();
         $this->post(route('prescriptions.sign', $prescription), ['password' => 'password'])->assertForbidden();
         $this->assertSame('draft', $prescription->fresh()->status);
     }

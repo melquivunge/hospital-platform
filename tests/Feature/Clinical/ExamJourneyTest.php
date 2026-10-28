@@ -167,7 +167,7 @@ class ExamJourneyTest extends TestCase
         $this->assertSame(0, DB::table('user_notifications')->where('urgent', true)->whereNull('read_at')->count());
 
         // 9. The admission, then a head CT ordered from the ward page.
-        $this->post(route('visits.close', $visit), ['outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->sole();
         $this->actingAs($users['leitos'])->post(route('admissions.allocate', $admission), ['bed_id' => $bed->id])->assertSessionHasNoErrors();
         $this->actingAs($doctorUser)->post(route('exam-orders.admission.store', $admission), ['exam_ids' => [$exams['imaging']], 'priority' => 'routine', 'indication' => 'Queda no leito.', 'password' => 'password'])->assertSessionHasNoErrors();

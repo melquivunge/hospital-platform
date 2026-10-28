@@ -73,6 +73,7 @@ export default function BillingAccountShow({
     methods,
     billableItems,
     today,
+    diagnoses,
 }: {
     account: AccountSummary & {
         card: string | null;
@@ -93,6 +94,7 @@ export default function BillingAccountShow({
     methods: Record<string, string>;
     billableItems: { id: number; name: string; code: string | null }[];
     today: string;
+    diagnoses: { code: string; name: string | null; principal: boolean }[];
 }) {
     // A compensation, and the item it compensates, no longer count as pending.
     const counts = items.filter(
@@ -112,6 +114,34 @@ export default function BillingAccountShow({
                     title={account.patient ?? 'Paciente'}
                     description={`${account.stay} · ${stayModality(account)}`}
                 />
+                {account.modality === 'sus' && (
+                    <section
+                        aria-labelledby="diagnoses"
+                        className="mb-6 rounded-xl border bg-card px-5 py-4"
+                    >
+                        <h2 id="diagnoses" className="font-medium">
+                            CID-10
+                        </h2>
+                        {diagnoses.length === 0 ? (
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Ainda sem CID: quem atende informa ao encerrar o
+                                atendimento ou na alta.
+                            </p>
+                        ) : (
+                            <ul className="mt-1 grid gap-1 text-sm">
+                                {diagnoses.map((diagnosis) => (
+                                    <li key={diagnosis.code}>
+                                        <span className="font-medium tabular-nums">
+                                            {diagnosis.code}
+                                        </span>{' '}
+                                        {diagnosis.name}
+                                        {diagnosis.principal && ' (principal)'}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+                )}
                 <CloseBar
                     account={account}
                     canClose={canClose}
