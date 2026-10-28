@@ -24,6 +24,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6b" (todas as propostas ac
 ### 6b.3 SIGTAP por competência
 - Importação do ZIP oficial pelo administrador de rede (procedimentos, valores SA/SH/SP, instrumento de registro, compatibilidades de CID e CBO), por competência, com prévia e aplicação, como os CSVs existentes.
 - Código SIGTAP no item cobrável.
+- **Feito na 6b.3:** tela "Tabela SIGTAP" do administrador de rede: importa o ZIP oficial da competência (TabelaUnificada do FTP do DATASUS), lido pelos layouts que vêm no próprio ZIP (posição de byte em ISO-8859-1, depois UTF-8); guarda por rede e competência os procedimentos (valores SH, SA e SP em centavos, sexo, idades em meses, quantidade máxima), os instrumentos de registro e os CIDs e CBOs compatíveis (`sigtap_competences`, `sigtap_procedures`, migração 008900; catálogo sem RLS, como as tabelas de preço). Importar de novo a competência a substitui (trava consultiva contra duas importações simultâneas); as contas não mudam. Recusa com mensagem: não ZIP, arquivo ou coluna ausente, arquivo interno acima de 100 MB, linha longa demais. ZIP real de 10/2026: 5.039 procedimentos lidos em 0,4 s. Item cobrável com o código SIGTAP (10 dígitos). Fixture de teste: recorte byte a byte do ZIP oficial, com origem em `tests/Fixtures/sigtap/ORIGEM.md`.
 
 ### 6b.4 Conta SUS
 - Itens gerados dos mesmos registros de origem, com o código SIGTAP e o valor da competência do atendimento; o que não é registrado no instrumento da conta (pacote da AIH) não entra.

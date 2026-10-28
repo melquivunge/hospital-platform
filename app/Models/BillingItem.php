@@ -22,7 +22,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $code TUSS or the network's own
  * @property bool $active
  */
-#[Fillable(['kind', 'exam_id', 'surgical_procedure_id', 'material_id', 'medication_id', 'bed_type', 'name', 'code', 'active'])]
+#[Fillable(['kind', 'exam_id', 'surgical_procedure_id', 'material_id', 'medication_id', 'bed_type', 'name', 'code', 'sigtap_code', 'active'])]
 class BillingItem extends Model
 {
     use BelongsToTenant;

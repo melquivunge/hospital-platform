@@ -16,6 +16,7 @@ type Item = {
     bed_type: string | null;
     name: string;
     code: string | null;
+    sigtap_code: string | null;
     active: boolean;
 };
 
@@ -267,6 +268,8 @@ export default function BillingPricesIndex({
                                             {item.bed_type &&
                                                 ` · ${bedTypes[item.bed_type]}`}
                                             {item.code && ` · ${item.code}`}
+                                            {item.sigtap_code &&
+                                                ` · SIGTAP ${item.sigtap_code}`}
                                             {!item.active && ' · inativo'}
                                         </span>
                                     </div>
@@ -418,7 +421,7 @@ function ItemCreate({
             {...BillingPriceController.storeItem.form()}
             errorBag="newItem"
             options={{ preserveScroll: true }}
-            resetOnSuccess={['name', 'code']}
+            resetOnSuccess={['name', 'code', 'sigtap_code']}
             className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-2"
         >
             {({ processing, errors }) => (
@@ -507,6 +510,19 @@ function ItemCreate({
                         />
                         <InputError message={errors.code} />
                     </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="new-item-sigtap">
+                            Código SIGTAP, para o SUS (opcional)
+                        </Label>
+                        <Input
+                            id="new-item-sigtap"
+                            name="sigtap_code"
+                            inputMode="numeric"
+                            maxLength={10}
+                            className="h-11"
+                        />
+                        <InputError message={errors.sigtap_code} />
+                    </div>
                     <div className="sm:col-span-2">
                         <Button
                             type="submit"
@@ -565,6 +581,20 @@ function ItemEdit({ item }: { item: Item }) {
                                 className="h-11"
                             />
                             <InputError message={errors.code} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor={`item-${item.id}-sigtap`}>
+                                Código SIGTAP (opcional)
+                            </Label>
+                            <Input
+                                id={`item-${item.id}-sigtap`}
+                                name="sigtap_code"
+                                inputMode="numeric"
+                                maxLength={10}
+                                defaultValue={item.sigtap_code ?? ''}
+                                className="h-11"
+                            />
+                            <InputError message={errors.sigtap_code} />
                         </div>
                         <ActiveToggle
                             active={item.active}

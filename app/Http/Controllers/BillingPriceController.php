@@ -47,7 +47,7 @@ class BillingPriceController extends Controller
         return Inertia::render('billing-prices/index', [
             'kinds' => BillingItem::KINDS,
             'bedTypes' => BillingItem::BED_TYPES,
-            'items' => BillingItem::query()->orderBy('kind')->orderBy('name')->get()->map->only('id', 'kind', 'bed_type', 'name', 'code', 'active')->values(),
+            'items' => BillingItem::query()->orderBy('kind')->orderBy('name')->get()->map->only('id', 'kind', 'bed_type', 'name', 'code', 'sigtap_code', 'active')->values(),
             'tables' => $tables->values(),
             'tableId' => $table?->id,
             'prices' => $table === null ? [] : PriceEntry::query()->where('price_table_id', $table->id)->orderBy('billing_item_id')->orderByDesc('valid_from')->get()
@@ -82,7 +82,9 @@ class BillingPriceController extends Controller
             'bed_type' => ['nullable', 'required_if:kind,daily', Rule::in(array_keys(BillingItem::BED_TYPES))],
             'name' => ['required', 'string', 'max:255', 'not_regex:/^[=+\-@\t\r]/'],
             'code' => ['nullable', 'string', 'max:20', 'regex:/^[0-9A-Za-z.-]+$/', 'not_regex:/^-/'],
-        ], [], ['kind' => 'tipo', 'reference_id' => 'item do catálogo', 'bed_type' => 'tipo de leito', 'name' => 'nome', 'code' => 'código']);
+            // Step 6b.3: the SIGTAP procedure the item is billed as in the SUS.
+            'sigtap_code' => ['nullable', 'string', 'regex:/^\d{10}\z/'],
+        ], ['sigtap_code.regex' => 'O código SIGTAP tem 10 dígitos.'], ['kind' => 'tipo', 'reference_id' => 'item do catálogo', 'bed_type' => 'tipo de leito', 'name' => 'nome', 'code' => 'código']);
         $column = BillingItem::REFERENCES[$data['kind']] ?? null;
         // Only an active entry of this network's catalog (the tenant scope applies to the query).
         if ($column !== null && ! self::catalog($data['kind'])->whereKey((int) $data['reference_id'])->exists()) {
@@ -90,7 +92,7 @@ class BillingPriceController extends Controller
         }
         self::unique(function () use ($data, $column) {
             $item = BillingItem::create([
-                'kind' => $data['kind'], 'name' => Medication::clean($data['name']), 'code' => $data['code'] ?? null,
+                'kind' => $data['kind'], 'name' => Medication::clean($data['name']), 'code' => $data['code'] ?? null, 'sigtap_code' => $data['sigtap_code'] ?? null,
                 'bed_type' => $data['kind'] === 'daily' ? $data['bed_type'] : null, ...($column === null ? [] : [$column => (int) $data['reference_id']]),
             ]);
             AuditEvent::record('billing_item.created', $item->tenant_id, $item, ['kind' => $item->kind]);
@@ -106,9 +108,10 @@ class BillingPriceController extends Controller
         $data = $request->validateWithBag("item-{$item->id}", [
             'name' => ['required', 'string', 'max:255', 'not_regex:/^[=+\-@\t\r]/'],
             'code' => ['nullable', 'string', 'max:20', 'regex:/^[0-9A-Za-z.-]+$/', 'not_regex:/^-/'],
+            'sigtap_code' => ['nullable', 'string', 'regex:/^\d{10}\z/'],
             'active' => ['required', 'boolean'],
-        ], [], ['name' => 'nome', 'code' => 'código']);
-        $item->fill(['name' => Medication::clean($data['name']), 'code' => $data['code'] ?? null, 'active' => $data['active']]);
+        ], ['sigtap_code.regex' => 'O código SIGTAP tem 10 dígitos.'], ['name' => 'nome', 'code' => 'código']);
+        $item->fill(['name' => Medication::clean($data['name']), 'code' => $data['code'] ?? null, 'sigtap_code' => $data['sigtap_code'] ?? null, 'active' => $data['active']]);
         $changed = array_values(array_diff(array_keys($item->getDirty()), ['updated_at']));
         $item->save();
         if ($changed !== []) {
