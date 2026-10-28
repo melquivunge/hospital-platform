@@ -4,6 +4,7 @@ namespace Tests\Feature\Clinical;
 
 use App\Billing\SigtapImport;
 use App\Models\Admission;
+use App\Models\AihRequest;
 use App\Models\AuditEvent;
 use App\Models\Bed;
 use App\Models\EmergencyEpisode;
@@ -118,14 +119,15 @@ class AihRequestTest extends ClinicalTestCase
         $this->actingAs($this->wardNurse->user)->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page
             ->where('aihRequest.canSign', false)->where('aihRequest.current.version', 2));
         // The ward team prints it (with the read trail); billing, without the record, does not.
-        $pdf = $this->actingAs($this->wardNurse->user)->get(route('ward.aih-request.pdf', $admission))->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $latest = AihRequest::withoutTenantScope()->where('version', 2)->sole();
+        $pdf = $this->actingAs($this->wardNurse->user)->get(route('aih-requests.pdf', $latest))->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->assertStringStartsWith('%PDF', (string) $pdf->getContent());
         $this->assertSame(1, AuditEvent::query()->where('action', 'aih_request.printed')->count());
         // Only the responsible doctor signs.
         $this->post(route('ward.aih-request.store', $admission), ['procedure_code' => '0303140151', 'cid_principal' => 'J18.9', 'justification' => 'x', 'password' => 'password'])->assertForbidden();
         $billing = Membership::factory()->for($this->unit->tenant)->create();
         $billing->grant(Role::Billing, $this->unit);
-        $this->actingAs($billing->user)->get(route('ward.aih-request.pdf', $admission))->assertForbidden();
+        $this->actingAs($billing->user)->get(route('aih-requests.pdf', $latest))->assertForbidden();
 
         // The database keeps every version as signed.
         app(CurrentTenant::class)->set($this->unit->tenant);
@@ -144,7 +146,6 @@ class AihRequestTest extends ClinicalTestCase
         $admission = $this->admitted('private');
         $this->actingAs($this->doctorAccount->user)->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('aihRequest', null));
         $this->post(route('ward.aih-request.store', $admission), ['procedure_code' => '0303140151', 'cid_principal' => 'J18.9', 'justification' => 'x', 'password' => 'password'])->assertForbidden();
-        $this->get(route('ward.aih-request.pdf', $admission))->assertNotFound();
 
         // AIH principal procedures only, by code or by words without accents.
         $this->getJson(route('sigtap.procedures', ['q' => 'pneumonia gripe']))->assertOk()->assertJsonPath('0.code', '0303140151')->assertJsonCount(1);
@@ -154,5 +155,49 @@ class AihRequestTest extends ClinicalTestCase
         $this->getJson(route('sigtap.procedures', ['q' => ['0303']]))->assertOk()->assertExactJson([]);
         // Not for an account without a professional record.
         $this->actingAs($this->manager->user)->getJson(route('sigtap.procedures', ['q' => '0303']))->assertForbidden();
+    }
+
+    /**
+     * Step 6b.5a2 (user's decision, 28/10/2026): after the discharge, the doctor who signed still prints the report and
+     * the auditor reads every report of the network, each read in the trail; the lists carry no clinical content.
+     */
+    public function test_after_the_discharge_the_signer_and_the_auditor_print_the_report(): void
+    {
+        $this->importSigtap();
+        $admission = $this->admitted();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.aih-request.store', $admission), [
+            'procedure_code' => '0303140151', 'cid_principal' => 'J18.9', 'justification' => 'Pneumonia com hipoxemia.', 'password' => 'password',
+        ])->assertSessionHasNoErrors();
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $report = AihRequest::withoutTenantScope()->sole();
+
+        // The ward team no longer reads it; the signer does, as a read of the admission.
+        $this->actingAs($this->wardNurse->user)->get(route('aih-requests.pdf', $report))->assertForbidden();
+        $this->actingAs($this->doctorAccount->user)->get(route('aih-requests.pdf', $report))->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->get(route('aih-requests.index'))->assertInertia(fn (Assert $page) => $page->component('aih-requests/index')->where('auditor', false)
+            ->where('reports.0.id', $report->id)->has('reports', 1)->where('reports.0', fn ($row) => ! collect($row)->keys()->intersect(['procedure', 'cid', 'justification'])->count()));
+        $this->get(route('dashboard'))->assertInertia(fn (Assert $page) => $page->where('canViewAihRequests', true));
+        $this->actingAs($this->wardNurse->user)->get(route('aih-requests.index'))->assertInertia(fn (Assert $page) => $page->has('reports', 0));
+        $this->get(route('dashboard'))->assertInertia(fn (Assert $page) => $page->where('canViewAihRequests', false));
+
+        // The auditor of the network lists and prints it, with the reason "audit" in the trail; billing does not.
+        $auditor = Membership::factory()->for($this->unit->tenant)->withRole(Role::Auditor)->create();
+        $this->actingAs($auditor->user)->get(route('aih-requests.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('auditor', true)->where('reports.0.signer', 'Dra. Ana'));
+        $this->get(route('aih-requests.pdf', $report))->assertOk();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->assertTrue(DB::table('clinical_reads')->where(['user_id' => $this->doctorAccount->user_id, 'reason' => 'admission', 'admission_id' => $admission->id])->exists());
+        $this->assertSame($report->id, DB::table('clinical_reads')->where('reason', 'audit')->value('aih_request_id'));
+        app(CurrentTenant::class)->set(null);
+        $this->get(route('clinical-access.index'))->assertInertia(fn (Assert $page) => $page->where('reads', fn ($reads) => collect($reads)->contains('reason', 'audit')));
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $this->actingAs($billing->user)->get(route('aih-requests.pdf', $report))->assertForbidden();
+        $this->get(route('aih-requests.index'))->assertForbidden();
+
+        // An auditor of another network does not even find it.
+        app(CurrentTenant::class)->set(null);
+        $stranger = Membership::factory()->withRole(Role::Auditor)->create();
+        $this->actingAs($stranger->user)->get(route('aih-requests.pdf', $report))->assertNotFound();
     }
 }

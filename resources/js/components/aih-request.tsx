@@ -11,6 +11,7 @@ import { procedures } from '@/routes/sigtap';
 
 export type AihRequestPanel = {
     current: {
+        id: number;
         version: number;
         procedure: string;
         cid: string;
@@ -85,7 +86,7 @@ export function AihRequest({
                 </div>
                 {current && (
                     <Button asChild variant="outline" className="min-h-11">
-                        <a href={AihRequestController.pdf.url(admissionId)}>
+                        <a href={AihRequestController.pdf.url(current.id)}>
                             Baixar PDF
                         </a>
                     </Button>

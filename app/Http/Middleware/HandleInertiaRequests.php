@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Clinical\ClinicalAccess;
+use App\Http\Controllers\AihRequestController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\BedController;
 use App\Http\Controllers\BillingAccountController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\StockInventoryController;
 use App\Http\Controllers\SurgeryRecordController;
 use App\Http\Controllers\SurgeryScheduleController;
+use App\Models\AihRequest;
 use App\Models\Exam;
 use App\Models\ImportBatch;
 use App\Models\Insurer;
@@ -79,6 +81,9 @@ class HandleInertiaRequests extends Middleware
             'canAttend' => fn () => $request->user() !== null && ClinicalAccess::professional($request->user()) !== null,
             'canViewClinicalAccess' => fn () => ($membership = $request->user() === null ? null : UnitPolicy::currentMembership($request->user())) !== null
                 && ($membership->hasRole(Role::Auditor) || $membership->hasRole(Role::NetworkAdmin) || Professional::managedUnitIds($membership) !== []),
+            // Step 6b.5a2: the auditor, and a doctor who signed an AIH request report.
+            'canViewAihRequests' => fn () => $request->user() !== null && (AihRequestController::auditor($request)
+                || (($professional = ClinicalAccess::professional($request->user())) !== null && AihRequest::query()->where('professional_id', $professional->id)->exists())),
             'canViewEmergency' => fn () => $request->user() !== null
                 && EmergencyController::visible($request, UnitPolicy::currentMembership($request->user())),
             'canManageTriageLevels' => fn () => $request->user() !== null

@@ -22,7 +22,8 @@ type Read = {
         | 'pharmacy'
         | 'exam'
         | 'surgery'
-        | 'billing';
+        | 'billing'
+        | 'audit';
     user: string;
     patient: string;
 };
@@ -35,6 +36,7 @@ const reasonLabels: Record<Read['reason'], string> = {
     exam: 'Execução de exame',
     surgery: 'Cirurgia (centro cirúrgico ou equipe)',
     billing: 'Faturamento (só a conta)',
+    audit: 'Auditoria (laudo da AIH)',
 };
 
 /** Who opened which record and why (step 3.6b), never clinical content. */
