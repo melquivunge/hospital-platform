@@ -7,6 +7,7 @@ import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SigtapProcedureField } from '@/components/sigtap-procedure-field';
 import { money } from '@/lib/utils';
 import { index } from '@/routes/billing-accounts';
 import type { AccountSummary } from './index';
@@ -21,7 +22,8 @@ type Origin =
     | 'dispensing'
     | 'dispensing_return'
     | 'manual'
-    | 'compensation';
+    | 'compensation'
+    | 'aih_principal';
 
 type Item = {
     id: number;
@@ -55,6 +57,7 @@ const originLabels: Record<Origin, string> = {
     dispensing_return: 'Devolução de medicamento',
     manual: 'Item manual',
     compensation: 'Estorno',
+    aih_principal: 'Procedimento principal da AIH',
 };
 
 /**
@@ -76,6 +79,7 @@ export default function BillingAccountShow({
     diagnoses,
     susPending,
     aih,
+    canChangePrincipal,
 }: {
     account: AccountSummary & {
         card: string | null;
@@ -98,7 +102,8 @@ export default function BillingAccountShow({
     today: string;
     diagnoses: { code: string; name: string | null; principal: boolean }[];
     susPending: string[];
-    aih: { number: string | null; canRecord: boolean } | null;
+    aih: AihData | null;
+    canChangePrincipal: boolean;
 }) {
     // A compensation, and the item it compensates, no longer count as pending.
     const counts = items.filter(
@@ -146,7 +151,13 @@ export default function BillingAccountShow({
                         )}
                     </section>
                 )}
-                {aih && <AihNumber accountId={account.id} aih={aih} />}
+                {aih && (
+                    <AihNumber
+                        accountId={account.id}
+                        aih={aih}
+                        canChangePrincipal={canChangePrincipal}
+                    />
+                )}
                 {susPending.length > 0 && (
                     <section
                         aria-labelledby="sus-pending"
@@ -873,13 +884,28 @@ function Authorize({ accountId, items }: { accountId: number; items: Item[] }) {
     );
 }
 
-/** Step 6b.5b1: the number of the AIH the manager authorized; corrected while the account is open. */
+type AihData = {
+    number: string | null;
+    canRecord: boolean;
+    principal: {
+        procedure: string;
+        fromReport: boolean;
+        reason: string | null;
+    } | null;
+};
+
+/**
+ * Step 6b.5b1: the number of the AIH the manager authorized; corrected while the account is open. Step 6b.5b2: the
+ * principal procedure (the report's, or billing's change with its reason).
+ */
 function AihNumber({
     accountId,
     aih,
+    canChangePrincipal,
 }: {
     accountId: number;
-    aih: { number: string | null; canRecord: boolean };
+    aih: AihData;
+    canChangePrincipal: boolean;
 }) {
     return (
         <section
@@ -900,6 +926,21 @@ function AihNumber({
                         </>
                     ) : (
                         'Aguardando o número da AIH autorizada pelo gestor.'
+                    )}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                    {aih.principal ? (
+                        <>
+                            Procedimento principal:{' '}
+                            <span className="font-medium text-foreground">
+                                {aih.principal.procedure}
+                            </span>{' '}
+                            {aih.principal.fromReport
+                                ? '(do laudo)'
+                                : `(trocado pelo faturamento: ${aih.principal.reason})`}
+                        </>
+                    ) : (
+                        'Sem procedimento principal: aguardando o laudo da AIH.'
                     )}
                 </p>
             </div>
@@ -950,6 +991,57 @@ function AihNumber({
                         </>
                     )}
                 </Form>
+            )}
+            {canChangePrincipal && (
+                <details className="rounded-lg border px-4 py-2">
+                    <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">
+                        Trocar o procedimento principal
+                    </summary>
+                    <Form
+                        {...BillingAccountController.changeAihPrincipal.form(
+                            accountId,
+                        )}
+                        errorBag="principal"
+                        resetOnSuccess
+                        className="grid gap-4 py-3"
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <SigtapProcedureField
+                                    label="Novo procedimento principal (SIGTAP)"
+                                    error={errors.procedure_code}
+                                />
+                                <Field
+                                    id="principal_reason"
+                                    label="Motivo"
+                                    error={errors.reason}
+                                >
+                                    <Input
+                                        id="principal_reason"
+                                        name="reason"
+                                        required
+                                        maxLength={500}
+                                        placeholder="Ex.: cirurgia realizada no lugar do tratamento clínico"
+                                        className="h-11"
+                                    />
+                                </Field>
+                                <p className="text-sm text-muted-foreground">
+                                    O item do procedimento anterior é estornado
+                                    e o novo entra pelo valor da competência da
+                                    internação.
+                                </p>
+                                <Button
+                                    type="submit"
+                                    variant="outline"
+                                    disabled={processing}
+                                    className="min-h-11 justify-self-start"
+                                >
+                                    Trocar procedimento
+                                </Button>
+                            </>
+                        )}
+                    </Form>
+                </details>
             )}
         </section>
     );

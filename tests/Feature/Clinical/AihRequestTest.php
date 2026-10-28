@@ -3,6 +3,7 @@
 namespace Tests\Feature\Clinical;
 
 use App\Billing\SigtapImport;
+use App\Billing\SusRules;
 use App\Models\Admission;
 use App\Models\AihRequest;
 use App\Models\AuditEvent;
@@ -214,7 +215,7 @@ class AihRequestTest extends ClinicalTestCase
         $billing->grant(Role::Billing, $this->unit);
         $missing = 'Sem o número da AIH autorizada: registre-o quando o gestor devolver o laudo autorizado.';
         $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
-            ->where('aih', ['number' => null, 'canRecord' => true])->where('susPending', fn ($pending) => collect($pending)->contains($missing)));
+            ->where('aih', ['number' => null, 'canRecord' => true, 'principal' => null])->where('susPending', fn ($pending) => collect($pending)->contains($missing)));
         $record = fn (string $number) => $this->post(route('billing-accounts.aih-number', $account), ['aih_number' => $number]);
 
         $record('123456789012')->assertSessionHasErrors(['aih_number' => 'O número da AIH tem 13 dígitos.']);
@@ -244,5 +245,97 @@ class AihRequestTest extends ClinicalTestCase
         $outsider = Membership::factory()->for($this->unit->tenant)->create();
         $outsider->grant(Role::Billing, $this->other);
         $this->actingAs($outsider->user)->post(route('billing-accounts.aih-number', $other), ['aih_number' => '3526100000098'])->assertForbidden();
+    }
+
+    /**
+     * Step 6b.5b2: the AIH's principal procedure starts as the report's and is billed (SH + SP of the admission day's
+     * competence); billing changes it with a reason, the previous item compensated; afterwards the report no longer
+     * leads; a care record that already billed it makes the principal item go.
+     */
+    public function test_the_principal_procedure_follows_the_report_until_billing_changes_it(): void
+    {
+        $this->importSigtap();
+        $admission = $this->admitted();
+        $account = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $admission->emergency_episode_id)->sole();
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $show = fn () => $this->actingAs($billing->user)->get(route('billing-accounts.show', $account));
+        $show()->assertInertia(fn (Assert $page) => $page->where('aih.principal', null)->where('canChangePrincipal', true)
+            ->where('susPending', fn ($pending) => collect($pending)->contains(fn ($problem) => str_starts_with($problem, 'Sem procedimento principal'))));
+
+        $sign = fn (string $code) => $this->actingAs($this->doctorAccount->user)->post(route('ward.aih-request.store', $admission), [
+            'procedure_code' => $code, 'cid_principal' => $code === '0407040129' ? 'K42.9' : 'J18.9', 'justification' => 'Pneumonia com hipoxemia.', 'password' => 'password',
+        ])->assertSessionHasNoErrors();
+        $sign('0303140151');
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $price = fn (string $code) => SusRules::price(SusRules::procedure($this->unit->tenant_id, $code, '2026-11-13'), 'aih');
+        [$pneumonia, $hernia] = [$price('0303140151'), $price('0407040129')];
+        app(CurrentTenant::class)->set(null);
+        $show()->assertInertia(fn (Assert $page) => $page->where('aih.principal.fromReport', true)
+            ->where('aih.principal.procedure', fn ($procedure) => str_starts_with($procedure, '0303140151'))
+            ->where('items', fn ($items) => collect($items)->where('origin', 'aih_principal')->where('code', '0303140151')->where('unitPriceCents', $pneumonia)->count() === 1)
+            ->where('susPending', fn ($pending) => ! collect($pending)->contains(fn ($problem) => str_starts_with($problem, 'Sem procedimento principal'))));
+        // A new version of the report with the same procedure changes nothing.
+        $sign('0303140151');
+        $this->assertSame(1, DB::table('aih_principals')->count());
+
+        // A new version with another procedure leads too: the previous item compensated by its signer.
+        $sign('0407040129');
+        $show()->assertInertia(fn (Assert $page) => $page->where('aih.principal.procedure', fn ($procedure) => str_starts_with($procedure, '0407040129'))
+            ->where('items', fn ($items) => collect($items)->where('origin', 'compensation')->where('code', '0303140151')->where('reason', 'Novo laudo da AIH (versão 3).')->count() === 1
+                && collect($items)->where('origin', 'aih_principal')->where('code', '0407040129')->where('unitPriceCents', $hernia)->count() === 1));
+
+        // Billing changes it with a reason: not a consultation, not the same, not without a reason.
+        $change = fn (array $data) => $this->actingAs($billing->user)->post(route('billing-accounts.aih-principal', $account), $data);
+        $change(['procedure_code' => '0301010072', 'reason' => 'x'])->assertSessionHasErrorsIn('principal', 'procedure_code');
+        $change(['procedure_code' => '0407040129', 'reason' => 'x'])->assertSessionHasErrorsIn('principal', ['procedure_code' => 'Este já é o procedimento principal.']);
+        $change(['procedure_code' => '0303140151'])->assertSessionHasErrorsIn('principal', 'reason');
+        $change(['procedure_code' => '0303140151', 'reason' => 'Tratamento clínico, sem cirurgia.'])->assertSessionHasNoErrors();
+        $show()->assertInertia(fn (Assert $page) => $page->where('aih.principal.fromReport', false)->where('aih.principal.reason', 'Tratamento clínico, sem cirurgia.')
+            ->where('items', fn ($items) => collect($items)->where('origin', 'compensation')->where('code', '0407040129')->where('quantity', -1)->where('reason', 'Tratamento clínico, sem cirurgia.')->count() === 1
+                && collect($items)->where('origin', 'aih_principal')->where('code', '0303140151')->count() === 2));
+        // From now on the report no longer leads.
+        $sign('0407040129');
+        $show()->assertInertia(fn (Assert $page) => $page->where('aih.principal.procedure', fn ($procedure) => str_starts_with($procedure, '0303140151')));
+        $this->assertStringNotContainsString('0303140151', AuditEvent::query()->where('action', 'billing_account.aih_principal_changed')->pluck('context')->toJson());
+
+        // A care record billed it already: the principal item goes (compensated), the total counts it once.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        DB::table('billing_account_items')->insert(['tenant_id' => $account->tenant_id, 'billing_account_id' => $account->id, 'origin_type' => 'surgery', 'origin_id' => 999999,
+            'code' => '0303140151', 'name' => 'Tratamento de pneumonias', 'quantity' => 1, 'unit_price_cents' => $pneumonia, 'needs_authorization' => false, 'performed_on' => '2026-11-13', 'created_at' => now()]);
+        $account->generate();
+        $this->assertSame($pneumonia, (int) DB::table('billing_account_items')->where('billing_account_id', $account->id)->sum(DB::raw('quantity * unit_price_cents')));
+        $this->assertSame('O procedimento principal já está na conta pelo registro assistencial.', DB::table('billing_account_items')->where('origin_type', 'compensation')->orderByDesc('id')->value('reason'));
+        try {
+            DB::transaction(fn () => DB::table('aih_principals')->update(['reason' => 'x']));
+            $this->fail('The database accepted a change to a principal procedure.');
+        } catch (QueryException) {
+        }
+        app(CurrentTenant::class)->set(null);
+
+        // Billing of another unit does not reach it; a consultation's account has no principal.
+        $outsider = Membership::factory()->for($this->unit->tenant)->create();
+        $outsider->grant(Role::Billing, $this->other);
+        $this->actingAs($outsider->user)->post(route('billing-accounts.aih-principal', $account), ['procedure_code' => '0303140151', 'reason' => 'x'])->assertForbidden();
+        $this->getJson(route('sigtap.procedures', ['q' => '0303']))->assertOk()->assertJsonPath('0.code', '0303140151');
+    }
+
+    /** Review finding (6b.5b2): a principal without a value in the admission's competence keeps the account open. */
+    public function test_a_principal_without_its_competence_value_is_pending(): void
+    {
+        $this->importSigtap();
+        $admission = $this->admitted();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.aih-request.store', $admission), [
+            'procedure_code' => '0303140151', 'cid_principal' => 'J18.9', 'justification' => 'Pneumonia.', 'password' => 'password',
+        ])->assertSessionHasNoErrors();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        DB::table('sigtap_competences')->delete();
+        $account = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $admission->emergency_episode_id)->sole();
+        app(CurrentTenant::class)->set(null);
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('items', fn ($items) => collect($items)->where('origin', 'aih_principal')->isEmpty())
+            ->where('susPending', fn ($pending) => collect($pending)->contains('O procedimento principal 0303140151 não tem valor na SIGTAP de 11/2026 (competência da internação): importe a competência ou troque o procedimento.')));
     }
 }

@@ -1,5 +1,5 @@
 import { Form } from '@inertiajs/react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId } from 'react';
 import AihRequestController from '@/actions/App/Http/Controllers/AihRequestController';
 import { CidField } from '@/components/cid-field';
 import { textareaClassName } from '@/components/clinical-notes';
@@ -7,7 +7,7 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { procedures } from '@/routes/sigtap';
+import { SigtapProcedureField } from '@/components/sigtap-procedure-field';
 
 export type AihRequestPanel = {
     current: {
@@ -22,8 +22,6 @@ export type AihRequestPanel = {
     sigtap: boolean;
 };
 
-type Option = { code: string; name: string };
-
 /**
  * Step 6b.5a (ADR-0011): the AIH request report of a SUS admission. Whoever attends prints the latest one; the
  * responsible doctor signs it with the password, and a new one replaces it (the previous is kept).
@@ -36,32 +34,6 @@ export function AihRequest({
     panel: AihRequestPanel;
 }) {
     const id = useId();
-    const [options, setOptions] = useState<Option[]>([]);
-    const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-    // Only the latest request's answer is shown: a slower, older one is dropped.
-    const latest = useRef(0);
-    useEffect(() => () => clearTimeout(timer.current), []);
-    const suggest = (term: string) => {
-        clearTimeout(timer.current);
-        if (term.trim().length < 2) {
-            setOptions([]);
-
-            return;
-        }
-        timer.current = setTimeout(() => {
-            const request = ++latest.current;
-            fetch(procedures.url({ query: { q: term } }), {
-                headers: { Accept: 'application/json' },
-            })
-                .then((response) => (response.ok ? response.json() : []))
-                .then((found: Option[]) => {
-                    if (request === latest.current) {
-                        setOptions(found);
-                    }
-                })
-                .catch(() => setOptions([]));
-        }, 250);
-    };
     const current = panel.current;
 
     return (
@@ -106,46 +78,10 @@ export function AihRequest({
                         >
                             {({ processing, errors }) => (
                                 <>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor={`${id}-procedure`}>
-                                            Procedimento solicitado (SIGTAP)
-                                        </Label>
-                                        <Input
-                                            id={`${id}-procedure`}
-                                            name="procedure_code"
-                                            list={`${id}-procedures`}
-                                            required
-                                            maxLength={20}
-                                            autoComplete="off"
-                                            placeholder="Código ou nome"
-                                            onChange={(event) =>
-                                                suggest(event.target.value)
-                                            }
-                                            aria-invalid={
-                                                !!errors.procedure_code
-                                            }
-                                            aria-describedby={
-                                                errors.procedure_code
-                                                    ? `${id}-procedure-error`
-                                                    : undefined
-                                            }
-                                            className="h-11"
-                                        />
-                                        <datalist id={`${id}-procedures`}>
-                                            {options.map((option) => (
-                                                <option
-                                                    key={option.code}
-                                                    value={option.code}
-                                                >
-                                                    {option.name}
-                                                </option>
-                                            ))}
-                                        </datalist>
-                                        <InputError
-                                            id={`${id}-procedure-error`}
-                                            message={errors.procedure_code}
-                                        />
-                                    </div>
+                                    <SigtapProcedureField
+                                        label="Procedimento solicitado (SIGTAP)"
+                                        error={errors.procedure_code}
+                                    />
                                     <CidField required single errors={errors} />
                                     <div className="grid gap-2">
                                         <Label htmlFor={`${id}-justification`}>

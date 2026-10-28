@@ -118,6 +118,8 @@ class BillingAccountController extends Controller
                 ],
             ])->values(),
             'canChange' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance'], true),
+            // Step 6b.5b2: billing changes the AIH's principal procedure on the open stay account.
+            'canChangePrincipal' => $account->status === 'open' && $account->complement_of_id === null && $account->modality === 'sus' && SusRules::instrument($account) === 'aih',
             // Step 6.4a: an item of a closed account is compensated in the complementary account.
             'canCompensate' => in_array($account->modality, ['private', 'insurance'], true),
             'canClose' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance', 'sus'], true) && $account->stayEnded(),
@@ -135,6 +137,12 @@ class BillingAccountController extends Controller
             'aih' => $account->modality !== 'sus' || SusRules::instrument($stay) !== 'aih' ? null : [
                 'number' => $stay->aih_number,
                 'canRecord' => $stay->is($account) && $account->status === 'open',
+                // Step 6b.5b2: the principal procedure, from the report or billing's change (never the report's text).
+                'principal' => ($principal = DB::table('aih_principals')->where('billing_account_id', $stay->id)->orderByDesc('id')->first()) === null ? null : [
+                    'procedure' => "{$principal->procedure_code} · {$principal->procedure_name}",
+                    'fromReport' => $principal->aih_request_id !== null,
+                    'reason' => $principal->reason,
+                ],
             ],
             // Step 6b.2 (ADR-0011): the SUS account shows the CID-10 codes of its stay, never the record.
             'diagnoses' => $account->modality === 'sus' ? SusRules::diagnoses($stay) : [],
@@ -354,6 +362,50 @@ class BillingAccountController extends Controller
             AuditEvent::record('billing_account.aih_number_recorded', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'replaced' => $replaced]);
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Número da AIH registrado.']);
+
+        return back();
+    }
+
+    /**
+     * Step 6b.5b2 (ADR-0011): billing changes the AIH's principal procedure with a reason (for example, the surgery
+     * done instead of the clinical treatment requested), on the open stay account; the item follows (the previous one
+     * compensated).
+     */
+    public function changeAihPrincipal(Request $request, BillingAccount $account): RedirectResponse
+    {
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $bag = 'principal';
+        $data = $request->validateWithBag($bag, [
+            'procedure_code' => ['required', 'string', 'max:20'],
+            'reason' => ['required', 'string', 'max:500'],
+        ], [], ['procedure_code' => 'procedimento', 'reason' => 'motivo']);
+        $refuse = fn (string $field, string $message) => ValidationException::withMessages([$field => $message])->errorBag($bag);
+        DB::transaction(function () use ($request, $account, $data, $refuse) {
+            $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
+            if ($locked->modality !== 'sus' || $locked->complement_of_id !== null || SusRules::instrument($locked) !== 'aih') {
+                throw $refuse('procedure_code', 'Só a conta de uma internação SUS tem procedimento principal.');
+            }
+            if ($locked->status !== 'open') {
+                throw $refuse('procedure_code', 'Esta conta já foi fechada.');
+            }
+            $timezone = Unit::query()->whereKey($locked->unit_id)->value('timezone') ?? 'UTC';
+            $procedure = SusRules::procedure($locked->tenant_id, (string) preg_replace('/\D/', '', $data['procedure_code']), (string) SusRules::admissionDay($locked, $timezone));
+            if ($procedure === null || ! SusRules::principal($procedure)) {
+                throw $refuse('procedure_code', 'Procedimento não encontrado na SIGTAP da competência da internação como principal da AIH.');
+            }
+            if (DB::table('aih_principals')->where('billing_account_id', $locked->id)->orderByDesc('id')->value('procedure_code') === $procedure->code) {
+                throw $refuse('procedure_code', 'Este já é o procedimento principal.');
+            }
+            DB::table('aih_principals')->insert([
+                'tenant_id' => $locked->tenant_id, 'billing_account_id' => $locked->id, 'procedure_code' => $procedure->code,
+                'procedure_name' => $procedure->name,
+                'reason' => trim($data['reason']), 'user_id' => $request->user()->id, 'recorded_at' => now(),
+            ]);
+            // Ids only: the procedure tied to the account is clinical.
+            AuditEvent::record('billing_account.aih_principal_changed', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id]);
+        });
+        $account->generate();
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Procedimento principal trocado.']);
 
         return back();
     }
