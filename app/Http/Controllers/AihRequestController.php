@@ -167,10 +167,13 @@ class AihRequestController extends Controller
         ]);
     }
 
-    /** The procedure search of the report's field: the network's catalog, AIH principal procedures only. */
+    /**
+     * The procedure search of the report's field and of billing's change of the principal (step 6b.5b2): the network's
+     * catalog, AIH principal procedures only.
+     */
     public function search(Request $request): JsonResponse
     {
-        ClinicalAccess::professional($request->user()) ?? abort(403);
+        abort_unless(ClinicalAccess::professional($request->user()) !== null || BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())) !== [], 403);
         // The network's time, as on the SIGTAP screen: its first unit's zone.
         $competence = self::competence((int) UnitPolicy::currentMembership($request->user())?->tenant_id, Unit::query()->orderBy('id')->value('timezone') ?? 'UTC');
         $typed = $request->query('q');

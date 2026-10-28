@@ -197,13 +197,18 @@ class BillingAccount extends Model
                 ];
             }
 
-            if ($rows === []) {
-                return 0;
-            }
             // Step 6.4a: after the account closed, into its open complementary account.
-            $target = self::target($account);
+            $added = 0;
+            if ($rows !== []) {
+                $target = self::target($account);
+                $added = BillingAccountItem::query()->insertOrIgnore(array_map(fn (array $row) => [...$row, 'billing_account_id' => $target->id], $rows));
+            }
+            // Step 6b.5b2: the AIH's principal procedure, after the care items (the surgery done may already be it).
+            if ($sus === 'aih' && $account->status === 'open') {
+                SusRules::syncPrincipal($account, $timezone);
+            }
 
-            return BillingAccountItem::query()->insertOrIgnore(array_map(fn (array $row) => [...$row, 'billing_account_id' => $target->id], $rows));
+            return $added;
         });
     }
 
