@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Clinical;
 
+use App\Clinical\Ethnicity;
 use App\Clinical\PatientIdentity;
 use App\Models\Patient;
 use App\Policies\PatientPolicy;
@@ -30,7 +31,7 @@ class PatientRequest extends FormRequest
             'cpf' => is_string($this->input('cpf')) ? PatientIdentity::digits($this->input('cpf')) : $this->input('cpf'),
             'cns' => is_string($this->input('cns')) ? PatientIdentity::digits($this->input('cns')) : $this->input('cns'),
             'email' => $text('email') === null ? null : mb_strtolower($text('email')),
-            ...collect(['social_name', 'mother_name', 'phone', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'birth_date', 'sex'])
+            ...collect(['social_name', 'mother_name', 'phone', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'birth_date', 'sex', 'race_color', 'ethnicity'])
                 ->mapWithKeys(fn (string $key) => [$key => $text($key)])->all(),
         ]);
     }
@@ -78,6 +79,9 @@ class PatientRequest extends FormRequest
             'guardian_name' => ['nullable', 'required_with:guardian_relationship', 'string', 'max:255'],
             'guardian_relationship' => ['nullable', 'required_with:guardian_name', 'string', 'max:60'],
             'guardian_phone' => ['nullable', 'string', 'max:30', 'regex:/^[0-9 ()+\-]+$/'],
+            // Step 6b.6a1: self-declared race/color; the ethnicity only (and always) for 05, indigenous.
+            'race_color' => ['nullable', Rule::in(array_keys(Patient::RACE_COLORS))],
+            'ethnicity' => ['exclude_unless:race_color,05', 'required', Rule::in(array_keys(Ethnicity::all()))],
             'confirm_new' => ['sometimes', 'boolean'],
         ];
     }
@@ -98,6 +102,8 @@ class PatientRequest extends FormRequest
             'guardian_name' => 'nome do responsável',
             'guardian_relationship' => 'parentesco do responsável',
             'guardian_phone' => 'telefone do responsável',
+            'race_color' => 'raça/cor',
+            'ethnicity' => 'etnia',
         ];
     }
 }

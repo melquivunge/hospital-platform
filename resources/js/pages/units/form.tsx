@@ -14,6 +14,10 @@ type Unit = {
     uf: string | null;
     timezone: string | null;
     cnes?: string | null;
+    cnpj?: string | null;
+    sus_acronym?: string | null;
+    sus_manager_name?: string | null;
+    sus_manager_level?: string | null;
 };
 
 const selectClassName =
@@ -162,6 +166,112 @@ export default function UnitForm({
                                     </p>
                                     <InputError message={errors.cnes} />
                                 </div>
+
+                                <fieldset className="grid gap-4 border-t pt-5">
+                                    <legend className="font-medium">
+                                        Faturamento SUS (BPA)
+                                    </legend>
+                                    <p className="text-sm text-muted-foreground">
+                                        Vão no cabeçalho do arquivo BPA da
+                                        unidade. Gestor e esfera são informados
+                                        juntos.
+                                    </p>
+                                    <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="cnpj">
+                                                CNPJ do prestador
+                                            </Label>
+                                            <Input
+                                                id="cnpj"
+                                                name="cnpj"
+                                                inputMode="numeric"
+                                                maxLength={18}
+                                                placeholder="00.000.000/0000-00"
+                                                defaultValue={unit?.cnpj ?? ''}
+                                                aria-invalid={!!errors.cnpj}
+                                                className="h-11"
+                                            />
+                                            <InputError message={errors.cnpj} />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="sus_acronym">
+                                                Sigla
+                                            </Label>
+                                            <Input
+                                                id="sus_acronym"
+                                                name="sus_acronym"
+                                                maxLength={6}
+                                                defaultValue={
+                                                    unit?.sus_acronym ?? ''
+                                                }
+                                                aria-invalid={
+                                                    !!errors.sus_acronym
+                                                }
+                                                className="h-11 uppercase"
+                                            />
+                                            <InputError
+                                                message={errors.sus_acronym}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="sus_manager_name">
+                                                Gestor de destino
+                                            </Label>
+                                            <Input
+                                                id="sus_manager_name"
+                                                name="sus_manager_name"
+                                                maxLength={40}
+                                                placeholder="Ex.: Secretaria Municipal de Saúde"
+                                                defaultValue={
+                                                    unit?.sus_manager_name ?? ''
+                                                }
+                                                aria-invalid={
+                                                    !!errors.sus_manager_name
+                                                }
+                                                className="h-11"
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors.sus_manager_name
+                                                }
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="sus_manager_level">
+                                                Esfera
+                                            </Label>
+                                            <select
+                                                id="sus_manager_level"
+                                                name="sus_manager_level"
+                                                defaultValue={
+                                                    unit?.sus_manager_level ??
+                                                    ''
+                                                }
+                                                aria-invalid={
+                                                    !!errors.sus_manager_level
+                                                }
+                                                className={selectClassName}
+                                            >
+                                                <option value="">
+                                                    Selecione
+                                                </option>
+                                                <option value="M">
+                                                    Municipal
+                                                </option>
+                                                <option value="E">
+                                                    Estadual
+                                                </option>
+                                            </select>
+                                            <InputError
+                                                message={
+                                                    errors.sus_manager_level
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                </fieldset>
                             </div>
 
                             <div className="flex flex-wrap justify-end gap-3 border-t bg-muted/40 px-5 py-4 sm:px-6">

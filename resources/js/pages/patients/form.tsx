@@ -1,5 +1,6 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { TriangleAlert } from 'lucide-react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import PatientController from '@/actions/App/Http/Controllers/PatientController';
 import InputError from '@/components/input-error';
@@ -32,6 +33,8 @@ type Patient = {
     guardian_name: string | null;
     guardian_relationship: string | null;
     guardian_phone: string | null;
+    race_color?: string | null;
+    ethnicity?: string | null;
 };
 
 /** Patient registration (step 3.2): without documents it stays provisional, completed later. */
@@ -39,12 +42,18 @@ export default function PatientForm({
     patient,
     units,
     duplicates,
+    raceColors,
+    ethnicities,
 }: {
     patient: Patient | null;
     units: { id: number; name: string }[];
     duplicates: PatientSummary[];
+    raceColors: Record<string, string>;
+    ethnicities: { code: string; name: string }[];
 }) {
     const title = patient ? 'Editar cadastro' : 'Novo paciente';
+    // Step 6b.6a1: the ethnicity is asked only for the indigenous race/color (05).
+    const [raceColor, setRaceColor] = useState(patient?.race_color ?? '');
 
     return (
         <>
@@ -238,6 +247,66 @@ export default function PatientForm({
                                             )}
                                         </select>
                                     </Field>
+                                    <Field
+                                        id="race_color"
+                                        label="Raça/cor (autodeclarada)"
+                                        hint="Como a pessoa se declara. Exigida no faturamento SUS."
+                                        error={errors.race_color}
+                                    >
+                                        <select
+                                            id="race_color"
+                                            name="race_color"
+                                            value={raceColor}
+                                            onChange={(event) =>
+                                                setRaceColor(event.target.value)
+                                            }
+                                            className={selectClassName}
+                                        >
+                                            <option value="">Selecione</option>
+                                            {Object.entries(raceColors).map(
+                                                ([value, label]) => (
+                                                    <option
+                                                        key={value}
+                                                        value={value}
+                                                    >
+                                                        {label}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </select>
+                                    </Field>
+                                    {raceColor === '05' && (
+                                        <Field
+                                            id="ethnicity"
+                                            label="Etnia"
+                                            error={errors.ethnicity}
+                                        >
+                                            <select
+                                                id="ethnicity"
+                                                name="ethnicity"
+                                                required
+                                                defaultValue={
+                                                    patient?.ethnicity ?? ''
+                                                }
+                                                aria-invalid={
+                                                    !!errors.ethnicity
+                                                }
+                                                className={selectClassName}
+                                            >
+                                                <option value="">
+                                                    Selecione
+                                                </option>
+                                                {ethnicities.map((option) => (
+                                                    <option
+                                                        key={option.code}
+                                                        value={option.code}
+                                                    >
+                                                        {option.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </Field>
+                                    )}
                                 </div>
                             </Section>
 
