@@ -20,6 +20,7 @@ type Professional = {
     email: string | null;
     phone: string | null;
     cpf: string | null;
+    cns: string | null;
 };
 
 const selectClassName =
@@ -325,6 +326,30 @@ export default function ProfessionalForm({
                                             className="h-11"
                                         />
                                     </Field>
+                                    <Field
+                                        id="cns"
+                                        label="Cartão Nacional de Saúde (opcional)"
+                                        hint="Para o faturamento SUS: o BPA individualizado e a AIH levam o CNS de quem atendeu."
+                                        error={errors.cns}
+                                    >
+                                        <Input
+                                            id="cns"
+                                            name="cns"
+                                            inputMode="numeric"
+                                            autoComplete="off"
+                                            maxLength={18}
+                                            defaultValue={
+                                                professional?.cns ?? ''
+                                            }
+                                            aria-invalid={!!errors.cns}
+                                            aria-describedby={
+                                                errors.cns
+                                                    ? 'cns-error'
+                                                    : undefined
+                                            }
+                                            className="h-11"
+                                        />
+                                    </Field>
                                 </div>
                             </div>
 
@@ -377,7 +402,7 @@ function Field({
     children: React.ReactNode;
 }) {
     return (
-        <div className="grid gap-2">
+        <div className="grid content-start gap-2">
             <Label htmlFor={id}>{label}</Label>
             {children}
             {hint && (

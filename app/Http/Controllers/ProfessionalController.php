@@ -29,7 +29,7 @@ use Inertia\Response;
  */
 class ProfessionalController extends Controller
 {
-    private const FIELDS = ['id', 'name', 'base_unit_id', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone', 'cpf'];
+    private const FIELDS = ['id', 'name', 'base_unit_id', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone', 'cpf', 'cns'];
 
     public function index(Request $request): Response
     {
@@ -122,7 +122,7 @@ class ProfessionalController extends Controller
 
         return Inertia::render('professionals/show', [
             'professional' => [
-                ...$professional->only($full ? self::FIELDS : array_diff(self::FIELDS, ['email', 'phone', 'cpf'])),
+                ...$professional->only($full ? self::FIELDS : array_diff(self::FIELDS, ['email', 'phone', 'cpf', 'cns'])),
                 'baseUnit' => $professional->baseUnit?->name,
             ],
             'history' => $history,
@@ -290,7 +290,14 @@ class ProfessionalController extends Controller
         try {
             return $save();
         } catch (UniqueConstraintViolationException $exception) {
-            $field = str_contains($exception->getMessage(), 'external_id') ? 'external_id' : 'council_uf';
+            // The losing side of two simultaneous saves: the field of the unique index that refused it.
+            $message = $exception->getMessage();
+            $field = match (true) {
+                str_contains($message, 'external_id') => 'external_id',
+                str_contains($message, 'professionals_cpf_unique') => 'cpf',
+                str_contains($message, 'professionals_cns_unique') => 'cns',
+                default => 'council_uf',
+            };
 
             throw ValidationException::withMessages([$field => 'Já existe um profissional com estes dados.']);
         }
