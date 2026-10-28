@@ -66,6 +66,7 @@ import { index as examOverdue } from '@/routes/exam-overdue';
 import { index as exams } from '@/routes/exams';
 import { index as billingAccounts } from '@/routes/billing-accounts';
 import { index as billingLots } from '@/routes/billing-lots';
+import { index as susBpa } from '@/routes/sus-bpa';
 import { index as billingReports } from '@/routes/billing-reports';
 import { index as sigtap } from '@/routes/sigtap';
 import { index as billingPrices } from '@/routes/billing-prices';
@@ -258,6 +259,7 @@ export function AppSidebar() {
             ? [
                   { title: 'Contas', href: billingAccounts(), icon: Wallet },
                   { title: 'Lotes TISS', href: billingLots(), icon: Package },
+                  { title: 'BPA (SUS)', href: susBpa(), icon: FileText },
               ]
             : []),
         ...(canViewBillingReports
