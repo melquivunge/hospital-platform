@@ -43,6 +43,7 @@ use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SectorController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\ShiftRequestController;
+use App\Http\Controllers\SigtapController;
 use App\Http\Controllers\StockController;
 use App\Http\Controllers\StockIndicatorController;
 use App\Http\Controllers\StockInventoryController;
@@ -306,6 +307,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('price-tables', [BillingPriceController::class, 'storeTable'])->middleware('throttle:60,1')->name('price-tables.store');
     Route::put('price-tables/{table}', [BillingPriceController::class, 'updateTable'])->middleware('throttle:60,1')->name('price-tables.update');
     Route::post('price-tables/{table}/prices', [BillingPriceController::class, 'storePrice'])->middleware('throttle:60,1')->name('price-tables.prices.store');
+    // Step 6b.3: the official SIGTAP table of each competence (SUS).
+    Route::get('sigtap', [SigtapController::class, 'index'])->name('sigtap.index');
+    Route::post('sigtap', [SigtapController::class, 'store'])->middleware('throttle:10,1')->name('sigtap.store');
     // Step 6.1b: the insurers' contracts and the private table.
     Route::put('insurers/{insurer}/contract', [BillingPriceController::class, 'saveContract'])->middleware('throttle:60,1')->name('insurer-contracts.save');
     Route::put('insurer-contracts/{contract}/authorizations', [BillingPriceController::class, 'saveAuthorizations'])->middleware('throttle:60,1')->name('insurer-contracts.authorizations');

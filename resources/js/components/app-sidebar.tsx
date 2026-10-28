@@ -66,6 +66,7 @@ import { index as exams } from '@/routes/exams';
 import { index as billingAccounts } from '@/routes/billing-accounts';
 import { index as billingLots } from '@/routes/billing-lots';
 import { index as billingReports } from '@/routes/billing-reports';
+import { index as sigtap } from '@/routes/sigtap';
 import { index as billingPrices } from '@/routes/billing-prices';
 import { index as surgeryCatalog } from '@/routes/surgery-catalog';
 import { index as stock } from '@/routes/stock';
@@ -342,7 +343,10 @@ export function AppSidebar() {
             ? [{ title: 'Medicamentos', href: medications(), icon: Pill }]
             : []),
         ...(canManageMedications
-            ? [{ title: 'Preços', href: billingPrices(), icon: Receipt }]
+            ? [
+                  { title: 'Preços', href: billingPrices(), icon: Receipt },
+                  { title: 'Tabela SIGTAP', href: sigtap(), icon: Receipt },
+              ]
             : []),
         ...(canManageExams
             ? [{ title: 'Exames', href: exams(), icon: TestTubeDiagonal }]
