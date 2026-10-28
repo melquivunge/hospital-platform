@@ -118,7 +118,7 @@ final class SusRules
      *
      * @return list<string>
      */
-    private static function list(string $array): array
+    public static function list(string $array): array
     {
         $inner = trim($array, '{}');
 

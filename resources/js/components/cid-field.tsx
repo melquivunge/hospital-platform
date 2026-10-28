@@ -8,14 +8,17 @@ type Option = { code: string; name: string };
 
 /**
  * Step 6b.2 (ADR-0011): the CID-10 of the care at the close or the discharge: the principal code, suggested by the
- * official table as one types a code or words, and up to five secondary codes. Required in the SUS.
+ * official table as one types a code or words, and up to five secondary codes (one in the AIH report, step 6b.5a).
+ * Required in the SUS.
  */
 export function CidField({
     required,
     errors,
+    single = false,
 }: {
     required: boolean;
     errors: Record<string, string | undefined>;
+    single?: boolean;
 }) {
     const id = useId();
     const [options, setOptions] = useState<Option[]>([]);
@@ -84,14 +87,16 @@ export function CidField({
             </div>
             <div className="grid content-start gap-2">
                 <Label htmlFor={`${id}-secondary`}>
-                    CIDs secundários (opcional)
+                    {single
+                        ? 'CID secundário (opcional)'
+                        : 'CIDs secundários (opcional)'}
                 </Label>
                 <Input
                     id={`${id}-secondary`}
                     name="cid_secondary"
-                    maxLength={100}
+                    maxLength={single ? 10 : 100}
                     autoComplete="off"
-                    placeholder="Ex.: I10, E11.9"
+                    placeholder={single ? 'Ex.: I10' : 'Ex.: I10, E11.9'}
                     aria-invalid={!!errors.cid_secondary}
                     aria-describedby={
                         errors.cid_secondary
@@ -105,7 +110,7 @@ export function CidField({
                     message={errors.cid_secondary}
                 />
             </div>
-            {required && (
+            {required && !single && (
                 <p className="text-sm text-muted-foreground sm:col-span-2">
                     Atendimento SUS: o CID vai no BPA ou na AIH. O faturamento
                     vê só o código.

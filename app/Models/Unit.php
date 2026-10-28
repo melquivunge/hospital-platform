@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $name
  * @property string|null $uf
  * @property string|null $timezone
+ * @property string|null $cnes
  */
 #[Fillable(['tenant_id', 'name', 'uf', 'timezone', 'cnes'])]
 class Unit extends Model
