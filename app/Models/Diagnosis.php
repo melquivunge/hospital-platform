@@ -100,8 +100,8 @@ class Diagnosis extends Model
     {
         $latest = DB::table('diagnoses')->where($column, $id)->max('version');
 
-        return $latest === null ? [] : DB::table('diagnoses')->where($column, $id)->where('version', $latest)->orderByDesc('principal')->orderBy('id')->get()
-            ->map(fn ($row) => ['code' => $row->cid_code, 'name' => Cid10::name($row->cid_code), 'principal' => (bool) $row->principal])->all();
+        return $latest === null ? [] : array_values(DB::table('diagnoses')->where($column, $id)->where('version', $latest)->orderByDesc('principal')->orderBy('id')->get()
+            ->map(fn ($row) => ['code' => (string) $row->cid_code, 'name' => Cid10::name($row->cid_code), 'principal' => (bool) $row->principal])->all());
     }
 
     /** SUS care (the appointment's or the emergency episode's modality) requires the principal code. */

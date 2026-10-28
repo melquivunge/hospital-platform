@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $bed_type ward | private | icu, for a daily rate
  * @property string $name
  * @property string|null $code TUSS or the network's own
+ * @property string|null $sigtap_code
  * @property bool $active
  */
 #[Fillable(['kind', 'exam_id', 'surgical_procedure_id', 'material_id', 'medication_id', 'bed_type', 'name', 'code', 'sigtap_code', 'active'])]
