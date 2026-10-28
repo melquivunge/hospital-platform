@@ -47,7 +47,7 @@ class BillingLotController extends Controller
         $lots = BillingLot::query()->where('unit_id', $unit->id)->orderByDesc('created_at')->orderByDesc('id')->limit(self::LIST_LIMIT)->get();
         $insurers = Insurer::query()->whereKey($ready->pluck('insurer_id')->merge($lots->pluck('insurer_id'))->unique()->all())->pluck('name', 'id');
         $users = User::query()->whereKey($lots->pluck('created_by_user_id')->merge($lots->pluck('cancelled_by_user_id'))->filter()->unique()->all())->pluck('name', 'id');
-        $conciliations = BillingLot::conciliations($lots->pluck('id')->all());
+        $conciliations = BillingLot::conciliations(array_values($lots->pluck('id')->all()));
 
         return Inertia::render('billing-lots/index', [
             'units' => $units->map->only('id', 'name')->values(),
@@ -101,7 +101,7 @@ class BillingLotController extends Controller
         ], [], ['insurer_id' => 'convênio', 'competence' => 'competência', 'guide_type' => 'tipo de guia']);
 
         try {
-            $lot = BillingLot::generate(Unit::query()->findOrFail($data['unit_id']), (int) $data['insurer_id'],
+            $lot = BillingLot::generate(Unit::query()->findOrFail((int) $data['unit_id']), (int) $data['insurer_id'],
                 CarbonImmutable::createFromFormat('!Y-m', $data['competence']), $data['guide_type'], $request->user());
         } catch (UniqueConstraintViolationException) {
             // Another lot took these accounts at the same time (one active lot per account).

@@ -11,6 +11,7 @@ use DOMXPath;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use stdClass;
 
 /**
  * Step 6.5b2a (ADR-0010): the XML of a lot of guides in the TISS 4.03.00 communication standard (ISO-8859-1), with the
@@ -197,7 +198,7 @@ final class TissLotXml
      * Step 6.5c2: each kept guide item of the lot, keyed by its id: its guide (the account), its line in the guide as
      * the lot file numbered it (procedures and other expenses each from 1) and its TUSS table.
      *
-     * @return array<int, array{guide: int, sequence: int, table: string, item: object}>
+     * @return array<int, array{guide: int, sequence: int, table: string, item: stdClass}>
      */
     public function lines(): array
     {
@@ -275,7 +276,7 @@ final class TissLotXml
      * any other code is the insurer's own table (00).
      * ponytail: read from the code's shape; a per-item table field if insurers disagree.
      */
-    private static function table(object $item): string
+    private static function table(stdClass $item): string
     {
         if (isset(self::EXPENSES[$item->kind])) {
             return ctype_digit($item->code) ? self::EXPENSES[$item->kind][1] : '00';
@@ -343,7 +344,12 @@ final class TissLotXml
             $doc->load(base_path('resources/tiss/4.03.00/tissSimpleTypesV4_03_00.xsd'), LIBXML_NONET);
             $xpath = new DOMXPath($doc);
             $xpath->registerNamespace('xs', 'http://www.w3.org/2001/XMLSchema');
-            $codes = array_map(fn (DOMElement $value) => $value->getAttribute('value'), iterator_to_array($xpath->query("//xs:simpleType[@name='dm_CBOS']//xs:enumeration")));
+            $codes = [];
+            foreach ($xpath->query("//xs:simpleType[@name='dm_CBOS']//xs:enumeration") ?: [] as $value) {
+                if ($value instanceof DOMElement) {
+                    $codes[] = $value->getAttribute('value');
+                }
+            }
         }
 
         return $codes;
@@ -426,7 +432,7 @@ final class TissLotXml
         $this->add($stay, 'horaFinalFaturamento', $end->format('H:i:s'));
         // Table 57: 2 surgical when a surgical procedure is billed, else 1 clinical; table 41: 1 hospital.
         // ponytail: obstetric, pediatric and psychiatric (3-5) need the admission's type; add it when an insurer asks.
-        $this->add($stay, 'tipoInternacao', collect($account['items'])->contains('kind', 'procedure') ? '2' : '1');
+        $this->add($stay, 'tipoInternacao', array_any($account['items'], fn (stdClass $item) => $item->kind === 'procedure') ? '2' : '1');
         $this->add($stay, 'regimeInternacao', '1');
         $exit = $this->add($guide, 'dadosSaidaInternacao');
         $this->add($exit, 'indicadorAcidente', '9');
@@ -438,7 +444,7 @@ final class TissLotXml
      * The procedures, the other expenses and the totals; the hospitalization summary puts the totals before the
      * expenses, SP/SADT after.
      *
-     * @param  list<object>  $items
+     * @param  list<stdClass>  $items
      */
     private function items(DOMElement $guide, array $items, bool $totalsFirst): void
     {
@@ -527,10 +533,10 @@ final class TissLotXml
 
         $stayOf = fn ($account) => $account->complement_of_id === null ? $account : $stays->get($account->complement_of_id);
         $hospitalization = $lot->guide_type === 'hospitalization';
-        $professionals = $hospitalization ? [] : self::professionals($accounts->map($stayOf)->all(), $lot->unit_id);
+        $professionals = $hospitalization ? [] : self::professionals(array_values($accounts->map($stayOf)->all()), $lot->unit_id);
         $admissions = ! $hospitalization ? collect() : DB::table('admissions')->whereIn('emergency_episode_id', $accounts->map($stayOf)->pluck('emergency_episode_id')->filter()->all())
             ->get(['id', 'emergency_episode_id', 'admitted_at', 'discharged_at', 'discharge_type'])->keyBy('emergency_episode_id');
-        $authorizations = $hospitalization ? self::passwords($accounts->map(fn ($account) => $account->complement_of_id ?? $account->id)->all()) : collect();
+        $authorizations = $hospitalization ? self::passwords(array_values($accounts->map(fn ($account) => $account->complement_of_id ?? $account->id)->all())) : collect();
         $described = $accounts->map(function ($account) use ($stayOf, $items, $professionals, $admissions, $authorizations) {
             $stay = $stayOf($account);
             $own = $items->get($account->id, collect());
@@ -565,7 +571,7 @@ final class TissLotXml
      * answer of an item that is "authorized", a daily rate's first. The hospitalization summary requires it.
      *
      * @param  list<int>  $stayAccountIds
-     * @return Collection<int, object>
+     * @return Collection<int|string, stdClass>
      */
     public static function passwords(array $stayAccountIds): Collection
     {
@@ -582,8 +588,8 @@ final class TissLotXml
      * The professional of each stay's first visit (keyed "a<appointment>" or "e<episode>"), with the CBO of their
      * first approved function at the unit that has one; two queries for the whole lot.
      *
-     * @param  list<object>  $stays
-     * @return array<string, object>
+     * @param  list<stdClass>  $stays
+     * @return array<string, stdClass>
      */
     private static function professionals(array $stays, int $unitId): array
     {
@@ -610,7 +616,7 @@ final class TissLotXml
 
     private function add(DOMNode $parent, string $name, ?string $value = null): DOMElement
     {
-        $element = $parent->ownerDocument?->createElementNS(self::NS, "ans:{$name}") ?? throw new RuntimeException('No document.');
+        $element = $parent->ownerDocument?->createElementNS(self::NS, "ans:{$name}") ?: throw new RuntimeException('No document.');
         if ($value !== null) {
             // Only what ISO-8859-1 holds (anything else becomes "?"): the file and its hash read the same text.
             $latin1 = (string) mb_convert_encoding((string) mb_convert_encoding($value, 'ISO-8859-1', 'UTF-8'), 'UTF-8', 'ISO-8859-1');

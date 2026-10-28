@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
  * @property int $insurer_id
  * @property int $price_table_id
  * @property int $adjustment_bp
+ * @property string|null $provider_code
  */
 #[Fillable(['insurer_id', 'price_table_id', 'adjustment_bp', 'provider_code'])]
 class InsurerContract extends Model

@@ -131,6 +131,7 @@ final class SigtapImport
     /**
      * The columns of a layout file ("Coluna,Tamanho,Inicio,Fim,Tipo"): name => [start (0-based), length].
      *
+     * @param  list<string>  $required
      * @return array<string, array{0: int, 1: int}>
      */
     private static function layout(string $text, string $file, array $required): array

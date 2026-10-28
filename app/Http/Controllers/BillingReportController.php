@@ -124,10 +124,10 @@ class BillingReportController extends Controller
             'pending' => array_map(fn (string $stage) => [
                 'label' => self::STAGES[$stage], 'accounts' => (int) ($pending->get($stage)->accounts ?? 0), 'totalCents' => (int) ($pending->get($stage)->total ?? 0),
             ], array_keys(self::STAGES)),
-            'glosas' => $glosas->map(fn ($row) => [
+            'glosas' => array_values($glosas->map(fn ($row) => [
                 'code' => $row->glosa_code, 'term' => $codes[$row->glosa_code] ?? '', 'items' => (int) $row->items, 'glossedCents' => (int) $row->glossed,
                 'appealingCents' => (int) $row->appealing, 'recoveredCents' => (int) $row->recovered,
-            ])->values()->all(),
+            ])->all()),
             'received' => [
                 ['group' => 'Particular', 'label' => 'Pagamentos recebidos', 'count' => (int) $payments->count, 'totalCents' => (int) $payments->total],
                 ...self::sortedBy($paidReturns->map(fn ($row) => ['group' => 'Convênio · '.$insurers->get($row->insurer_id), 'label' => 'Pago no retorno (lotes)', 'count' => (int) $row->count, 'totalCents' => (int) $row->total]), 'group'),
@@ -137,12 +137,14 @@ class BillingReportController extends Controller
     }
 
     /**
-     * @param  Collection<int, array<string, mixed>>  $rows
-     * @return list<array<string, mixed>>
+     * @template TRow of array<string, mixed>
+     *
+     * @param  Collection<int, TRow>  $rows
+     * @return list<TRow>
      */
     private static function sortedBy(Collection $rows, string $key): array
     {
-        return $rows->sortBy($key)->values()->all();
+        return array_values($rows->sortBy($key)->all());
     }
 
     /**

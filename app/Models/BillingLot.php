@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use stdClass;
 
 /**
  * A lot of TISS guides (step 6.5b1, ADR-0010): one insurer, one unit, one competence (the month the accounts closed,
@@ -188,7 +189,7 @@ class BillingLot extends Model
      * Step 6.5c1: the items its guides carry (each account's items but compensations and the items they undo), with
      * the billed value; the return is recorded per item.
      *
-     * @return Collection<int, object>
+     * @return Collection<int, stdClass>
      */
     public function guideItems(): Collection
     {

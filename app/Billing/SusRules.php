@@ -6,6 +6,7 @@ use App\Clinical\PatientIdentity;
 use App\Models\BillingAccount;
 use App\Models\Diagnosis;
 use Illuminate\Support\Facades\DB;
+use stdClass;
 
 /**
  * Step 6b.4 (ADR-0011): the SUS rules of an account. Its instrument is the AIH when the episode became an admission,
@@ -25,7 +26,7 @@ final class SusRules
     }
 
     /** The network's SIGTAP procedure of the competence of a day (YYYY-MM-DD), or null when it is not imported. */
-    public static function procedure(int $tenantId, string $code, string $day): ?object
+    public static function procedure(int $tenantId, string $code, string $day): ?stdClass
     {
         return DB::table('sigtap_procedures as p')->join('sigtap_competences as c', 'c.id', '=', 'p.sigtap_competence_id')
             ->where('c.tenant_id', $tenantId)->where('c.competence', substr($day, 0, 7).'-01')->where('p.code', $code)
@@ -33,12 +34,12 @@ final class SusRules
     }
 
     /** Whether the procedure is registered in the instrument (else it is in the package). */
-    public static function registered(object $procedure, string $instrument): bool
+    public static function registered(stdClass $procedure, string $instrument): bool
     {
         return array_intersect(self::list($procedure->registers), self::REGISTERS[$instrument]) !== [];
     }
 
-    public static function price(object $procedure, string $instrument): int
+    public static function price(stdClass $procedure, string $instrument): int
     {
         return $instrument === 'aih' ? (int) $procedure->sh_cents + (int) $procedure->sp_cents : (int) $procedure->sa_cents;
     }
