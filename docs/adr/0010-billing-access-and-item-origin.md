@@ -47,3 +47,7 @@ A entrega 6 (contrato da entrega 6 no PRODUCT.md, todas as propostas aceitas pel
 ## Revisão (27/10/2026, decisão do usuário)
 
 O administrador de rede também usa a tela "Contas" de todas as unidades da rede, sem precisar do papel Faturamento. Ele lê o mesmo que o Faturamento (sem prontuário), e cada abertura de conta continua gravada na trilha com o motivo "billing".
+
+## Revisão (27/10/2026, ADR-0011)
+
+Na conta SUS, o faturamento também lê o código e o nome do CID-10 informado por quem atendeu (não a evolução, o resumo da alta nem a justificativa do laudo da AIH). Ver [ADR-0011](0011-sus-diagnosis-and-sigtap.md).
