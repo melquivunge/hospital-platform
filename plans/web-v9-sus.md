@@ -34,6 +34,8 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6b" (todas as propostas ac
 ### 6b.5 AIH: laudo, número e procedimento principal
 - Laudo de solicitação pelo médico (procedimento solicitado, CID, justificativa clínica), assinado com a senha, em PDF para o gestor.
 - Número da AIH autorizada registrado pelo faturamento (13 dígitos, único); procedimento principal com troca motivada; a conta da internação não fecha sem o número.
+- Dividida em **6b.5a** (laudo) e **6b.5b** (número da AIH, procedimento principal e trava no fechamento).
+- **Feito na 6b.5a:** o médico responsável pela internação SUS (aguardando leito, internado ou em transferência) assina o laudo com a senha na tela da internação: procedimento solicitado (busca por código, com ou sem pontos, ou por palavras sem acento, só procedimentos registrados como principal da AIH, instrumento 03, na última competência da SIGTAP importada até o mês da unidade), CID principal compatível com o procedimento na SIGTAP, um CID secundário e a justificativa clínica. Tabela `aih_requests` (migração 009000, RLS), só de inserção, por versão (novo laudo = nova versão; o anterior fica). Quem atende a internação baixa o PDF da última versão (com a trilha de leitura); o faturamento não lê o laudo; a auditoria leva só ids (nem o procedimento, que ligado à internação é dado clínico). Em aberto para a 6b.5b: depois da alta ninguém mais abre o laudo (a leitura exige internação ativa); decidir se o PDF continua disponível para o fluxo do gestor depois da alta.
 
 ### 6b.6 Arquivos
 - **6b.6a BPA:** BPA-C (consolidado por procedimento, CBO e idade) e BPA-I (individualizado) da competência, no layout oficial vigente, por unidade; gerado uma vez, SHA-256, baixado com trilha.

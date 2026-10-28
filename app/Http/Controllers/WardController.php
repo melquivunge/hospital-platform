@@ -112,6 +112,8 @@ class WardController extends Controller
                     'cidRequired' => Diagnosis::requiredForAdmission($admission),
                 ]
                 : null,
+            // Step 6b.5a: the AIH request report of a SUS admission.
+            'aihRequest' => AihRequestController::panel($admission, ClinicalAccess::professional($request->user()), $timezone),
             'record' => VisitController::signedRecord($ids, $timezone),
             'documents' => ClinicalDocumentController::listing($ids, $timezone, $request->user()->id),
             // Step 5.4: the released exam results of the record.

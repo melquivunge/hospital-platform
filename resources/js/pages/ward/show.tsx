@@ -23,6 +23,8 @@ import { PatientAllergies } from '@/components/patient-allergies';
 import type { PrescriptionPanelData } from '@/components/prescription-panel';
 import { PrescriptionPanel } from '@/components/prescription-panel';
 import PrescriptionController from '@/actions/App/Http/Controllers/PrescriptionController';
+import type { AihRequestPanel } from '@/components/aih-request';
+import { AihRequest } from '@/components/aih-request';
 import { CidField } from '@/components/cid-field';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -48,6 +50,7 @@ export default function WardShow({
     transfer,
     transferOptions,
     discharge,
+    aihRequest,
     record,
     drafts,
     documents,
@@ -76,6 +79,7 @@ export default function WardShow({
     } | null;
     transferOptions: TransferUnit[] | null;
     discharge: DischargeOptions | null;
+    aihRequest: AihRequestPanel | null;
     record: RecordNote[];
     drafts: Draft[];
     documents: ClinicalDocument[];
@@ -142,6 +146,9 @@ export default function WardShow({
                         admissionId={admission.id}
                         units={transferOptions}
                     />
+                )}
+                {aihRequest && (
+                    <AihRequest admissionId={admission.id} panel={aihRequest} />
                 )}
                 {discharge && (
                     <Discharge admissionId={admission.id} options={discharge} />
