@@ -54,6 +54,15 @@ final class SusRules
         return in_array('02', self::list($procedure->registers), true);
     }
 
+    /** The CBO of a professional in a unit: the job function of the latest approved qualification there. */
+    public static function cbo(int $professionalId, int $unitId): ?string
+    {
+        $cbo = DB::table('qualifications as q')->join('job_functions as f', 'f.id', '=', 'q.job_function_id')
+            ->where('q.professional_id', $professionalId)->where('q.unit_id', $unitId)->where('q.status', 'approved')->whereNotNull('f.cbo')->orderByDesc('q.id')->value('f.cbo');
+
+        return $cbo === null ? null : (string) $cbo;
+    }
+
     /** Whether the procedure may be an AIH's principal (instrument 03). */
     public static function principal(stdClass $procedure): bool
     {
@@ -173,8 +182,7 @@ final class SusRules
         $professional = DB::table('visits as v')->join('professionals as p', 'p.id', '=', 'v.professional_id')
             ->where($stay->appointment_id !== null ? 'v.appointment_id' : 'v.emergency_episode_id', $stay->appointment_id ?? $stay->emergency_episode_id)
             ->orderBy('v.id')->first(['p.id', 'p.name', 'p.cns']);
-        $cbo = $professional === null ? null : DB::table('qualifications as q')->join('job_functions as f', 'f.id', '=', 'q.job_function_id')
-            ->where('q.professional_id', $professional->id)->where('q.unit_id', $stay->unit_id)->where('q.status', 'approved')->whereNotNull('f.cbo')->orderByDesc('q.id')->value('f.cbo');
+        $cbo = $professional === null ? null : self::cbo((int) $professional->id, $stay->unit_id);
         // Step 6b.6a1: whether a line goes to the BPA-I (it carries the patient's race/color).
         $individual = false;
         foreach ($items->whereNotNull('code')->unique(fn ($item) => $item->code.$item->origin_type) as $item) {
