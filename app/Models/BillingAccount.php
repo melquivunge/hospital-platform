@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Billing\SusRules;
 use App\Tenancy\BelongsToTenant;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
@@ -91,8 +92,16 @@ class BillingAccount extends Model
             // The stay's account (a complementary one runs its account's): its lock serializes runs of the whole family;
             // the unique origin is the guarantee across accounts.
             $account = self::query()->whereKey($this->complement_of_id ?? $this->id)->lockForUpdate()->firstOrFail();
-            // ponytail: SUS has its own codes and files (delivery 6b); a stay without modality waits for it.
-            if (! in_array($account->modality, ['private', 'insurance'], true)) {
+            // A stay without modality (before step 6.2a0) waits for it.
+            if (! in_array($account->modality, ['private', 'insurance', 'sus'], true)) {
+                return 0;
+            }
+            // Step 6b.4: the SUS bills the SIGTAP procedures registered in its instrument (BPA or AIH).
+            $sus = $account->modality === 'sus' ? SusRules::instrument($account) : null;
+            // An emergency still in care may yet become an admission (AIH): its SUS items wait for the outcome, so an
+            // item is never billed in the BPA and then kept in the AIH package.
+            if ($sus === 'bpa' && $account->emergency_episode_id !== null
+                && ! in_array(EmergencyEpisode::query()->whereKey($account->emergency_episode_id)->value('status'), EmergencyEpisode::OUTCOMES, true)) {
                 return 0;
             }
             $timezone = Unit::query()->whereKey($account->unit_id)->value('timezone') ?? 'UTC';
@@ -166,10 +175,21 @@ class BillingAccount extends Model
                 // The billable item of the kind and, for a catalog kind or a daily rate, of its exam, procedure, material,
                 // medication or bed type.
                 $item = BillingItem::query()->where('kind', $kind)->where('active', true)->where($reference)->first();
+                $price = $item === null ? null : InsurerContract::priceFor($account->insurer_id, $item->id, $priceDay);
+                $code = $item?->code;
+                if ($sus !== null) {
+                    // Not billed apart in the SUS: no SIGTAP code, or in the package of the account's instrument. Without the
+                    // competence imported it waits (items never change): the account shows it as pending.
+                    $procedure = $item?->sigtap_code === null ? null : SusRules::procedure($account->tenant_id, $item->sigtap_code, $priceDay);
+                    if ($procedure === null || ! SusRules::registered($procedure, $sus)) {
+                        continue;
+                    }
+                    [$code, $price] = [$procedure->code, SusRules::price($procedure, $sus)];
+                }
                 $rows[] = [
                     'tenant_id' => $account->tenant_id, 'billing_account_id' => $account->id, 'origin_type' => $type, 'origin_id' => $id,
-                    'billing_item_id' => $item?->id, 'code' => $item?->code, 'name' => $item->name ?? $name, 'quantity' => $quantity,
-                    'unit_price_cents' => $item === null ? null : InsurerContract::priceFor($account->insurer_id, $item->id, $priceDay),
+                    'billing_item_id' => $item?->id, 'code' => $code, 'name' => $item->name ?? $name, 'quantity' => $quantity,
+                    'unit_price_cents' => $price,
                     // Step 6.5b2b: an insurance admission's daily rate always carries the insurer's password (the summary requires it).
                     'needs_authorization' => $item !== null && $account->insurer_id !== null && ($type === 'admission_day' || InsurerContract::needsAuthorization($account->insurer_id, $item->id)),
                     'performed_on' => $date, 'created_at' => now(),
