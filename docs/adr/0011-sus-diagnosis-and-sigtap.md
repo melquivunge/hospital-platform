@@ -1,7 +1,7 @@
 # ADR-0011: diagnóstico CID-10 estruturado e faturamento SUS pela SIGTAP
 
 Data: 27/10/2026
-Estado: proposta, aguardando aceite do usuário
+Estado: aceita pelo usuário (27/10/2026)
 
 ## Contexto
 

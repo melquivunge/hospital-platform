@@ -1,6 +1,6 @@
 # Plano — entrega 6b: faturamento SUS (BPA e AIH)
 
-Estado: proposto em 27/10/2026, aguardando aceite do usuário.
+Estado: aceito pelo usuário em 27/10/2026; implementação autorizada.
 
 Contrato: ../PRODUCT.md, seção "Contrato da entrega 6b" (todas as propostas aceitas pelo usuário em 27/10/2026). Arquitetura: ../docs/adr/0011-sus-diagnosis-and-sigtap.md (revisa a ADR-0010). Regras de trabalho: ../AGENTS.md.
 

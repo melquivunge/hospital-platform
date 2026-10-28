@@ -775,7 +775,7 @@ Todas as propostas aceitas: entrega 6 = particular e convênio, SUS na entrega 6
 
 ## Contrato da entrega 6b — faturamento SUS
 
-Método: ECC Product Capability. Data: 27/10/2026. Estado: **aprovado; todas as propostas aceitas pelo usuário em 27/10/2026. [ADR-0011](docs/adr/0011-sus-diagnosis-and-sigtap.md) e plano `plans/web-v9-sus.md` propostos, aguardando aceite.** Nada é implementado antes da ADR e do plano aprovados. Origem: contrato da entrega 6 (questão 1: SUS na entrega 6b) e o código atual, em que a conta SUS já abre na chegada, mas não recebe itens.
+Método: ECC Product Capability. Data: 27/10/2026. Estado: **aprovado; todas as propostas aceitas pelo usuário em 27/10/2026. [ADR-0011](docs/adr/0011-sus-diagnosis-and-sigtap.md) e plano `plans/web-v9-sus.md` aceitos e implementação autorizada em 27/10/2026.** Origem: contrato da entrega 6 (questão 1: SUS na entrega 6b) e o código atual, em que a conta SUS já abre na chegada, mas não recebe itens.
 
 ### Capacidade
 
@@ -836,6 +836,6 @@ Todas as propostas aceitas: 6b = BPA e AIH (APAC fora); CID pelo médico, fatura
 ### Encaminhamento ECC
 
 - **Esclarecimento de produto:** concluído (decisões acima).
-- **Arquitetura:** [ADR-0011](docs/adr/0011-sus-diagnosis-and-sigtap.md) (CID estruturado e o que o faturamento lê; SIGTAP por competência; revisa a ADR-0010), proposta.
-- **Plano em etapas:** `plans/web-v9-sus.md` (6b.1 a 6b.8), proposto.
+- **Arquitetura:** [ADR-0011](docs/adr/0011-sus-diagnosis-and-sigtap.md) (CID estruturado e o que o faturamento lê; SIGTAP por competência; revisa a ADR-0010), aceita.
+- **Plano em etapas:** `plans/web-v9-sus.md` (6b.1 a 6b.8), aceito.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
