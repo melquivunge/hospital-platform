@@ -28,6 +28,7 @@ class ProfessionalRequest extends FormRequest
             'council' => is_string($this->input('council')) ? mb_strtoupper(trim($this->input('council'))) : $this->input('council'),
             'council_number' => is_string($this->input('council_number')) ? mb_strtoupper(trim($this->input('council_number'))) : $this->input('council_number'),
             'cpf' => is_string($this->input('cpf')) && trim($this->input('cpf')) !== '' ? PatientIdentity::digits($this->input('cpf')) : null,
+            'cns' => is_string($this->input('cns')) && trim($this->input('cns')) !== '' ? PatientIdentity::digits($this->input('cns')) : null,
             'email' => is_string($this->input('email')) ? mb_strtolower(trim($this->input('email'))) : $this->input('email'),
         ]);
     }
@@ -86,6 +87,14 @@ class ProfessionalRequest extends FormRequest
                     $fail('Já existe um profissional com este CPF.');
                 }
             }],
+            // Step 6b.1: the SUS files (BPA-I and AIH) carry it.
+            'cns' => ['bail', 'nullable', 'string', function (string $attribute, mixed $value, Closure $fail) use ($professional) {
+                if (! PatientIdentity::validCns((string) $value)) {
+                    $fail('Cartão Nacional de Saúde inválido.');
+                } elseif (Professional::query()->where('cns', $value)->when($professional, fn ($query) => $query->whereKeyNot($professional->id))->exists()) {
+                    $fail('Já existe um profissional com este Cartão Nacional de Saúde.');
+                }
+            }],
             'email' => ['nullable', 'email:rfc', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30', 'regex:/^[0-9 ()+\-]+$/'],
         ];
@@ -106,6 +115,7 @@ class ProfessionalRequest extends FormRequest
             'external_id' => 'identificador externo',
             'phone' => 'telefone',
             'cpf' => 'CPF',
+            'cns' => 'Cartão Nacional de Saúde',
         ];
     }
 }

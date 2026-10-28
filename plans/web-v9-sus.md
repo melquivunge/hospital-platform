@@ -14,6 +14,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 6b" (todas as propostas ac
 ### 6b.1 CNS e tabela CID-10
 - CNS do profissional (cadastro e CSV), validação do CNS pelo algoritmo oficial (paciente e profissional).
 - Tabela CID-10 oficial do DATASUS no repositório, com a origem e a versão, e busca por código ou nome.
+- **Feito na 6b.1:** o CNS do profissional no cadastro (validado pelo algoritmo oficial já usado no paciente, único na rede, só na ficha completa, como o CPF); a tabela CID-10 V2008 do DATASUS em `resources/cid10/cid10.json` (12.451 códigos sem ponto, com a restrição de sexo; origem em `ORIGEM.md`) e `App\Clinical\Cid10` (normalizar, nome, sexo e busca por código ou palavras sem acento). Fica em aberto: o CNS no CSV de profissionais (o CSV também não traz o CPF).
 
 ### 6b.2 Diagnóstico no atendimento e na alta
 - CID principal (obrigatório no SUS; nas outras modalidades, decidido na etapa) e secundários ao encerrar a consulta e a urgência e na alta; correção por novo registro, anterior preservado.

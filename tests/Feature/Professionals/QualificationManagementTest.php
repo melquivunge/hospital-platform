@@ -92,7 +92,9 @@ class QualificationManagementTest extends TestCase
                 ->where('qualifications.0.canDecide', true)
                 ->where('canUpdate', false)
                 ->missing('professional.email')
-                ->missing('professional.phone'));
+                ->missing('professional.phone')
+                ->missing('professional.cpf')
+                ->missing('professional.cns'));
         $this->post(route('qualifications.transition', $qualification), ['status' => 'approved'])->assertSessionHasNoErrors();
 
         $this->assertSame(QualificationStatus::Approved, $qualification->fresh()?->status);

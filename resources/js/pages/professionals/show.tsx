@@ -23,6 +23,7 @@ type Professional = {
     email?: string | null;
     phone?: string | null;
     cpf?: string | null;
+    cns?: string | null;
 };
 
 type HistoryEntry = {
@@ -206,6 +207,12 @@ export default function ProfessionalShow({
                             )}
                             {professional.cpf !== undefined && (
                                 <Detail label="CPF" value={professional.cpf} />
+                            )}
+                            {professional.cns !== undefined && (
+                                <Detail
+                                    label="Cartão Nacional de Saúde"
+                                    value={professional.cns}
+                                />
                             )}
                         </dl>
                     </aside>

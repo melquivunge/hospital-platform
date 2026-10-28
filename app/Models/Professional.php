@@ -28,10 +28,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $email
  * @property string|null $phone
  * @property string|null $cpf
+ * @property string|null $cns step 6b.1: Cartão Nacional de Saúde (SUS files)
  * @property int $eligibility_version
  * @property int|null $membership_id
  */
-#[Fillable(['base_unit_id', 'name', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone', 'cpf'])]
+#[Fillable(['base_unit_id', 'name', 'council', 'council_number', 'council_uf', 'external_id', 'email', 'phone', 'cpf', 'cns'])]
 class Professional extends Model
 {
     /** @use HasFactory<ProfessionalFactory> */
