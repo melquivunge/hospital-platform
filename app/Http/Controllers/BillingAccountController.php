@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Billing\SusRules;
 use App\Billing\TissLotXml;
 use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
@@ -9,7 +10,6 @@ use App\Models\AuditEvent;
 use App\Models\BillingAccount;
 use App\Models\BillingAccountItem;
 use App\Models\BillingItem;
-use App\Models\Diagnosis;
 use App\Models\Insurer;
 use App\Models\InsurerContract;
 use App\Models\Membership;
@@ -118,7 +118,9 @@ class BillingAccountController extends Controller
             'canChange' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance'], true),
             // Step 6.4a: an item of a closed account is compensated in the complementary account.
             'canCompensate' => in_array($account->modality, ['private', 'insurance'], true),
-            'canClose' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance'], true) && $account->stayEnded(),
+            'canClose' => $account->status === 'open' && in_array($account->modality, ['private', 'insurance', 'sus'], true) && $account->stayEnded(),
+            // Step 6b.4: what keeps a SUS account from closing.
+            'susPending' => $account->modality === 'sus' && $account->status === 'open' ? SusRules::pending($account) : [],
             // Step 6.4b: the private account's payment and its receipt.
             'payment' => ($payment = DB::table('billing_payments')->where('billing_account_id', $account->id)->first()) === null ? null : [
                 'method' => self::METHODS[$payment->method], 'amountCents' => (int) $payment->amount_cents,
@@ -128,7 +130,7 @@ class BillingAccountController extends Controller
             'canReceive' => $payment === null && $account->status === 'closed' && $account->modality === 'private' && (int) $account->getAttribute('total_cents') > 0,
             'methods' => self::METHODS,
             // Step 6b.2 (ADR-0011): the SUS account shows the CID-10 codes of its stay, never the record.
-            'diagnoses' => $account->modality === 'sus' ? self::diagnoses($account) : [],
+            'diagnoses' => $account->modality === 'sus' ? SusRules::diagnoses($account->complement_of_id === null ? $account : BillingAccount::query()->findOrFail($account->complement_of_id)) : [],
             'complements' => BillingAccount::query()->where('complement_of_id', $account->complement_of_id ?? $account->id)->orderBy('id')->pluck('id')->all(),
             'billableItems' => BillingItem::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'code'])->values(),
             'today' => now($timezone)->toDateString(),
@@ -279,8 +281,8 @@ class BillingAccountController extends Controller
             if ($locked->status !== 'open') {
                 throw $refuse('Esta conta já foi fechada.');
             }
-            if (! in_array($locked->modality, ['private', 'insurance'], true)) {
-                throw $refuse('Contas do SUS ou sem modalidade ficam para a entrega do SUS.');
+            if (! in_array($locked->modality, ['private', 'insurance', 'sus'], true)) {
+                throw $refuse('Conta sem modalidade: registre a modalidade do atendimento.');
             }
             if (! $locked->stayEnded()) {
                 throw $refuse('O atendimento ainda não terminou: a conta fecha depois do encerramento ou da alta.');
@@ -291,6 +293,10 @@ class BillingAccountController extends Controller
             }
             if ((clone $items)->where(fn (Builder $query) => self::pending($query))->exists()) {
                 throw $refuse('Resolva as pendências antes de fechar: itens sem preço ou sem autorização do convênio.');
+            }
+            // Step 6b.4: the SUS account closes with the CID, the CNS and compatible procedures.
+            if ($locked->modality === 'sus' && ($pending = SusRules::pending($locked)) !== []) {
+                throw $refuse('Resolva as pendências do SUS antes de fechar: '.implode(' ', array_slice($pending, 0, 3)));
             }
             // Step 6.5b2b: the hospitalization summary requires the insurer's password (its daily rates always ask for
             // it); once closed, no answer lands. A complement uses its stay's.
@@ -481,25 +487,5 @@ class BillingAccountController extends Controller
                 'totalCents' => (int) $account->getAttribute('total_cents'),
             ];
         }, $accounts);
-    }
-
-    /**
-     * Step 6b.2: the CID-10 codes of the account's stay (the complement's own stay): the discharge's when the
-     * episode became an admission and was discharged, else the visit's close.
-     *
-     * @return list<array{code: string, name: string|null, principal: bool}>
-     */
-    private static function diagnoses(BillingAccount $account): array
-    {
-        $stay = $account->complement_of_id === null ? $account : BillingAccount::query()->findOrFail($account->complement_of_id);
-        $admission = $stay->emergency_episode_id === null ? null : DB::table('admissions')->where('emergency_episode_id', $stay->emergency_episode_id)->value('id');
-        // Until the discharge records its own, the stay's codes are the visit's.
-        if ($admission !== null && ($codes = Diagnosis::current('admission_id', (int) $admission)) !== []) {
-            return $codes;
-        }
-        $visit = DB::table('visits')->when($stay->appointment_id !== null, fn ($query) => $query->where('appointment_id', $stay->appointment_id),
-            fn ($query) => $query->where('emergency_episode_id', $stay->emergency_episode_id))->orderByDesc('id')->value('id');
-
-        return $visit === null ? [] : Diagnosis::current('visit_id', (int) $visit);
     }
 }

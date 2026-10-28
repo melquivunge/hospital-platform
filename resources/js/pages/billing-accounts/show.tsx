@@ -74,6 +74,7 @@ export default function BillingAccountShow({
     billableItems,
     today,
     diagnoses,
+    susPending,
 }: {
     account: AccountSummary & {
         card: string | null;
@@ -95,6 +96,7 @@ export default function BillingAccountShow({
     billableItems: { id: number; name: string; code: string | null }[];
     today: string;
     diagnoses: { code: string; name: string | null; principal: boolean }[];
+    susPending: string[];
 }) {
     // A compensation, and the item it compensates, no longer count as pending.
     const counts = items.filter(
@@ -140,6 +142,21 @@ export default function BillingAccountShow({
                                 ))}
                             </ul>
                         )}
+                    </section>
+                )}
+                {susPending.length > 0 && (
+                    <section
+                        aria-labelledby="sus-pending"
+                        className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 dark:border-amber-800 dark:bg-amber-950/40"
+                    >
+                        <h2 id="sus-pending" className="font-medium">
+                            Pendências do SUS
+                        </h2>
+                        <ul className="mt-1 grid list-disc gap-1 pl-5 text-sm">
+                            {susPending.map((problem) => (
+                                <li key={problem}>{problem}</li>
+                            ))}
+                        </ul>
                     </section>
                 )}
                 <CloseBar

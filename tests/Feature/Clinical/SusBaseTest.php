@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Clinical;
 
+use App\Billing\SigtapImport;
+use App\Billing\SusRules;
 use App\Clinical\Cid10;
 use App\Models\AuditEvent;
 use App\Models\BillingAccount;
+use App\Models\BillingItem;
 use App\Models\Membership;
 use App\Models\Professional;
 use App\Models\Visit;
@@ -13,6 +16,7 @@ use App\Tenancy\Role;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
+use ZipArchive;
 
 /**
  * Step 6b.1 (ADR-0011): the professional's Cartão Nacional de Saúde (validated, unique in the network, seen only in
@@ -113,5 +117,69 @@ class SusBaseTest extends ClinicalTestCase
         $this->getJson(route('cid10.search', ['q' => 'x']))->assertExactJson([]);
         auth()->logout();
         $this->getJson(route('cid10.search', ['q' => 'j18']))->assertUnauthorized();
+    }
+
+    /**
+     * Step 6b.4: a SUS account bills the SIGTAP procedure of its billable item at the value of the competence (SA in
+     * the BPA), and closes only without the SUS pending items: the patient's CNS or CPF, the professional's CNS and a
+     * CBO compatible with the procedure. The AIH leaves out what the SIGTAP keeps in its package.
+     */
+    public function test_a_sus_account_bills_sigtap_and_closes_without_pending_items(): void
+    {
+        // The real 10/2026 cut, as the 11/2026 competence of the visits here.
+        $path = tempnam(sys_get_temp_dir(), 'sigtap').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE);
+        foreach (glob(base_path('tests/Fixtures/sigtap/*.txt')) ?: [] as $file) {
+            $zip->addFromString(basename($file), str_contains($file, '_layout') ? (string) file_get_contents($file) : str_replace('202610', '202611', (string) file_get_contents($file)));
+        }
+        $zip->close();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $import = SigtapImport::read($path);
+        $import->apply($this->unit->tenant_id, 'TabelaUnificada_202611.zip', str_repeat('a', 64), $this->manager->user);
+        BillingItem::query()->create(['kind' => 'consultation', 'name' => 'Consulta especializada', 'code' => '10101012', 'sigtap_code' => '0301010072']);
+        // A consultation is BPA, not AIH (registers 01, 02, 07): in an admission it is in the package.
+        $consultation = SusRules::procedure($this->unit->tenant_id, '0301010072', '2026-11-16');
+        $this->assertSame([true, false, 1000], [SusRules::registered($consultation, 'bpa'), SusRules::registered($consultation, 'aih'), SusRules::price($consultation, 'bpa')]);
+        app(CurrentTenant::class)->set(null);
+
+        $appointment = $this->arrived($this->doctor, $this->unit);
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $appointment))->assertRedirect();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
+        $account = BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('items.0.code', '0301010072')->where('items.0.unitPriceCents', 1000)->has('items', 1)
+            ->where('susPending', fn ($pending) => collect($pending)->contains('O paciente não tem CNS nem CPF no cadastro (a recepção completa o cadastro).')
+                && collect($pending)->contains(fn ($problem) => str_contains($problem, 'não tem o Cartão Nacional de Saúde'))
+                && collect($pending)->contains(fn ($problem) => str_contains($problem, 'CBO')))
+            ->where('canClose', true));
+        $this->post(route('billing-accounts.close', $account))->assertSessionHasErrorsIn('close', 'close');
+
+        // The registrations completed: it closes.
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        DB::table('patients')->where('id', $this->patient->id)->update(['cns' => '123456789010000']);
+        DB::table('professionals')->where('id', $this->doctor->id)->update(['cns' => '700123456780900']);
+        DB::table('job_functions')->update(['cbo' => '225125']);
+        app(CurrentTenant::class)->set(null);
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page->where('susPending', []));
+        $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
+        $this->assertSame('closed', $account->fresh()->status);
+    }
+
+    public function test_without_the_competence_imported_the_sus_items_wait_and_the_account_says_so(): void
+    {
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        BillingItem::query()->create(['kind' => 'consultation', 'name' => 'Consulta especializada', 'code' => '10101012', 'sigtap_code' => '0301010072']);
+        app(CurrentTenant::class)->set(null);
+        $appointment = $this->arrived($this->doctor, $this->unit);
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $appointment))->assertRedirect();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $account = BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page->has('items', 0)
+            ->where('susPending', fn ($pending) => collect($pending)->contains('A SIGTAP de 11/2026 não foi importada: os procedimentos entram na conta depois da importação (tela Tabela SIGTAP).')));
     }
 }
