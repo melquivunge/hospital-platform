@@ -90,6 +90,11 @@ final class SusRules
         if (($patient->cns === null || ! PatientIdentity::validCns($patient->cns)) && $patient->cpf === null) {
             $problems[] = 'O paciente não tem CNS nem CPF no cadastro (a recepção completa o cadastro).';
         }
+        // Step 6b.5b1: the AIH closes with the number the manager authorized (on the stay's account). A stay closed before
+        // the rule cannot take it any more: its complementary account is not held for it.
+        if ($stay->status === 'open' && self::instrument($stay) === 'aih' && $stay->aih_number === null) {
+            $problems[] = 'Sem o número da AIH autorizada: registre-o quando o gestor devolver o laudo autorizado.';
+        }
         if ($professional !== null && $professional->cns === null) {
             $problems[] = "{$professional->name} não tem o Cartão Nacional de Saúde no cadastro (tela Profissionais).";
         }

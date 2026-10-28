@@ -87,6 +87,8 @@ class BillingAccountController extends Controller
         // Step 6.3b: the latest answer of each item (insert-only records).
         $answers = DB::table('billing_authorizations')->whereIn('billing_account_item_id', $items->modelKeys())->orderBy('id')->get()->keyBy('billing_account_item_id');
         $authors = $authors->union(User::query()->whereKey($answers->pluck('author_user_id')->unique()->all())->pluck('name', 'id'));
+        // A complementary account belongs to its stay's account (the CID and the AIH's number are the stay's).
+        $stay = $account->complement_of_id === null ? $account : BillingAccount::query()->findOrFail($account->complement_of_id);
 
         return Inertia::render('billing-accounts/show', [
             'account' => [
@@ -129,8 +131,13 @@ class BillingAccountController extends Controller
             ],
             'canReceive' => $payment === null && $account->status === 'closed' && $account->modality === 'private' && (int) $account->getAttribute('total_cents') > 0,
             'methods' => self::METHODS,
+            // Step 6b.5b1: the authorized AIH's number, on the stay's account of a SUS admission.
+            'aih' => $account->modality !== 'sus' || SusRules::instrument($stay) !== 'aih' ? null : [
+                'number' => $stay->aih_number,
+                'canRecord' => $stay->is($account) && $account->status === 'open',
+            ],
             // Step 6b.2 (ADR-0011): the SUS account shows the CID-10 codes of its stay, never the record.
-            'diagnoses' => $account->modality === 'sus' ? SusRules::diagnoses($account->complement_of_id === null ? $account : BillingAccount::query()->findOrFail($account->complement_of_id)) : [],
+            'diagnoses' => $account->modality === 'sus' ? SusRules::diagnoses($stay) : [],
             'complements' => BillingAccount::query()->where('complement_of_id', $account->complement_of_id ?? $account->id)->orderBy('id')->pluck('id')->all(),
             'billableItems' => BillingItem::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'code'])->values(),
             'today' => now($timezone)->toDateString(),
@@ -309,6 +316,44 @@ class BillingAccountController extends Controller
             AuditEvent::record('billing_account.closed', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'total_cents' => $total, 'complement_of_id' => $locked->complement_of_id]);
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Conta fechada.']);
+
+        return back();
+    }
+
+    /**
+     * Step 6b.5b1 (ADR-0011): billing records the number of the AIH the manager authorized (13 digits, once in the
+     * network) on the open account of a SUS admission; a typo is corrected while the account is open.
+     */
+    public function recordAihNumber(Request $request, BillingAccount $account): RedirectResponse
+    {
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $data = $request->validate(['aih_number' => ['required', 'string', 'max:20']], [], ['aih_number' => 'número da AIH']);
+        $number = (string) preg_replace('/\D/', '', $data['aih_number']);
+        if (strlen($number) !== 13) {
+            throw ValidationException::withMessages(['aih_number' => 'O número da AIH tem 13 dígitos.']);
+        }
+        DB::transaction(function () use ($account, $number) {
+            $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
+            if ($locked->modality !== 'sus' || $locked->complement_of_id !== null || SusRules::instrument($locked) !== 'aih') {
+                throw ValidationException::withMessages(['aih_number' => 'Só a conta de uma internação SUS recebe o número da AIH.']);
+            }
+            if ($locked->status !== 'open') {
+                throw ValidationException::withMessages(['aih_number' => 'Esta conta já foi fechada.']);
+            }
+            if (BillingAccount::query()->where('aih_number', $number)->whereKeyNot($locked->id)->exists()) {
+                throw ValidationException::withMessages(['aih_number' => 'Este número de AIH já está em outra conta.']);
+            }
+            $replaced = $locked->aih_number !== null && $locked->aih_number !== $number;
+            try {
+                $locked->forceFill(['aih_number' => $number])->save();
+            } catch (UniqueConstraintViolationException) {
+                // Another account took it at the same moment: the unique index decides.
+                throw ValidationException::withMessages(['aih_number' => 'Este número de AIH já está em outra conta.']);
+            }
+            // Ids only: the number identifies the patient's admission at the manager.
+            AuditEvent::record('billing_account.aih_number_recorded', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'replaced' => $replaced]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Número da AIH registrado.']);
 
         return back();
     }

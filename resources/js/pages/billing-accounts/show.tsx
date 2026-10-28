@@ -75,6 +75,7 @@ export default function BillingAccountShow({
     today,
     diagnoses,
     susPending,
+    aih,
 }: {
     account: AccountSummary & {
         card: string | null;
@@ -97,6 +98,7 @@ export default function BillingAccountShow({
     today: string;
     diagnoses: { code: string; name: string | null; principal: boolean }[];
     susPending: string[];
+    aih: { number: string | null; canRecord: boolean } | null;
 }) {
     // A compensation, and the item it compensates, no longer count as pending.
     const counts = items.filter(
@@ -144,6 +146,7 @@ export default function BillingAccountShow({
                         )}
                     </section>
                 )}
+                {aih && <AihNumber accountId={account.id} aih={aih} />}
                 {susPending.length > 0 && (
                     <section
                         aria-labelledby="sus-pending"
@@ -867,6 +870,88 @@ function Authorize({ accountId, items }: { accountId: number; items: Item[] }) {
                 )}
             </Form>
         </details>
+    );
+}
+
+/** Step 6b.5b1: the number of the AIH the manager authorized; corrected while the account is open. */
+function AihNumber({
+    accountId,
+    aih,
+}: {
+    accountId: number;
+    aih: { number: string | null; canRecord: boolean };
+}) {
+    return (
+        <section
+            aria-labelledby="aih-heading"
+            className="mb-6 grid gap-3 rounded-xl border bg-card px-5 py-4"
+        >
+            <div>
+                <h2 id="aih-heading" className="font-medium">
+                    AIH
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                    {aih.number ? (
+                        <>
+                            Número autorizado:{' '}
+                            <span className="font-medium text-foreground tabular-nums">
+                                {aih.number}
+                            </span>
+                        </>
+                    ) : (
+                        'Aguardando o número da AIH autorizada pelo gestor.'
+                    )}
+                </p>
+            </div>
+            {aih.canRecord && (
+                <Form
+                    {...BillingAccountController.recordAihNumber.form(
+                        accountId,
+                    )}
+                    resetOnSuccess
+                    className="flex flex-wrap items-end gap-3"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor="aih_number">
+                                    {aih.number
+                                        ? 'Corrigir o número'
+                                        : 'Número da AIH (13 dígitos)'}
+                                </Label>
+                                <Input
+                                    id="aih_number"
+                                    name="aih_number"
+                                    inputMode="numeric"
+                                    autoComplete="off"
+                                    required
+                                    maxLength={20}
+                                    aria-invalid={!!errors.aih_number}
+                                    aria-describedby={
+                                        errors.aih_number
+                                            ? 'aih_number-error'
+                                            : undefined
+                                    }
+                                    className="h-11 w-56 tabular-nums"
+                                />
+                                <InputError
+                                    id="aih_number-error"
+                                    message={errors.aih_number}
+                                />
+                            </div>
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Registrar
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            )}
+        </section>
     );
 }
 
