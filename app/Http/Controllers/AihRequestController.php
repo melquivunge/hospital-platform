@@ -5,13 +5,16 @@ namespace App\Http\Controllers;
 use App\Billing\SusRules;
 use App\Clinical\Cid10;
 use App\Clinical\ClinicalAccess;
+use App\Clinical\PatientIdentity;
 use App\Models\Admission;
+use App\Models\AihRequest;
 use App\Models\AuditEvent;
 use App\Models\Diagnosis;
 use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\Unit;
 use App\Policies\UnitPolicy;
+use App\Tenancy\Role;
 use Carbon\CarbonImmutable;
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -23,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Inertia\Response as InertiaResponse;
 use stdClass;
 
 /**
@@ -35,6 +39,8 @@ class AihRequestController extends Controller
 {
     /** The SIGTAP instrument "AIH (Proc. Principal)". */
     private const AIH_PRINCIPAL = '03';
+
+    public const LIST_LIMIT = 200;
 
     /** SIGTAP names are upper case with accents: compared without them. */
     private const ACCENTS = ['ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC'];
@@ -85,20 +91,61 @@ class AihRequestController extends Controller
         return to_route('ward.show', $admission);
     }
 
-    /** The latest signed report, as a PDF, for whoever attends the admission. */
-    public function pdf(Request $request, Admission $admission): Response
+    /**
+     * Step 6b.5a2 (user's decision, 28/10/2026): the reports outlive the admission. The auditor lists the network's,
+     * a doctor the ones they signed; the list carries no clinical content (no procedure, CID nor justification).
+     */
+    public function index(Request $request): InertiaResponse
     {
-        $patient = Patient::query()->findOrFail($admission->patient_id);
-        abort_unless(ClinicalAccess::activeAdmission($request->user(), $patient)?->id === $admission->id, 403);
-        $report = DB::table('aih_requests')->where('admission_id', $admission->id)->orderByDesc('version')->first() ?? abort(404);
-        ClinicalAccess::recordRead($request->user(), $patient, $admission);
-        AuditEvent::record('aih_request.printed', $admission->tenant_id, $admission, ['aih_request_id' => $report->id]);
+        $auditor = self::auditor($request);
+        $professional = ClinicalAccess::professional($request->user());
+        abort_unless($auditor || $professional !== null, 403);
+        Inertia::encryptHistory();
+        $units = Unit::query()->get(['id', 'name', 'timezone'])->keyBy('id');
 
-        $unit = Unit::query()->with('tenant')->findOrFail($admission->unit_id);
+        // ponytail: the newest LIST_LIMIT reports (the page says when it is cut); add filters and paging when volumes need them.
+        return Inertia::render('aih-requests/index', [
+            'auditor' => $auditor,
+            'limit' => self::LIST_LIMIT,
+            'reports' => AihRequest::query()->when(! $auditor, fn ($query) => $query->where('aih_requests.professional_id', $professional?->id))
+                ->join('patients', 'patients.id', '=', 'aih_requests.patient_id')->join('professionals', 'professionals.id', '=', 'aih_requests.professional_id')
+                ->orderByDesc('aih_requests.signed_at')->orderByDesc('aih_requests.id')->limit(self::LIST_LIMIT)
+                ->get(['aih_requests.id', 'aih_requests.unit_id', 'aih_requests.admission_id', 'aih_requests.version', 'aih_requests.signed_at',
+                    'patients.name', 'patients.social_name', 'patients.cpf', 'professionals.name as signer'])
+                ->map(fn (AihRequest $report) => [
+                    'id' => $report->id,
+                    'admission' => $report->admission_id,
+                    'version' => $report->version,
+                    'patient' => trim(($report->getAttribute('social_name') ?? $report->getAttribute('name')).' '.(PatientIdentity::maskCpf($report->getAttribute('cpf')) ?? '')),
+                    'unit' => $units->get($report->unit_id)?->name,
+                    'signer' => $report->getAttribute('signer'),
+                    'signedAt' => $report->signed_at->setTimezone($units->get($report->unit_id)->timezone ?? 'UTC')->format('d/m/Y H:i'),
+                ]),
+        ]);
+    }
+
+    /**
+     * A report as a PDF: for whoever attends the admission while it lasts, for the doctor who signed it (also after
+     * the discharge) and for the auditor (user's decision, 28/10/2026), each read in the trail.
+     */
+    public function pdf(Request $request, AihRequest $report): Response
+    {
+        $patient = Patient::query()->findOrFail($report->patient_id);
+        $admission = Admission::query()->findOrFail($report->admission_id);
+        $basis = match (true) {
+            ClinicalAccess::activeAdmission($request->user(), $patient)?->id === $admission->id => $admission,
+            ClinicalAccess::professional($request->user())?->id === $report->professional_id => $admission,
+            self::auditor($request) => $report,
+            default => abort(403),
+        };
+        ClinicalAccess::recordRead($request->user(), $patient, $basis);
+        AuditEvent::record('aih_request.printed', $report->tenant_id, $admission, ['aih_request_id' => $report->id, 'reason' => $basis instanceof AihRequest ? 'audit' : 'admission']);
+
+        $unit = Unit::query()->with('tenant')->findOrFail($report->unit_id);
         $professional = Professional::query()->whereKey($report->professional_id)->firstOrFail();
         $pdf = new Dompdf(new Options(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Sans']));
         $pdf->loadHtml(view('aih.request', [
-            'network' => $unit->tenant->name, 'unit' => $unit->name, 'cnes' => $unit->cnes, 'version' => (int) $report->version,
+            'network' => $unit->tenant->name, 'unit' => $unit->name, 'cnes' => $unit->cnes, 'version' => $report->version,
             'patient' => $patient, 'sex' => ['female' => 'Feminino', 'male' => 'Masculino'][$patient->sex] ?? null,
             'procedure' => "{$report->procedure_code} · {$report->procedure_name}",
             'cid' => $report->cid_code.' · '.Cid10::name($report->cid_code),
@@ -106,14 +153,14 @@ class AihRequestController extends Controller
             'justification' => $report->justification,
             'professional' => $professional->name, 'cns' => $professional->cns,
             'council' => $professional->council === null ? null : "{$professional->council} {$professional->council_number}/{$professional->council_uf}",
-            'signedAt' => CarbonImmutable::parse($report->signed_at)->setTimezone($unit->timezone ?? 'UTC')->format('d/m/Y H:i'),
+            'signedAt' => $report->signed_at->setTimezone($unit->timezone ?? 'UTC')->format('d/m/Y H:i'),
         ])->render());
         $pdf->setPaper('A4');
         $pdf->render();
 
         return response((string) $pdf->output(), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "attachment; filename=\"laudo-aih-{$admission->id}-v{$report->version}.pdf\"",
+            'Content-Disposition' => "attachment; filename=\"laudo-aih-{$report->admission_id}-v{$report->version}.pdf\"",
             'Cache-Control' => 'private, no-store',
             'X-Content-Type-Options' => 'nosniff',
             'Content-Security-Policy' => "default-src 'none'; sandbox",
@@ -158,6 +205,7 @@ class AihRequestController extends Controller
 
         return [
             'current' => $report === null ? null : [
+                'id' => (int) $report->id,
                 'version' => (int) $report->version,
                 'procedure' => "{$report->procedure_code} · {$report->procedure_name}",
                 'cid' => $report->cid_code,
@@ -167,6 +215,12 @@ class AihRequestController extends Controller
             'canSign' => $professional !== null && $admission->responsible_professional_id === $professional->id && in_array($admission->status, Admission::ACTIVE, true),
             'sigtap' => self::competence($admission->tenant_id, $timezone) !== null,
         ];
+    }
+
+    /** The auditor of the network in session (a network-wide role). */
+    public static function auditor(Request $request): bool
+    {
+        return UnitPolicy::currentMembership($request->user())?->hasRole(Role::Auditor) ?? false;
     }
 
     /** The network's latest imported SIGTAP competence up to this month, in the given zone (signed on any day). */

@@ -4,6 +4,7 @@ namespace App\Clinical;
 
 use App\Http\Controllers\SurgeryScheduleController;
 use App\Models\Admission;
+use App\Models\AihRequest;
 use App\Models\BillingAccount;
 use App\Models\EmergencyAccess;
 use App\Models\ExamOrder;
@@ -213,7 +214,7 @@ final class ClinicalAccess
         return self::openSurgeries($user)->whereIn('patient_id', self::recordIds($patient))->orderBy('id')->first();
     }
 
-    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission|Prescription|ExamOrder|Surgery|BillingAccount $basis): void
+    public static function recordRead(User $user, Patient $patient, Visit|EmergencyAccess|Admission|Prescription|ExamOrder|Surgery|BillingAccount|AihRequest $basis): void
     {
         DB::table('clinical_reads')->insert([
             'tenant_id' => $patient->tenant_id, 'user_id' => $user->id, 'patient_id' => $patient->merged_into_id ?? $patient->id,
@@ -228,6 +229,8 @@ final class ClinicalAccess
                 $basis instanceof Surgery => 'surgery',
                 // ADR-0010: billing reads the account, never the record.
                 $basis instanceof BillingAccount => 'billing',
+                // Step 6b.5a2: the auditor reads an AIH request report.
+                $basis instanceof AihRequest => 'audit',
                 default => 'emergency',
             },
             'visit_id' => $basis instanceof Visit ? $basis->id : null,
@@ -237,6 +240,7 @@ final class ClinicalAccess
             'exam_order_id' => $basis instanceof ExamOrder ? $basis->id : null,
             'surgery_id' => $basis instanceof Surgery ? $basis->id : null,
             'billing_account_id' => $basis instanceof BillingAccount ? $basis->id : null,
+            'aih_request_id' => $basis instanceof AihRequest ? $basis->id : null,
             'read_at' => now(),
         ]);
     }

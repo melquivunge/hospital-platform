@@ -31,6 +31,7 @@ import {
     Repeat,
     Scissors,
     ShieldCheck,
+    FileText,
     Siren,
     SlidersHorizontal,
     Stethoscope,
@@ -76,6 +77,7 @@ import { index as stockMovements } from '@/routes/stock/movements';
 import { index as census } from '@/routes/census';
 import { index as emergency } from '@/routes/emergency';
 import { index as triageLevels } from '@/routes/triage-levels';
+import { index as aihRequests } from '@/routes/aih-requests';
 import { index as clinicalAccess } from '@/routes/clinical-access';
 import { index as insurers } from '@/routes/insurers';
 import { index as medications } from '@/routes/medications';
@@ -131,6 +133,7 @@ export function AppSidebar() {
         canManageSurgeryCatalog,
         canAttend,
         canViewClinicalAccess,
+        canViewAihRequests,
         canViewBeds,
         canViewCensus,
         canUsePharmacy,
@@ -335,6 +338,9 @@ export function AppSidebar() {
                       icon: ShieldCheck,
                   },
               ]
+            : []),
+        ...(canViewAihRequests
+            ? [{ title: 'Laudos da AIH', href: aihRequests(), icon: FileText }]
             : []),
         ...(canManageInsurers
             ? [{ title: 'Convênios', href: insurers(), icon: Landmark }]

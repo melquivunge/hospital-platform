@@ -196,7 +196,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('ward/{admission}/notes', [WardController::class, 'storeNote'])->middleware('throttle:60,1')->name('ward.notes.store');
     // Step 6b.5a: the AIH request report of a SUS admission and the SIGTAP search of its procedure field.
     Route::post('ward/{admission}/aih-request', [AihRequestController::class, 'store'])->middleware('throttle:30,1')->name('ward.aih-request.store');
-    Route::get('ward/{admission}/aih-request.pdf', [AihRequestController::class, 'pdf'])->middleware('throttle:30,1')->name('ward.aih-request.pdf');
+    // Step 6b.5a2: the reports for the auditor and for the doctor who signed them, also after the discharge.
+    Route::get('aih-requests', [AihRequestController::class, 'index'])->middleware('throttle:60,1')->name('aih-requests.index');
+    Route::get('aih-requests/{report}/pdf', [AihRequestController::class, 'pdf'])->middleware('throttle:30,1')->name('aih-requests.pdf');
     Route::get('sigtap-procedures', [AihRequestController::class, 'search'])->middleware('throttle:60,1')->name('sigtap.procedures');
     Route::get('admissions', [AdmissionController::class, 'index'])->name('admissions.index');
     Route::post('admissions/{admission}/transfers', [TransferController::class, 'store'])->middleware('throttle:30,1')->name('transfers.store');
