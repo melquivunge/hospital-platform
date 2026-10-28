@@ -7,6 +7,7 @@ use App\Models\Admission;
 use App\Models\AihRequest;
 use App\Models\AuditEvent;
 use App\Models\Bed;
+use App\Models\BillingAccount;
 use App\Models\EmergencyEpisode;
 use App\Models\JobFunction;
 use App\Models\Membership;
@@ -62,18 +63,18 @@ class AihRequestTest extends ClinicalTestCase
         app(CurrentTenant::class)->set(null);
     }
 
-    private function admitted(string $modality = 'sus'): Admission
+    private function admitted(string $modality = 'sus', string $bed = 'A-1'): Admission
     {
         $bedManager = Membership::factory()->for($this->unit->tenant)->create();
         $bedManager->grant(Role::BedManagement, $this->unit);
-        $this->actingAs($this->manager->user)->post(route('beds.store', $this->unit), ['sector_id' => $this->ward->id, 'room' => '1', 'code' => 'A-1', 'type' => 'ward'])->assertSessionHasNoErrors();
+        $this->actingAs($this->manager->user)->post(route('beds.store', $this->unit), ['sector_id' => $this->ward->id, 'room' => '1', 'code' => $bed, 'type' => 'ward'])->assertSessionHasNoErrors();
         $this->actingAs($this->reception->user)->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => $modality]);
         $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));
         $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $this->ward->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->latest('id')->firstOrFail();
-        $this->actingAs($bedManager->user)->post(route('admissions.allocate', $admission), ['bed_id' => Bed::withoutGlobalScopes()->where('code', 'A-1')->sole()->id])->assertSessionHasNoErrors();
+        $this->actingAs($bedManager->user)->post(route('admissions.allocate', $admission), ['bed_id' => Bed::withoutGlobalScopes()->where('code', $bed)->sole()->id])->assertSessionHasNoErrors();
 
         return $admission->fresh();
     }
@@ -199,5 +200,49 @@ class AihRequestTest extends ClinicalTestCase
         app(CurrentTenant::class)->set(null);
         $stranger = Membership::factory()->withRole(Role::Auditor)->create();
         $this->actingAs($stranger->user)->get(route('aih-requests.pdf', $report))->assertNotFound();
+    }
+
+    /**
+     * Step 6b.5b1: billing records the authorized AIH's number on the SUS admission's account (13 digits, once in the
+     * network, corrected while open); without it the account shows the pending item and does not close.
+     */
+    public function test_billing_records_the_aih_number_and_the_account_waits_for_it(): void
+    {
+        $admission = $this->admitted();
+        $account = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $admission->emergency_episode_id)->sole();
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $missing = 'Sem o número da AIH autorizada: registre-o quando o gestor devolver o laudo autorizado.';
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('aih', ['number' => null, 'canRecord' => true])->where('susPending', fn ($pending) => collect($pending)->contains($missing)));
+        $record = fn (string $number) => $this->post(route('billing-accounts.aih-number', $account), ['aih_number' => $number]);
+
+        $record('123456789012')->assertSessionHasErrors(['aih_number' => 'O número da AIH tem 13 dígitos.']);
+        $record('3526 1000 0001-2')->assertSessionHasNoErrors();
+        $this->assertSame('3526100000012', $account->fresh()->aih_number);
+        $record('3526100000013')->assertSessionHasNoErrors();
+        $this->assertSame('3526100000013', $account->fresh()->aih_number);
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('aih.number', '3526100000013')->where('susPending', fn ($pending) => ! collect($pending)->contains($missing)));
+        $this->assertSame([false, true], AuditEvent::query()->where('action', 'billing_account.aih_number_recorded')->orderBy('id')->pluck('context')->map(fn ($context) => $context['replaced'])->all());
+        $this->assertStringNotContainsString('3526100000013', AuditEvent::query()->pluck('context')->toJson());
+
+        // Another admission's account cannot take the same number; a consultation's account takes none.
+        $this->post(route('ward.discharge', $admission))->assertForbidden();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->travelTo(now()->addHour());
+        $second = $this->admitted('sus', 'A-2');
+        $other = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $second->emergency_episode_id)->sole();
+        $this->actingAs($billing->user)->post(route('billing-accounts.aih-number', $other), ['aih_number' => '3526100000013'])
+            ->assertSessionHasErrors(['aih_number' => 'Este número de AIH já está em outra conta.']);
+        $appointment = $this->arrived($this->doctor, $this->unit, '11:20');
+        $consultation = BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
+        $this->actingAs($billing->user)->post(route('billing-accounts.aih-number', $consultation), ['aih_number' => '3526100000099'])
+            ->assertSessionHasErrors(['aih_number' => 'Só a conta de uma internação SUS recebe o número da AIH.']);
+
+        // Billing of another unit does not reach it.
+        $outsider = Membership::factory()->for($this->unit->tenant)->create();
+        $outsider->grant(Role::Billing, $this->other);
+        $this->actingAs($outsider->user)->post(route('billing-accounts.aih-number', $other), ['aih_number' => '3526100000098'])->assertForbidden();
     }
 }
