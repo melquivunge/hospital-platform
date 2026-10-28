@@ -20,8 +20,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $uf
  * @property string|null $timezone
  * @property string|null $cnes
+ * @property string|null $cnpj the provider's, for the BPA header (step 6b.6a1)
+ * @property string|null $sus_acronym
+ * @property string|null $sus_manager_name the SUS manager the BPA goes to
+ * @property string|null $sus_manager_level M (municipal) or E (state)
  */
-#[Fillable(['tenant_id', 'name', 'uf', 'timezone', 'cnes'])]
+#[Fillable(['tenant_id', 'name', 'uf', 'timezone', 'cnes', 'cnpj', 'sus_acronym', 'sus_manager_name', 'sus_manager_level'])]
 class Unit extends Model
 {
     /** @use HasFactory<UnitFactory> */

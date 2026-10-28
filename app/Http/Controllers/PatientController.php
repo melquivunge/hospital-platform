@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Clinical\Ethnicity;
 use App\Clinical\PatientIdentity;
 use App\Http\Requests\Clinical\PatientRequest;
 use App\Models\AuditEvent;
@@ -73,6 +74,7 @@ class PatientController extends Controller
             'patient' => null,
             'units' => self::units($request),
             'duplicates' => $duplicates->map(fn (Patient $patient) => self::summary($patient)),
+            ...self::sus(),
         ]);
     }
 
@@ -121,6 +123,9 @@ class PatientController extends Controller
             'patient' => [
                 ...self::summary($patient),
                 ...$patient->only('mother_name', 'phone', 'email', 'guardian_name', 'guardian_relationship', 'guardian_phone'),
+                // Step 6b.6a1: self-declared race/color and, when indigenous, the ethnicity, by name.
+                'raceColor' => Patient::RACE_COLORS[$patient->race_color] ?? null,
+                'ethnicity' => $patient->ethnicity === null ? null : (Ethnicity::all()[$patient->ethnicity] ?? $patient->ethnicity),
                 'cpf' => $patient->cpf,
                 'cns' => $patient->cns,
             ],
@@ -145,11 +150,12 @@ class PatientController extends Controller
 
         return Inertia::render('patients/form', [
             'patient' => [
-                ...$patient->only('id', 'registered_unit_id', 'name', 'social_name', 'sex', 'cpf', 'cns', 'mother_name', 'phone', 'email', 'guardian_name', 'guardian_relationship', 'guardian_phone'),
+                ...$patient->only('id', 'registered_unit_id', 'name', 'social_name', 'sex', 'cpf', 'cns', 'mother_name', 'phone', 'email', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'race_color', 'ethnicity'),
                 'birth_date' => $patient->birth_date?->toDateString(),
             ],
             'units' => self::units($request, $patient->registered_unit_id),
             'duplicates' => [],
+            ...self::sus(),
         ]);
     }
 
@@ -160,6 +166,10 @@ class PatientController extends Controller
         }
         self::saving(fn () => DB::transaction(function () use ($request, $patient) {
             $patient->fill($request->safe()->except('confirm_new'));
+            // Step 6b.6a1: the ethnicity goes with the indigenous race/color only.
+            if ($patient->race_color !== '05') {
+                $patient->ethnicity = null;
+            }
             // Step 4.2: naming an unidentified registration identifies it; a duplicate then shows up in
             // the merge queue.
             if ($patient->unidentified && $patient->isDirty('name')) {
@@ -216,6 +226,22 @@ class PatientController extends Controller
         }
 
         return $query;
+    }
+
+    /**
+     * Step 6b.6a1: the options of the race/color and ethnicity fields.
+     *
+     * @return array{raceColors: array<string, string>, ethnicities: list<array{code: string, name: string}>}
+     */
+    private static function sus(): array
+    {
+        $ethnicities = Ethnicity::all();
+        asort($ethnicities);
+
+        return [
+            'raceColors' => Patient::RACE_COLORS,
+            'ethnicities' => array_map(fn (string $code, string $name) => ['code' => (string) $code, 'name' => $name], array_keys($ethnicities), $ethnicities),
+        ];
     }
 
     /**

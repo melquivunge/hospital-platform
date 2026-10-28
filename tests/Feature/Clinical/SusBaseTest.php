@@ -153,13 +153,15 @@ class SusBaseTest extends ClinicalTestCase
             ->where('items.0.code', '0301010072')->where('items.0.unitPriceCents', 1000)->has('items', 1)
             ->where('susPending', fn ($pending) => collect($pending)->contains('O paciente não tem CNS nem CPF no cadastro (a recepção completa o cadastro).')
                 && collect($pending)->contains(fn ($problem) => str_contains($problem, 'não tem o Cartão Nacional de Saúde'))
-                && collect($pending)->contains(fn ($problem) => str_contains($problem, 'CBO')))
+                && collect($pending)->contains(fn ($problem) => str_contains($problem, 'CBO'))
+                // Step 6b.6a1: the consultation goes to the BPA-I, which carries the race/color.
+                && collect($pending)->contains('O paciente não tem raça/cor no cadastro (a recepção completa o cadastro): exigida no BPA-I e na AIH.'))
             ->where('canClose', true));
         $this->post(route('billing-accounts.close', $account))->assertSessionHasErrorsIn('close', 'close');
 
         // The registrations completed: it closes.
         app(CurrentTenant::class)->set($this->unit->tenant);
-        DB::table('patients')->where('id', $this->patient->id)->update(['cns' => '123456789010000']);
+        DB::table('patients')->where('id', $this->patient->id)->update(['cns' => '123456789010000', 'race_color' => '03']);
         DB::table('professionals')->where('id', $this->doctor->id)->update(['cns' => '700123456780900']);
         DB::table('job_functions')->update(['cbo' => '225125']);
         app(CurrentTenant::class)->set(null);

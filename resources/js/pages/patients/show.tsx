@@ -22,6 +22,8 @@ type Patient = PatientSummary & {
     guardian_name: string | null;
     guardian_relationship: string | null;
     guardian_phone: string | null;
+    raceColor: string | null;
+    ethnicity: string | null;
 };
 
 function formatCpf(cpf: string | null): string | null {
@@ -54,6 +56,10 @@ export default function PatientShow({
             ['Nome social', patient.socialName],
             ['Nascimento', formatBirthDate(patient.birthDate)],
             ['Sexo', patient.sex ? sexLabels[patient.sex] : null],
+            ['Raça/cor', patient.raceColor],
+            ...(patient.ethnicity
+                ? [['Etnia', patient.ethnicity] as [string, string]]
+                : []),
             ['Unidade do cadastro', patient.unit],
         ],
         [
