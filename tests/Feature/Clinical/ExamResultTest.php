@@ -214,7 +214,7 @@ class ExamResultTest extends ClinicalTestCase
         $item = $this->item('laboratory');
         $this->actingAs($this->lab->user)->post(route('exam-queue.collect', $item))->assertSessionHasNoErrors();
         // The emergency visit ends; its item (no billable item: pending) is compensated and the account closes.
-        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit), ['outcome' => 'discharged'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit), ['cid_principal' => 'J18.9', 'outcome' => 'discharged'])->assertSessionHasNoErrors();
         $account = BillingAccount::withoutTenantScope()->sole();
         $this->actingAs($billing->user)->post(route('billing-account-items.compensate', BillingAccountItem::withoutTenantScope()->sole()), ['reason' => 'Não cobrado.'])->assertSessionHasNoErrors();
         $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();

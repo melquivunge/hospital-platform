@@ -173,7 +173,7 @@ class SurgeryDescriptionTest extends ClinicalTestCase
         app(CurrentTenant::class)->set(null);
         $surgery = $this->started();
         // In progress: closing the visit bills the consultation only.
-        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit), ['outcome' => 'discharged'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit), ['cid_principal' => 'J18.9', 'outcome' => 'discharged'])->assertSessionHasNoErrors();
         $this->assertSame(['visit'], BillingAccountItem::withoutTenantScope()->pluck('origin_type')->all());
 
         $this->actingAs($this->surgeonAccount->user)->post(route('surgery-description.store', $surgery), self::DESCRIPTION)->assertSessionHasNoErrors();

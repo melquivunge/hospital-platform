@@ -7,6 +7,7 @@ use App\Models\Appointment;
 use App\Models\AuditEvent;
 use App\Models\BillingAccount;
 use App\Models\ClinicalNote;
+use App\Models\Diagnosis;
 use App\Models\EmergencyEpisode;
 use App\Models\Patient;
 use App\Models\Professional;
@@ -116,7 +117,9 @@ class VisitController extends Controller
         $timezone = $visit->unit()->value('timezone') ?? 'UTC';
 
         return Inertia::render('visits/show', [
-            'visit' => ['id' => $visit->id, 'openedAt' => $visit->opened_at->setTimezone($timezone)->format('d/m/Y H:i'), 'emergency' => $visit->emergency_episode_id !== null],
+            'visit' => ['id' => $visit->id, 'openedAt' => $visit->opened_at->setTimezone($timezone)->format('d/m/Y H:i'), 'emergency' => $visit->emergency_episode_id !== null,
+                // Step 6b.2: the CID-10 is asked at the close; required in the SUS.
+                'cidRequired' => Diagnosis::requiredForVisit($visit)],
             // Step 4.4a: choices for an admission request when closing an emergency visit.
             'admissionOptions' => $visit->emergency_episode_id === null ? null : [...AdmissionController::requestOptions($visit->unit_id), 'me' => $professional->id],
             'patient' => self::patientHeader($patient),
@@ -164,11 +167,16 @@ class VisitController extends Controller
             if ($locked->closed_at !== null) {
                 throw ValidationException::withMessages(['visit' => 'Este atendimento já foi encerrado.']);
             }
+            // Step 6b.2: the CID-10 of the care, required in the SUS; after the state check, so a stale page hears why.
+            $codes = Diagnosis::fromRequest($request, Diagnosis::requiredForVisit($locked), $locked->patient()->value('sex'));
             $patient = $locked->patient()->firstOrFail();
             if (self::drafts($locked, ClinicalAccess::recordIds($patient), $request->user()->id)->exists()) {
                 throw ValidationException::withMessages(['visit' => 'Assine os rascunhos antes de encerrar o atendimento.']);
             }
             $locked->forceFill(['closed_at' => now()])->save();
+            if ($codes !== null) {
+                Diagnosis::record($locked, $codes, $request->user());
+            }
             if ($locked->appointment_id !== null) {
                 Appointment::query()->whereKey($locked->appointment_id)->update(['status' => 'completed']);
             }

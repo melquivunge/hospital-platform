@@ -11,6 +11,7 @@ use App\Http\Controllers\BillingLotController;
 use App\Http\Controllers\BillingPriceController;
 use App\Http\Controllers\BillingReportController;
 use App\Http\Controllers\CensusController;
+use App\Http\Controllers\Cid10Controller;
 use App\Http\Controllers\ClinicalDocumentController;
 use App\Http\Controllers\ClinicalRecordController;
 use App\Http\Controllers\CurrentTenantController;
@@ -145,6 +146,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Step 6.5c1: the insurer's return of a sent lot.
     Route::get('billing-lots/{lot}/return', [BillingLotController::class, 'showReturn'])->middleware('throttle:120,1')->name('billing-lots.return');
     Route::post('billing-lots/{lot}/return', [BillingLotController::class, 'storeReturn'])->middleware('throttle:30,1')->name('billing-lots.return.store');
+    // Step 6b.2: the CID-10 search of the code fields.
+    Route::get('cid10', Cid10Controller::class)->middleware('throttle:60,1')->name('cid10.search');
     // Step 6.6: the unit manager's billing reports (numbers only) and their CSV.
     Route::get('billing-reports', [BillingReportController::class, 'index'])->middleware('throttle:120,1')->name('billing-reports.index');
     Route::get('billing-reports.csv', [BillingReportController::class, 'csv'])->middleware('throttle:20,1')->name('billing-reports.csv');

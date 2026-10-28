@@ -140,7 +140,7 @@ class PrescriptionJourneyTest extends TestCase
         $episode = EmergencyEpisode::withoutTenantScope()->sole();
         $this->actingAs($doctorUser)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Fratura de fêmur após queda.'])->assertSessionHasNoErrors();
         $this->post(route('emergency.call', $episode))->assertSessionHasNoErrors();
-        $this->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $ward->id, 'responsible_professional_id' => $doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->sole();
         $this->actingAs($users['leitos'])->post(route('admissions.allocate', $admission), ['bed_id' => $bed->id])->assertSessionHasNoErrors();
 
@@ -242,7 +242,7 @@ class PrescriptionJourneyTest extends TestCase
 
         // 10. Discharge closes the prescription: out of the queue, nothing more to administer or download.
         $this->at('2026-11-21 15:00');
-        $this->actingAs($doctorUser)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Fratura estabilizada, analgesia oral.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($doctorUser)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Fratura estabilizada, analgesia oral.', 'password' => 'password'])->assertSessionHasNoErrors();
         $this->actingAs($users['farmacia'])->get(route('pharmacy.index'))->assertInertia(fn (Assert $page) => $page->has('prescriptions', 0));
         $this->actingAs($nurse)->post(route('medication.dose', $this->firstDose($renewal, 'Dipirona')), ['outcome' => 'administered'])->assertForbidden();
         $this->actingAs($doctorUser)->get(route('prescriptions.signature', [$renewal, 'pdf']))->assertForbidden();

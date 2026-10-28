@@ -69,7 +69,7 @@ class BillingLotTest extends ClinicalTestCase
     {
         $appointment = $this->arrived($this->doctor, $this->unit, $time, $this->insurance());
         $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $appointment))->assertRedirect();
-        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         $account = BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
         $this->actingAs($this->billing->user)->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
 
@@ -158,7 +158,7 @@ class BillingLotTest extends ClinicalTestCase
         $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));
-        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['outcome' => 'admission_requested',
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested',
             'requested_sector_id' => $sector->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $admitted = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $episode->id)->sole();
         app(CurrentTenant::class)->set($this->unit->tenant);
@@ -267,7 +267,7 @@ class BillingLotTest extends ClinicalTestCase
         app(CurrentTenant::class)->set(null);
         $appointment = $this->arrived($this->doctor, $this->unit, '08:20', $this->insurance());
         $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $appointment))->assertRedirect();
-        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         $account = BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
         $this->actingAs($this->billing->user)->post(route('billing-accounts.items.store', $account), ['billing_item_id' => $material->id, 'performed_on' => now($this->unit->timezone ?? 'UTC')->toDateString(), 'quantity' => 2, 'reason' => 'Curativo.'])->assertSessionHasNoErrors();
         $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
@@ -371,10 +371,10 @@ class BillingLotTest extends ClinicalTestCase
         $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));
-        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['outcome' => 'admission_requested', 'requested_sector_id' => $sector->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $sector->id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($bedManager->user)->post(route('admissions.allocate', $admission), ['bed_id' => Bed::withoutGlobalScopes()->where('code', 'A-1')->value('id')])->assertSessionHasNoErrors();
-        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
         $account = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $episode->id)->sole();
         $dailyItem = BillingAccountItem::withoutTenantScope()->where('billing_account_id', $account->id)->where('origin_type', 'admission_day')->sole();
         $this->assertTrue($dailyItem->needs_authorization);
@@ -642,7 +642,7 @@ class BillingLotTest extends ClinicalTestCase
         $this->arrived($this->doctor, $this->unit, '10:20', ['modality' => 'private']);
         $paid = $this->arrived($this->doctor, $this->unit, '11:20', ['modality' => 'private']);
         $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $paid))->assertRedirect();
-        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         $this->actingAs($this->billing->user)->post(route('billing-accounts.close', BillingAccount::withoutTenantScope()->where('appointment_id', $paid->id)->sole()))->assertSessionHasNoErrors();
         $report = fn () => $this->actingAs($this->manager->user)->get(route('billing-reports.index', ['unit' => $this->unit->id]));
         $report()->assertInertia(fn (Assert $page) => $page->component('billing-reports/index')

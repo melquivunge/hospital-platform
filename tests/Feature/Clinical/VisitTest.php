@@ -30,7 +30,7 @@ class VisitTest extends ClinicalTestCase
         $draft = ClinicalNote::withoutTenantScope()->sole();
         $this->put(route('clinical-notes.update', $draft), ['body' => 'Queixa: cefaleia há 3 dias. Sem febre.'])->assertSessionHasNoErrors();
         // Closing with a draft is refused.
-        $this->post(route('visits.close', $visit))->assertSessionHasErrors('visit');
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9'])->assertSessionHasErrors('visit');
 
         $this->post(route('clinical-notes.sign', $draft), ['body' => 'Queixa: cefaleia há 3 dias. Sem febre.', 'password' => 'errada'])->assertSessionHasErrors('password');
         $this->post(route('clinical-notes.sign', $draft), ['body' => 'Queixa: cefaleia há 3 dias. Sem febre.', 'password' => 'password'])->assertSessionHasNoErrors();
@@ -46,7 +46,7 @@ class VisitTest extends ClinicalTestCase
             ->has('record.0.addenda', 1)->has('drafts', 0));
         $this->assertTrue(DB::table('clinical_reads')->where('user_id', $this->doctorAccount->user_id)->where('visit_id', $visit->id)->exists());
 
-        $this->post(route('visits.close', $visit))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         $this->assertSame('completed', Appointment::withoutTenantScope()->findOrFail($appointment->id)->status);
         // Without an open visit the record is no longer readable.
         $this->get(route('visits.show', $visit))->assertRedirect(route('visits.index'));
@@ -83,7 +83,7 @@ class VisitTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user)->post(route('visits.open', $third));
         $later = Visit::withoutTenantScope()->latest('id')->firstOrFail();
         $this->get(route('visits.show', $later))->assertInertia(fn (Assert $page) => $page->has('drafts', 0));
-        $this->post(route('visits.close', $later))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $later), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
     }
 
     public function test_reception_managers_and_other_professionals_never_read_the_record(): void
@@ -151,7 +151,7 @@ class VisitTest extends ClinicalTestCase
         // A closed visit is never reopened.
         $this->actingAs($this->doctorAccount->user)->put(route('clinical-notes.update', $draft), ['body' => 'Rascunho novo.'])->assertSessionHasNoErrors();
         $this->post(route('clinical-notes.sign', $draft), ['body' => 'Rascunho novo.', 'password' => 'password'])->assertSessionHasNoErrors();
-        $this->post(route('visits.close', $visit))->assertSessionHasNoErrors();
+        $this->post(route('visits.close', $visit), ['cid_principal' => 'J18.9'])->assertSessionHasNoErrors();
         app(CurrentTenant::class)->set($this->unit->tenant);
         try {
             DB::transaction(fn () => DB::table('visits')->where('id', $visit->id)->update(['closed_at' => null]));

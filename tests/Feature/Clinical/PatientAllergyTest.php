@@ -95,7 +95,7 @@ class PatientAllergyTest extends ClinicalTestCase
         $this->post(route('patient-allergies.store', $this->patient), ['substance' => 'Penicilina', 'severity' => 'mild'])->assertForbidden();
 
         // Once the visit closes, the doctor no longer writes either.
-        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit));
+        $this->actingAs($this->doctorAccount->user)->post(route('visits.close', $this->visit), ['cid_principal' => 'J18.9']);
         $this->post(route('patient-allergies.store', $this->patient), ['substance' => 'Penicilina', 'severity' => 'mild'])->assertForbidden();
         $this->assertSame(1, PatientAllergy::withoutTenantScope()->count());
     }

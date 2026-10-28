@@ -6,6 +6,7 @@ import ClinicalDocumentController from '@/actions/App/Http/Controllers/ClinicalD
 import VisitController from '@/actions/App/Http/Controllers/VisitController';
 import type { ClinicalDocument } from '@/components/clinical-documents';
 import { ClinicalDocuments } from '@/components/clinical-documents';
+import { CidField } from '@/components/cid-field';
 import type { ExamResultItem } from '@/components/exam-results';
 import { ExamResults } from '@/components/exam-results';
 import { SurgeryDescriptions } from '@/components/surgery-descriptions';
@@ -44,7 +45,12 @@ export default function VisitShow({
     admissionOptions,
     canOrder,
 }: {
-    visit: { id: number; openedAt: string | null; emergency: boolean };
+    visit: {
+        id: number;
+        openedAt: string | null;
+        emergency: boolean;
+        cidRequired: boolean;
+    };
     patient: RecordPatient;
     allergies: PatientAllergy[];
     allergyForm: AllergyForm;
@@ -99,29 +105,21 @@ export default function VisitShow({
                                     </Link>
                                 </Button>
                             )}
-                            {!visit.emergency && (
-                                <Form {...VisitController.close.form(visit.id)}>
-                                    {({ processing }) => (
-                                        <Button
-                                            type="submit"
-                                            variant="outline"
-                                            disabled={processing}
-                                            className="min-h-11"
-                                        >
-                                            Encerrar atendimento
-                                        </Button>
-                                    )}
-                                </Form>
-                            )}
                         </div>
                     }
                 />
                 <PatientAllergies allergies={allergies} form={allergyForm} />
                 <InputError message={errors.visit} className="mb-4" />
-                {admissionOptions && (
+                {admissionOptions ? (
                     <CloseEmergency
                         visitId={visit.id}
                         options={admissionOptions}
+                        cidRequired={visit.cidRequired}
+                    />
+                ) : (
+                    <CloseVisit
+                        visitId={visit.id}
+                        cidRequired={visit.cidRequired}
                     />
                 )}
 
@@ -165,13 +163,61 @@ type AdmissionOptions = {
     me: number;
 };
 
+/** Step 6b.2: a consultation closes with its CID-10 (required in the SUS). */
+function CloseVisit({
+    visitId,
+    cidRequired,
+}: {
+    visitId: number;
+    cidRequired: boolean;
+}) {
+    const { errors } = usePage().props;
+    // A refused CID keeps the panel open, so the error is seen.
+    const refused = !!(errors.cid_principal || errors.cid_secondary);
+
+    return (
+        <details
+            open={refused || undefined}
+            className="mb-6 rounded-xl border bg-card px-5 py-3"
+        >
+            <summary className="flex min-h-11 cursor-pointer items-center font-medium">
+                Encerrar atendimento
+            </summary>
+            <Form
+                {...VisitController.close.form(visitId)}
+                className="grid gap-4 py-3"
+            >
+                {({ processing, errors }) => (
+                    <>
+                        <CidField required={cidRequired} errors={errors} />
+                        <p className="text-sm text-muted-foreground">
+                            Assine os rascunhos antes. Depois de encerrar, o
+                            prontuário deixa de abrir para você por este
+                            atendimento.
+                        </p>
+                        <Button
+                            type="submit"
+                            disabled={processing}
+                            className="min-h-11 justify-self-start"
+                        >
+                            Encerrar atendimento
+                        </Button>
+                    </>
+                )}
+            </Form>
+        </details>
+    );
+}
+
 /** Step 4.3: an emergency visit closes with its outcome; an admission request (4.4a) names sector and doctor. */
 function CloseEmergency({
     visitId,
     options,
+    cidRequired,
 }: {
     visitId: number;
     options: AdmissionOptions;
+    cidRequired: boolean;
 }) {
     const [outcome, setOutcome] = useState('');
 
@@ -283,6 +329,7 @@ function CloseEmergency({
                                 </label>
                             </div>
                         )}
+                        <CidField required={cidRequired} errors={errors} />
                         <p className="text-sm text-muted-foreground">
                             Assine os rascunhos antes. Depois de encerrar, o
                             prontuário deixa de abrir para você por este

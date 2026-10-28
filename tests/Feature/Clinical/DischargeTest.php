@@ -68,7 +68,7 @@ class DischargeTest extends ClinicalTestCase
         $episode = EmergencyEpisode::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($this->doctorAccount->user)->post(route('emergency.triage', $episode), ['level' => 2, 'complaint' => 'Dispneia.']);
         $this->post(route('emergency.call', $episode));
-        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['outcome' => 'admission_requested', 'requested_sector_id' => $bed->sector_id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
+        $this->post(route('visits.close', Visit::withoutTenantScope()->latest('id')->firstOrFail()), ['cid_principal' => 'J18.9', 'outcome' => 'admission_requested', 'requested_sector_id' => $bed->sector_id, 'responsible_professional_id' => $this->doctor->id])->assertSessionHasNoErrors();
         $admission = Admission::withoutTenantScope()->latest('id')->firstOrFail();
         $this->actingAs($this->bedManager->user)->post(route('admissions.allocate', $admission), ['bed_id' => $bed->id])->assertSessionHasNoErrors();
 
@@ -86,7 +86,7 @@ class DischargeTest extends ClinicalTestCase
         DB::table('billing_accounts')->where('id', $account->id)->update(['modality' => 'private']);
         app(CurrentTenant::class)->set(null);
 
-        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
         // The emergency visit and, admitted and discharged the same day, one daily rate (no billable item yet: pending).
         $this->assertSame([[$account->id, 'visit', 'Consulta de urgência'], [$account->id, 'admission_day', 'Diária Enfermaria']],
             BillingAccountItem::withoutTenantScope()->orderBy('id')->get()->map(fn ($item) => [$item->billing_account_id, $item->origin_type, $item->name])->all());
@@ -121,13 +121,13 @@ class DischargeTest extends ClinicalTestCase
         $this->assertSame(0, $account->generate());
         app(CurrentTenant::class)->set(null);
         // The discharge on Sunday bills no day for Sunday.
-        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
         $this->assertSame([['2026-11-13', '60000775', 48000], ['2026-11-14', null, null]], $days());
         $this->assertSame('Diária UTI', BillingAccountItem::withoutTenantScope()->where('performed_on', '2026-11-14')->value('name'));
 
         // Admitted and discharged on the same day: one day.
         $again = $this->admitted($this->bed('A-2'), 'private');
-        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $again), ['type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $again), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Alta.', 'password' => 'password'])->assertSessionHasNoErrors();
         $this->assertSame('2026-11-15', BillingAccountItem::withoutTenantScope()->where('origin_type', 'admission_day')->where('origin_id', $again->id)->sole()->performed_on->toDateString());
     }
 
@@ -138,21 +138,25 @@ class DischargeTest extends ClinicalTestCase
         $this->actingAs($this->wardNurse->user)->get(route('ward.show', $admission))->assertOk();
 
         // Only the responsible doctor discharges.
-        $this->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertForbidden();
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertForbidden();
         $this->actingAs($this->doctorAccount->user)->get(route('ward.show', $admission))
             ->assertInertia(fn (Assert $page) => $page->where('discharge.otherDrafts', 0)->has('discharge.types', 5));
 
+        // Step 6b.2: the SUS stay needs its CID-10 (the AIH carries it).
+        $this->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('discharge.cidRequired', true));
+        $this->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertSessionHasErrors('cid_principal');
         // Refused without the summary, and with a wrong password: nothing changes.
-        $this->post(route('ward.discharge', $admission), ['type' => 'improved', 'password' => 'password'])->assertSessionHasErrors('summary');
-        $this->post(route('ward.discharge', $admission), ['type' => 'at_request', 'summary' => 'Estável.', 'password' => 'wrong'])->assertSessionHasErrors('password');
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'password' => 'password'])->assertSessionHasErrors('summary');
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'at_request', 'summary' => 'Estável.', 'password' => 'wrong'])->assertSessionHasErrors('password');
         $this->assertSame(['admitted', 'occupied'], [$admission->fresh()->status, $bed->fresh()->status]);
 
-        $this->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Alta por melhora. Retorno em 7 dias.', 'password' => 'password'])
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Alta por melhora. Retorno em 7 dias.', 'password' => 'password'])
             ->assertSessionHasNoErrors()->assertRedirect(route('ward.index'));
         $admission = $admission->fresh();
         $summary = ClinicalNote::withoutTenantScope()->findOrFail($admission->discharge_summary_id);
         $this->assertSame(['discharged', 'improved', 'cleaning'], [$admission->status, $admission->discharge_type, $bed->fresh()->status]);
         $this->assertSame(['signed', $admission->id, 'Alta por melhora. Retorno em 7 dias.'], [$summary->status, $summary->admission_id, $summary->body]);
+        $this->assertSame(['J189'], DB::table('diagnoses')->where('admission_id', $admission->id)->pluck('cid_code')->all());
         $this->assertSame(['occupied', 'cleaning'], [DB::table('bed_events')->where('bed_id', $bed->id)->latest('id')->value('from_status'), DB::table('bed_events')->where('bed_id', $bed->id)->latest('id')->value('to_status')]);
         // The audit keeps ids only: never the discharge type.
         $this->assertArrayNotHasKey('type', AuditEvent::query()->where('action', 'admission.discharged')->sole()->context);
@@ -161,7 +165,7 @@ class DischargeTest extends ClinicalTestCase
         $this->get(route('ward.show', $admission))->assertForbidden();
         $this->post(route('ward.notes.store', $admission), ['body' => 'Depois da alta.'])->assertForbidden();
         $this->actingAs($this->wardNurse->user)->get(route('ward.show', $admission))->assertForbidden();
-        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'death', 'occurred_at' => now($this->unit->timezone ?? 'UTC')->format('Y-m-d\TH:i')])->assertSessionHasErrors('type');
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'death', 'occurred_at' => now($this->unit->timezone ?? 'UTC')->format('Y-m-d\TH:i')])->assertSessionHasErrors('type');
 
         // The summary is immutable, like every signed note.
         $this->expectException(QueryException::class);
@@ -176,10 +180,10 @@ class DischargeTest extends ClinicalTestCase
         $this->travel(10)->minutes();
         $this->actingAs($this->doctorAccount->user);
 
-        $this->post(route('ward.discharge', $admission), ['type' => 'death', 'occurred_at' => now($timezone)->addHour()->format('Y-m-d\TH:i')])->assertSessionHasErrors('occurred_at');
-        $this->post(route('ward.discharge', $admission), ['type' => 'death', 'occurred_at' => now($timezone)->subDay()->format('Y-m-d\TH:i')])->assertSessionHasErrors('occurred_at');
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'death', 'occurred_at' => now($timezone)->addHour()->format('Y-m-d\TH:i')])->assertSessionHasErrors('occurred_at');
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'death', 'occurred_at' => now($timezone)->subDay()->format('Y-m-d\TH:i')])->assertSessionHasErrors('occurred_at');
         $at = now($timezone)->subMinutes(1)->startOfMinute();
-        $this->post(route('ward.discharge', $admission), ['type' => 'death', 'occurred_at' => $at->format('Y-m-d\TH:i'), 'summary' => 'ignorado'])->assertSessionHasNoErrors();
+        $this->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'death', 'occurred_at' => $at->format('Y-m-d\TH:i'), 'summary' => 'ignorado'])->assertSessionHasNoErrors();
         $admission = $admission->fresh();
         $this->assertSame(['discharged', 'death', null, $this->doctorAccount->user_id], [$admission->status, $admission->discharge_type, $admission->discharge_summary_id, $admission->discharged_by_user_id]);
         $this->assertTrue($admission->discharged_at->equalTo($at));
@@ -197,7 +201,7 @@ class DischargeTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user)->post(route('ward.notes.store', $admission), ['body' => 'Rascunho do médico.'])->assertSessionHasNoErrors();
         $this->get(route('ward.show', $admission))->assertInertia(fn (Assert $page) => $page->where('discharge.otherDrafts', 1));
 
-        $discharge = ['type' => 'evasion', 'occurred_at' => now($this->unit->timezone ?? 'UTC')->format('Y-m-d\TH:i')];
+        $discharge = ['cid_principal' => 'J18.9', 'type' => 'evasion', 'occurred_at' => now($this->unit->timezone ?? 'UTC')->format('Y-m-d\TH:i')];
         $this->post(route('ward.discharge', $admission), $discharge)->assertSessionHasErrors('type');
         $draft = ClinicalNote::withoutTenantScope()->where('author_user_id', $this->doctorAccount->user_id)->sole();
         $this->post(route('clinical-notes.sign', $draft), ['body' => $draft->body, 'password' => 'password'])->assertSessionHasNoErrors();
@@ -239,7 +243,7 @@ class DischargeTest extends ClinicalTestCase
             ->where('sectors.0.name', $this->ward->name));
 
         $this->travel(36)->hours();
-        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertSessionHasNoErrors();
         $this->actingAs($this->manager->user)->get(route('census.index', ['unit' => $this->unit->id]))->assertInertia(fn (Assert $page) => $page
             ->where('total.occupied', 0)->where('total.cleaning', 2)->where('total.discharges', 1)->where('total.meanStayDays', 1.5));
 
@@ -252,5 +256,21 @@ class DischargeTest extends ClinicalTestCase
         foreach ([$this->doctorAccount, $this->reception, $housekeeping] as $member) {
             $this->actingAs($member->user)->get(route('census.index'))->assertForbidden();
         }
+    }
+
+    /**
+     * Step 6b.2: the SUS stay's account shows billing the emergency visit's CID until the discharge records its own.
+     */
+    public function test_the_sus_stay_account_shows_the_visit_cid_until_the_discharge_one(): void
+    {
+        $admission = $this->admitted($this->bed('A-1'));
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $account = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $admission->emergency_episode_id)->sole();
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page->where('diagnoses.0.code', 'J189'));
+
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'K35.9', 'type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('diagnoses', [['code' => 'K359', 'name' => 'Apendicite aguda sem outra especificação', 'principal' => true]]));
     }
 }

@@ -9,6 +9,7 @@ use App\Models\AuditEvent;
 use App\Models\Bed;
 use App\Models\BillingAccount;
 use App\Models\ClinicalNote;
+use App\Models\Diagnosis;
 use App\Models\EmergencyEpisode;
 use App\Models\Patient;
 use App\Models\Professional;
@@ -108,6 +109,7 @@ class WardController extends Controller
                     'types' => array_map(fn (string $value, string $label) => ['value' => $value, 'label' => $label, 'summary' => in_array($value, Admission::SUMMARY_REQUIRED, true)], array_keys(Admission::DISCHARGE_TYPES), Admission::DISCHARGE_TYPES),
                     'otherDrafts' => ClinicalNote::query()->where('admission_id', $admission->id)->where('status', 'draft')->where('author_user_id', '<>', $request->user()->id)->count(),
                     'now' => now($timezone)->format('Y-m-d\TH:i'),
+                    'cidRequired' => Diagnosis::requiredForAdmission($admission),
                 ]
                 : null,
             'record' => VisitController::signedRecord($ids, $timezone),
@@ -226,6 +228,8 @@ class WardController extends Controller
             if (! in_array($locked->status, Admission::ACTIVE, true) || $locked->responsible_professional_id !== $professional->id) {
                 throw ValidationException::withMessages(['type' => 'A internação mudou nesse meio-tempo. Recarregue a página.']);
             }
+            // Step 6b.2: the CID-10 of the stay, required in the SUS (the AIH carries it).
+            $codes = Diagnosis::fromRequest($request, Diagnosis::requiredForAdmission($locked), $locked->patient()->value('sex'));
             // Before the departure the transfer is cancelled by hand; in transit, the discharge ends it.
             $transfer = AdmissionTransfer::query()->where('admission_id', $locked->id)->whereIn('status', AdmissionTransfer::OPEN)->lockForUpdate()->first();
             if ($transfer !== null && $transfer->status !== 'departed') {
@@ -264,6 +268,9 @@ class WardController extends Controller
             if ($locked->emergency_episode_id !== null) {
                 EmergencyEpisode::query()->whereKey($locked->emergency_episode_id)->where('status', 'admission_requested')
                     ->update(['status' => $data['type'] === 'evasion' ? 'evaded' : 'discharged']);
+            }
+            if ($codes !== null) {
+                Diagnosis::record($locked, $codes, $request->user());
             }
             $locked->forceFill([
                 'status' => 'discharged', 'discharge_type' => $data['type'], 'discharged_at' => $at,
