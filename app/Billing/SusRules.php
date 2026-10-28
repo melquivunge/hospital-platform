@@ -201,10 +201,14 @@ final class SusRules
                 $problems[] = 'A função de quem atendeu (CBO '.($cbo ?? 'ausente').") não é compatível com {$item->code} na SIGTAP.";
             }
         }
-        $patient = DB::table('patients')->where('id', $stay->patient_id)->first(['cns', 'cpf', 'race_color']);
+        $patient = DB::table('patients')->where('id', $stay->patient_id)->first(['cns', 'cpf', 'race_color', 'address_street', 'address_number', 'address_district', 'address_municipality']);
         // Step 6b.6a1 (user's decision, 28/10/2026): the BPA-I and the AIH carry the self-declared race/color.
         if ($patient->race_color === null && ($individual || self::instrument($stay) === 'aih')) {
             $problems[] = 'O paciente não tem raça/cor no cadastro (a recepção completa o cadastro): exigida no BPA-I e na AIH.';
+        }
+        // Step 6b.6b1 (user's decision, 28/10/2026): the AIH carries the patient's address.
+        if (self::instrument($stay) === 'aih' && in_array(null, [$patient->address_street, $patient->address_number, $patient->address_district, $patient->address_municipality], true)) {
+            $problems[] = 'O paciente não tem o endereço completo no cadastro (logradouro, número, bairro e município): exigido na AIH.';
         }
         if (($patient->cns === null || ! PatientIdentity::validCns($patient->cns)) && $patient->cpf === null) {
             $problems[] = 'O paciente não tem CNS nem CPF no cadastro (a recepção completa o cadastro).';
@@ -225,6 +229,10 @@ final class SusRules
         // the rule cannot take it any more: its complementary account is not held for it.
         if ($stay->status === 'open' && self::instrument($stay) === 'aih' && $stay->aih_number === null) {
             $problems[] = 'Sem o número da AIH autorizada: registre-o quando o gestor devolver o laudo autorizado.';
+        }
+        // Step 6b.6b1: the number recorded before the rule lacks the authorizing doctor's CNS.
+        if ($stay->status === 'open' && $stay->aih_number !== null && $stay->aih_authorizer_cns === null) {
+            $problems[] = 'Sem o CNS do médico autorizador: registre de novo o número da AIH com o CNS.';
         }
         if ($professional !== null && $professional->cns === null) {
             $problems[] = "{$professional->name} não tem o Cartão Nacional de Saúde no cadastro (tela Profissionais).";

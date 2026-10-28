@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Clinical\Municipality;
 use App\Http\Requests\Tenancy\UnitRequest;
 use App\Models\AuditEvent;
+use App\Models\Professional;
 use App\Models\Sector;
 use App\Models\Unit;
 use App\Policies\UnitPolicy;
@@ -87,7 +89,7 @@ class UnitController extends Controller
     {
         Gate::authorize('update', $unit);
 
-        return Inertia::render('units/form', ['unit' => $unit->only('id', 'name', 'uf', 'timezone', 'cnes', 'cnpj', 'sus_acronym', 'sus_manager_name', 'sus_manager_level'), ...self::options()]);
+        return Inertia::render('units/form', ['unit' => $unit->only('id', 'name', 'uf', 'timezone', 'cnes', 'cnpj', 'sus_acronym', 'sus_manager_name', 'sus_manager_level', 'municipality', 'aih_issuer', 'clinical_director_id'), 'municipalityLabel' => Municipality::label($unit->municipality), ...self::options()]);
     }
 
     public function update(UnitRequest $request, Unit $unit): RedirectResponse
@@ -115,6 +117,8 @@ class UnitController extends Controller
         return [
             'ufs' => Unit::UFS,
             'timezones' => DateTimeZone::listIdentifiers(DateTimeZone::PER_COUNTRY, 'BR'),
+            // Step 6b.6b1: who may sign as clinical director in the AIH (a CNS is required).
+            'directors' => Professional::query()->whereNotNull('cns')->orderBy('name')->get(['id', 'name'])->map->only('id', 'name')->values(),
         ];
     }
 

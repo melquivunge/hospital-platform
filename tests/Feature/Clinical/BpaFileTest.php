@@ -41,7 +41,7 @@ class BpaFileTest extends ClinicalTestCase
         app(CurrentTenant::class)->set($this->unit->tenant);
         SigtapImport::read($path)->apply($this->unit->tenant_id, 'TabelaUnificada_202611.zip', str_repeat('a', 64), $this->manager->user);
         BillingItem::query()->create(['kind' => 'consultation', 'name' => 'Consulta especializada', 'code' => '10101012', 'sigtap_code' => '0301010072']);
-        DB::table('patients')->where('id', $this->patient->id)->update(['cns' => '123456789010000', 'race_color' => '03']);
+        DB::table('patients')->where('id', $this->patient->id)->update(['cns' => '123456789010000', 'race_color' => '03', 'address_municipality' => '3550308']);
         DB::table('professionals')->where('id', $this->doctor->id)->update(['cns' => '700123456780900']);
         DB::table('job_functions')->update(['cbo' => '225125']);
         app(CurrentTenant::class)->set(null);
@@ -105,7 +105,7 @@ class BpaFileTest extends ClinicalTestCase
         // BPA-I (the consultation accepts it): 351 positions + CR LF.
         $this->assertSame(351, strlen($line));
         $this->assertSame([
-            '03', '7654321', '202611', '700123456780900', '225125', '20261116', '001', '01', '0301010072', '123456789010000', 'F', '      ', 'J189',
+            '03', '7654321', '202611', '700123456780900', '225125', '20261116', '001', '01', '0301010072', '123456789010000', 'F', '355030', 'J189',
             '036', '000001', '01', '             ', 'BPA', 'JOANA PRADO', '19900102', '03', '    ', '           ',
         ], [
             $field($line, 1, 2), $field($line, 3, 9), $field($line, 10, 15), $field($line, 16, 30), $field($line, 31, 36), $field($line, 37, 44),
