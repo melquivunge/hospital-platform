@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\DB;
  * @property Carbon|null $closed_at
  * @property int|null $closed_by_user_id
  * @property int|null $complement_of_id the account it complements (step 6.4a): what the stay produced after it closed
+ * @property string|null $aih_number the authorized AIH's number, on a SUS admission's account (step 6b.5b1)
  */
 class BillingAccount extends Model
 {

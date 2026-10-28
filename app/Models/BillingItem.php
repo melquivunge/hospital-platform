@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $name
  * @property string|null $code TUSS or the network's own
  * @property bool $active
+ * @property string|null $sigtap_code the SUS procedure (step 6b.3)
  */
 #[Fillable(['kind', 'exam_id', 'surgical_procedure_id', 'material_id', 'medication_id', 'bed_type', 'name', 'code', 'sigtap_code', 'active'])]
 class BillingItem extends Model
