@@ -772,3 +772,70 @@ Todas as propostas aceitas: entrega 6 = particular e convênio, SUS na entrega 6
 - **Arquitetura:** [ADR-0010](docs/adr/0010-billing-access-and-item-origin.md) (acesso do faturamento e origem dos itens), proposta.
 - **Plano em etapas:** `plans/web-v8-faturamento.md` (6.1 a 6.7), proposto.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
+
+## Contrato da entrega 6b — faturamento SUS
+
+Método: ECC Product Capability. Data: 27/10/2026. Estado: **aprovado; todas as propostas aceitas pelo usuário em 27/10/2026. [ADR-0011](docs/adr/0011-sus-diagnosis-and-sigtap.md) e plano `plans/web-v9-sus.md` propostos, aguardando aceite.** Nada é implementado antes da ADR e do plano aprovados. Origem: contrato da entrega 6 (questão 1: SUS na entrega 6b) e o código atual, em que a conta SUS já abre na chegada, mas não recebe itens.
+
+### Capacidade
+
+O hospital que atende pelo SUS produz, por competência (mês), os arquivos que o gestor (secretaria municipal ou estadual) recebe: o **BPA** do atendimento ambulatorial e de urgência (importado no BPA Magnético do SIA) e a **AIH** da internação (importada no SISAIH01 do SIH). Cada atendimento SUS vira uma conta com os procedimentos da tabela SIGTAP, rastreáveis até o registro assistencial, como na entrega 6. O faturamento revisa, fecha, gera os arquivos e registra o que o gestor aprovou ou rejeitou. Resultado esperado: a produção SUS do hospital sai completa e sem retrabalho de digitação, com os mesmos controles de origem, histórico e concorrência do faturamento de convênio.
+
+### Restrições e invariantes (fixas, herdadas da entrega 6)
+
+- Conta e itens são dado clínico (RLS), com origem rastreável, histórico preservado (conta fechada não muda; correção por complementar ou estorno), valores em centavos e preço congelado no item, por unidade, e sem duplicidade em corrida.
+- O papel Faturamento não lê evolução, resultados nem descrições. **Novo aqui:** a AIH e parte do BPA exigem o **CID-10** (diagnóstico); hoje o sistema não registra diagnóstico estruturado. Isso muda o que o faturamento lê e exige revisão da ADR-0010.
+- O SUS também exige o **CNS do profissional** (hoje só o paciente tem CNS) e a validação do CNS (15 dígitos com dígito verificador).
+- Os arquivos seguem os layouts oficiais vigentes do DATASUS (BPA: `Layout_Exportacao_BPA.pdf`, 07/2026; SISAIH01: versão obrigatória da competência e avisos do SIHD), guardados no repositório com a origem, como o XSD do TISS.
+
+### Atores e superfícies (proposta)
+
+| Ator | Superfície | Limite |
+|---|---|---|
+| Médico (quem atende) | CID-10 principal (e secundários) no encerramento do atendimento e na alta; laudo de solicitação da AIH na internação | Só no próprio atendimento |
+| Faturamento (papel existente) | Contas SUS, número da AIH autorizada, fechamento, arquivos BPA e AIH por competência, retorno do gestor | Lê o código CID e os procedimentos; não lê evolução nem resultados |
+| Administrador de rede | Importação da tabela SIGTAP por competência; CNS dos profissionais; dados do estabelecimento para o SUS | Sem dado de paciente |
+| Gestor da unidade | Relatórios (entram as linhas SUS: produção, aprovado e rejeitado) | Só números |
+
+### Estados e transições (proposta)
+
+- **Conta SUS:** aberta → fechada (como na entrega 6) → em arquivo da competência (BPA ou AIH) → aprovada ou rejeitada pelo gestor (com motivo); rejeitada pode ser corrigida e reapresentada numa competência seguinte.
+- **AIH:** laudo emitido pelo médico → número autorizado pelo gestor (registrado pelo faturamento) → apresentada no arquivo → aprovada ou rejeitada.
+
+### Interface e dados (proposta)
+
+- **SIGTAP:** importação do ZIP oficial da competência (procedimentos, valores SA/SH/SP, instrumento de registro BPA-C/BPA-I/AIH, compatibilidades de CID e CBO); itens SUS da conta usam o código de 10 dígitos e o valor da competência do atendimento.
+- **CID-10:** tabela oficial do DATASUS; campo estruturado (principal e secundários) registrado pelo médico.
+- **Entidades novas:** competência SUS, arquivo BPA, arquivo AIH (com o número da AIH por conta), retorno do gestor; campos novos: CID no atendimento e na alta, CNS do profissional, dados do estabelecimento (CNES já existe; órgão e município IBGE do gestor).
+- **Arquivos:** texto no layout oficial, gerado por competência e unidade, conferido pelas regras do próprio layout e da SIGTAP antes de gerar, baixado para importar no BPA Magnético e no SISAIH01 (o envio ao gestor continua pelos programas do DATASUS).
+
+### Não objetivos desta entrega (proposta)
+
+- **APAC** (alta complexidade ambulatorial: oncologia, terapia renal, etc.): exige autorização prévia do gestor por paciente e é rara num hospital geral; fica para uma entrega própria se algum cliente precisar.
+- Envio direto ao SIA/SIHD (os programas do DATASUS continuam fazendo a transmissão), regulação (SISREG), CIHA, RAAS, e-SUS e RNDS.
+- Teto financeiro e físico da programação (PPI/contrato com o gestor): só informativo nos relatórios, sem bloqueio.
+- Custo hospitalar e repasse.
+
+### Decisões do usuário (27/10/2026)
+
+Todas as propostas aceitas: 6b = BPA e AIH (APAC fora); CID pelo médico, faturamento lê só o código; SIGTAP importada por competência; itens dos mesmos registros, sem o que está no pacote da AIH; laudo pelo médico e número da AIH pelo faturamento; procedimento principal com troca motivada; CNS do profissional com pendência; CNS ou CPF do paciente exigido; arquivos no layout oficial; retorno por AIH e linha de BPA com reapresentação.
+
+### Questões (respondidas)
+
+1. **Recorte.** Proposta: **6b = BPA (C e I) e AIH**; APAC fica fora. Alternativa: incluir APAC agora (bem maior e com autorização por paciente).
+2. **Diagnóstico (CID-10).** Proposta: o médico informa o CID principal (e secundários, opcionais) ao encerrar a consulta, o atendimento de urgência e na alta, com busca na tabela oficial; o faturamento passa a ler **só o código CID** da conta (revisão da ADR-0010, com trilha). Alternativa: o faturamento codifica o CID lendo o prontuário (mais acesso clínico, mais erro).
+3. **Tabela SIGTAP.** Proposta: o administrador de rede importa o ZIP oficial de cada competência; o preço do item SUS vem da competência do atendimento. Alternativa: cadastro manual só dos procedimentos usados (sem compatibilidades).
+4. **Quais procedimentos viram itens.** Proposta: os mesmos registros da entrega 6 (consulta, atendimento de urgência, exame liberado, cirurgia concluída, diária de UTI, OPME), cada item cobrável com seu código SIGTAP; o que a SIGTAP diz que já está incluído no pacote da AIH (exames e materiais comuns da internação) fica fora da AIH. Alternativa: o faturamento monta a AIH à mão a partir da conta.
+5. **Laudo e número da AIH.** Proposta: o médico emite o laudo de solicitação (procedimento solicitado, CID e justificativa) na internação, impresso para o fluxo do gestor; o faturamento registra o número da AIH autorizada (13 dígitos) quando o gestor devolve. A internação não fecha a conta sem esse número. Alternativa: o hospital recebe uma faixa de números e o sistema atribui sozinho (só onde o gestor delega a autorização).
+6. **Procedimento principal da AIH.** Proposta: começa como o solicitado no laudo; se mudar (por exemplo, a cirurgia realizada), o faturamento troca com motivo, como "mudança de procedimento". Alternativa: sempre o procedimento cirúrgico concluído, quando houver.
+7. **CNS e CBO do profissional.** Proposta: campo CNS no cadastro do profissional (validado); o CBO vem da função, como no TISS. Atendimento SUS de profissional sem CNS aparece como pendência antes do arquivo. Alternativa: pendência só no momento do arquivo.
+8. **CNS ou CPF do paciente.** Proposta: exigir CNS ou CPF válido do paciente para o BPA-I e a AIH (o cadastro já tem os dois campos), com a pendência mostrada ao faturamento antes do arquivo. Alternativa: só avisar.
+9. **Arquivos.** Proposta: BPA e AIH em texto no layout oficial vigente, um por unidade e competência, conferidos antes de gerar e baixados para importar nos programas do DATASUS. Alternativa: só relatório para digitação.
+10. **Retorno do gestor.** Proposta: registrar por AIH e por linha de BPA o aprovado ou rejeitado (com o motivo do relatório do SIA/SIH) e permitir reapresentar o rejeitado na competência seguinte. Alternativa: só o total aprovado por competência.
+
+### Encaminhamento ECC
+
+- **Esclarecimento de produto:** concluído (decisões acima).
+- **Arquitetura:** [ADR-0011](docs/adr/0011-sus-diagnosis-and-sigtap.md) (CID estruturado e o que o faturamento lê; SIGTAP por competência; revisa a ADR-0010), proposta.
+- **Plano em etapas:** `plans/web-v9-sus.md` (6b.1 a 6b.8), proposto.
+- **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
