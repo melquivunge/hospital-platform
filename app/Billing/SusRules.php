@@ -45,6 +45,15 @@ final class SusRules
         return $instrument === 'aih' ? (int) $procedure->sh_cents + (int) $procedure->sp_cents : (int) $procedure->sa_cents;
     }
 
+    /**
+     * Step 6b.6a2 (user's decision, 28/10/2026): a BPA line is individualized (BPA-I, instrument 02) whenever the
+     * procedure accepts it, consolidated (BPA-C, 01) only when that is all it accepts.
+     */
+    public static function individual(stdClass $procedure): bool
+    {
+        return in_array('02', self::list($procedure->registers), true);
+    }
+
     /** Whether the procedure may be an AIH's principal (instrument 03). */
     public static function principal(stdClass $procedure): bool
     {
@@ -166,11 +175,14 @@ final class SusRules
             ->orderBy('v.id')->first(['p.id', 'p.name', 'p.cns']);
         $cbo = $professional === null ? null : DB::table('qualifications as q')->join('job_functions as f', 'f.id', '=', 'q.job_function_id')
             ->where('q.professional_id', $professional->id)->where('q.unit_id', $stay->unit_id)->where('q.status', 'approved')->whereNotNull('f.cbo')->orderByDesc('q.id')->value('f.cbo');
+        // Step 6b.6a1: whether a line goes to the BPA-I (it carries the patient's race/color).
+        $individual = false;
         foreach ($items->whereNotNull('code')->unique(fn ($item) => $item->code.$item->origin_type) as $item) {
             $procedure = self::procedure($account->tenant_id, $item->code, substr((string) $item->performed_on, 0, 10));
             if ($procedure === null) {
                 continue;
             }
+            $individual = $individual || self::individual($procedure);
             $cids = self::list($procedure->cids);
             if ($principal !== null && $cids !== [] && ! in_array($principal, $cids, true)) {
                 $problems[] = "O CID {$principal} não é compatível com {$item->code} ({$item->name}) na SIGTAP.";
@@ -181,7 +193,11 @@ final class SusRules
                 $problems[] = 'A função de quem atendeu (CBO '.($cbo ?? 'ausente').") não é compatível com {$item->code} na SIGTAP.";
             }
         }
-        $patient = DB::table('patients')->where('id', $stay->patient_id)->first(['cns', 'cpf']);
+        $patient = DB::table('patients')->where('id', $stay->patient_id)->first(['cns', 'cpf', 'race_color']);
+        // Step 6b.6a1 (user's decision, 28/10/2026): the BPA-I and the AIH carry the self-declared race/color.
+        if ($patient->race_color === null && ($individual || self::instrument($stay) === 'aih')) {
+            $problems[] = 'O paciente não tem raça/cor no cadastro (a recepção completa o cadastro): exigida no BPA-I e na AIH.';
+        }
         if (($patient->cns === null || ! PatientIdentity::validCns($patient->cns)) && $patient->cpf === null) {
             $problems[] = 'O paciente não tem CNS nem CPF no cadastro (a recepção completa o cadastro).';
         }

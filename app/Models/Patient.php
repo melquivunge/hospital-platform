@@ -33,15 +33,20 @@ use Illuminate\Validation\ValidationException;
  * @property string|null $guardian_name
  * @property string|null $guardian_relationship
  * @property string|null $guardian_phone
+ * @property string|null $race_color SUS code 01-05 (step 6b.6a1)
+ * @property string|null $ethnicity Portaria SAS 508/2010 code, only for 05
  * @property int $created_by_user_id
  * @property int|null $merged_into_id
  */
-#[Fillable(['registered_unit_id', 'name', 'social_name', 'birth_date', 'sex', 'cpf', 'cns', 'mother_name', 'phone', 'email', 'guardian_name', 'guardian_relationship', 'guardian_phone'])]
+#[Fillable(['registered_unit_id', 'name', 'social_name', 'birth_date', 'sex', 'cpf', 'cns', 'mother_name', 'phone', 'email', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'race_color', 'ethnicity'])]
 class Patient extends Model
 {
     use BelongsToTenant;
 
     public const SEXES = ['female', 'male', 'unknown'];
+
+    /** Step 6b.6a1: the SUS race/color codes (self-declared); 05 carries the ethnicity. */
+    public const RACE_COLORS = ['01' => 'Branca', '02' => 'Preta', '03' => 'Parda', '04' => 'Amarela', '05' => 'Indígena'];
 
     /**
      * @return array<string, string>
