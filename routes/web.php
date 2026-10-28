@@ -29,6 +29,7 @@ use App\Http\Controllers\InsurerController;
 use App\Http\Controllers\JobFunctionController;
 use App\Http\Controllers\MedicationAdministrationController;
 use App\Http\Controllers\MedicationController;
+use App\Http\Controllers\MunicipalityController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PatientAllergyController;
 use App\Http\Controllers\PatientController;
@@ -159,6 +160,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('billing-lots/{lot}/return', [BillingLotController::class, 'storeReturn'])->middleware('throttle:30,1')->name('billing-lots.return.store');
     // Step 6b.2: the CID-10 search of the code fields.
     Route::get('cid10', Cid10Controller::class)->middleware('throttle:60,1')->name('cid10.search');
+    // Step 6b.6b1: the IBGE municipality search of the address fields.
+    Route::get('municipalities', MunicipalityController::class)->middleware('throttle:60,1')->name('municipalities.search');
     // Step 6.6: the unit manager's billing reports (numbers only) and their CSV.
     Route::get('billing-reports', [BillingReportController::class, 'index'])->middleware('throttle:120,1')->name('billing-reports.index');
     Route::get('billing-reports.csv', [BillingReportController::class, 'csv'])->middleware('throttle:20,1')->name('billing-reports.csv');

@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Tenancy;
 
+use App\Clinical\Municipality;
+use App\Models\Professional;
 use App\Models\Unit;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -61,6 +63,15 @@ class UnitRequest extends FormRequest
             'sus_acronym' => ['nullable', 'string', 'max:6'],
             'sus_manager_name' => ['nullable', 'required_with:sus_manager_level', 'string', 'max:40'],
             'sus_manager_level' => ['nullable', 'required_with:sus_manager_name', Rule::in(['M', 'E'])],
+            // Step 6b.6b1: the AIH header: the hospital's municipality (IBGE) and AIH issuing body; the clinical director, a
+            // professional of the network with the Cartão Nacional de Saúde.
+            'municipality' => ['nullable', Rule::in(array_keys(Municipality::all()))],
+            'aih_issuer' => ['nullable', 'string', 'max:10'],
+            'clinical_director_id' => ['nullable', 'integer', function (string $attribute, mixed $value, Closure $fail) {
+                if (! Professional::query()->whereKey($value)->whereNotNull('cns')->exists()) {
+                    $fail('Escolha um profissional da rede com o Cartão Nacional de Saúde no cadastro.');
+                }
+            }],
         ];
     }
 
@@ -70,6 +81,7 @@ class UnitRequest extends FormRequest
     public function attributes(): array
     {
         return ['uf' => 'UF', 'timezone' => 'fuso horário', 'cnes' => 'CNES', 'cnpj' => 'CNPJ', 'sus_acronym' => 'sigla',
-            'sus_manager_name' => 'gestor SUS', 'sus_manager_level' => 'esfera do gestor'];
+            'sus_manager_name' => 'gestor SUS', 'sus_manager_level' => 'esfera do gestor', 'municipality' => 'município', 'aih_issuer' => 'órgão emissor da AIH',
+            'clinical_director_id' => 'diretor clínico'];
     }
 }

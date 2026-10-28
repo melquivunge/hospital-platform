@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import PatientController from '@/actions/App/Http/Controllers/PatientController';
 import InputError from '@/components/input-error';
+import { MunicipalityField } from '@/components/municipality-field';
 import { Page, PageHeader } from '@/components/page';
 import type { PatientSummary } from '@/components/patient-display';
 import {
@@ -35,6 +36,13 @@ type Patient = {
     guardian_phone: string | null;
     race_color?: string | null;
     ethnicity?: string | null;
+    address_street?: string | null;
+    address_number?: string | null;
+    address_complement?: string | null;
+    address_district?: string | null;
+    address_municipality?: string | null;
+    address_zip?: string | null;
+    municipalityLabel?: string | null;
 };
 
 /** Patient registration (step 3.2): without documents it stays provisional, completed later. */
@@ -307,6 +315,121 @@ export default function PatientForm({
                                             </select>
                                         </Field>
                                     )}
+                                </div>
+                            </Section>
+
+                            <Section
+                                title="Endereço"
+                                description="Opcional no cadastro; exigido na conta da internação SUS (AIH)."
+                            >
+                                <div className="grid gap-6 sm:grid-cols-2">
+                                    <Field
+                                        id="address_street"
+                                        label="Logradouro"
+                                        error={errors.address_street}
+                                    >
+                                        <Input
+                                            id="address_street"
+                                            name="address_street"
+                                            maxLength={50}
+                                            placeholder="Ex.: Rua das Flores"
+                                            defaultValue={
+                                                patient?.address_street ?? ''
+                                            }
+                                            aria-invalid={
+                                                !!errors.address_street
+                                            }
+                                            className="h-11"
+                                        />
+                                    </Field>
+                                    <Field
+                                        id="address_number"
+                                        label="Número"
+                                        error={errors.address_number}
+                                    >
+                                        <Input
+                                            id="address_number"
+                                            name="address_number"
+                                            maxLength={7}
+                                            placeholder="Ex.: 120 ou SN"
+                                            defaultValue={
+                                                patient?.address_number ?? ''
+                                            }
+                                            aria-invalid={
+                                                !!errors.address_number
+                                            }
+                                            className="h-11"
+                                        />
+                                    </Field>
+                                    <Field
+                                        id="address_complement"
+                                        label="Complemento (opcional)"
+                                        error={errors.address_complement}
+                                    >
+                                        <Input
+                                            id="address_complement"
+                                            name="address_complement"
+                                            maxLength={15}
+
+                                            defaultValue={
+                                                patient?.address_complement ??
+                                                ''
+                                            }
+                                            aria-invalid={
+                                                !!errors.address_complement
+                                            }
+                                            className="h-11"
+                                        />
+                                    </Field>
+                                    <Field
+                                        id="address_district"
+                                        label="Bairro"
+                                        error={errors.address_district}
+                                    >
+                                        <Input
+                                            id="address_district"
+                                            name="address_district"
+                                            maxLength={30}
+
+                                            defaultValue={
+                                                patient?.address_district ?? ''
+                                            }
+                                            aria-invalid={
+                                                !!errors.address_district
+                                            }
+                                            className="h-11"
+                                        />
+                                    </Field>
+                                    <MunicipalityField
+                                        name="address_municipality"
+                                        label="Município"
+                                        defaultCode={
+                                            patient?.address_municipality ??
+                                            null
+                                        }
+                                        defaultLabel={
+                                            patient?.municipalityLabel ?? null
+                                        }
+                                        error={errors.address_municipality}
+                                    />
+                                    <Field
+                                        id="address_zip"
+                                        label="CEP (opcional)"
+                                        error={errors.address_zip}
+                                    >
+                                        <Input
+                                            id="address_zip"
+                                            name="address_zip"
+                                            inputMode="numeric"
+                                            maxLength={9}
+                                            placeholder="00000-000"
+                                            defaultValue={
+                                                patient?.address_zip ?? ''
+                                            }
+                                            aria-invalid={!!errors.address_zip}
+                                            className="h-11"
+                                        />
+                                    </Field>
                                 </div>
                             </Section>
 

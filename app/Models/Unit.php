@@ -24,8 +24,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $sus_acronym
  * @property string|null $sus_manager_name the SUS manager the BPA goes to
  * @property string|null $sus_manager_level M (municipal) or E (state)
+ * @property string|null $municipality IBGE code (step 6b.6b1)
+ * @property string|null $aih_issuer the AIH issuing body (Portaria Conjunta 23/2004)
+ * @property int|null $clinical_director_id the professional who signs as clinical director in the AIH
  */
-#[Fillable(['tenant_id', 'name', 'uf', 'timezone', 'cnes', 'cnpj', 'sus_acronym', 'sus_manager_name', 'sus_manager_level'])]
+#[Fillable(['tenant_id', 'name', 'uf', 'timezone', 'cnes', 'cnpj', 'sus_acronym', 'sus_manager_name', 'sus_manager_level', 'municipality', 'aih_issuer', 'clinical_director_id'])]
 class Unit extends Model
 {
     /** @use HasFactory<UnitFactory> */

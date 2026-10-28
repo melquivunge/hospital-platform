@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Clinical;
 
 use App\Clinical\Ethnicity;
+use App\Clinical\Municipality;
 use App\Clinical\PatientIdentity;
 use App\Models\Patient;
 use App\Policies\PatientPolicy;
@@ -29,9 +30,10 @@ class PatientRequest extends FormRequest
 
         $this->merge([
             'cpf' => is_string($this->input('cpf')) ? PatientIdentity::digits($this->input('cpf')) : $this->input('cpf'),
+            'address_zip' => is_string($this->input('address_zip')) ? (PatientIdentity::digits($this->input('address_zip')) ?: null) : $this->input('address_zip'),
             'cns' => is_string($this->input('cns')) ? PatientIdentity::digits($this->input('cns')) : $this->input('cns'),
             'email' => $text('email') === null ? null : mb_strtolower($text('email')),
-            ...collect(['social_name', 'mother_name', 'phone', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'birth_date', 'sex', 'race_color', 'ethnicity'])
+            ...collect(['social_name', 'mother_name', 'phone', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'birth_date', 'sex', 'race_color', 'ethnicity', 'address_street', 'address_number', 'address_complement', 'address_district', 'address_municipality'])
                 ->mapWithKeys(fn (string $key) => [$key => $text($key)])->all(),
         ]);
     }
@@ -82,6 +84,13 @@ class PatientRequest extends FormRequest
             // Step 6b.6a1: self-declared race/color; the ethnicity only (and always) for 05, indigenous.
             'race_color' => ['nullable', Rule::in(array_keys(Patient::RACE_COLORS))],
             'ethnicity' => ['exclude_unless:race_color,05', 'required', Rule::in(array_keys(Ethnicity::all()))],
+            // Step 6b.6b1: the address (sizes of the SISAIH01 layout), the municipality from the IBGE table.
+            'address_street' => ['nullable', 'string', 'max:50'],
+            'address_number' => ['nullable', 'string', 'max:7'],
+            'address_complement' => ['nullable', 'string', 'max:15'],
+            'address_district' => ['nullable', 'string', 'max:30'],
+            'address_municipality' => ['nullable', Rule::in(array_keys(Municipality::all()))],
+            'address_zip' => ['nullable', 'regex:/^[0-9]{8}$/'],
             'confirm_new' => ['sometimes', 'boolean'],
         ];
     }
@@ -104,6 +113,12 @@ class PatientRequest extends FormRequest
             'guardian_phone' => 'telefone do responsável',
             'race_color' => 'raça/cor',
             'ethnicity' => 'etnia',
+            'address_street' => 'logradouro',
+            'address_number' => 'número',
+            'address_complement' => 'complemento',
+            'address_district' => 'bairro',
+            'address_municipality' => 'município',
+            'address_zip' => 'CEP',
         ];
     }
 }

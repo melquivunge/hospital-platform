@@ -1,6 +1,7 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import UnitController from '@/actions/App/Http/Controllers/UnitController';
 import InputError from '@/components/input-error';
+import { MunicipalityField } from '@/components/municipality-field';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,9 @@ type Unit = {
     sus_acronym?: string | null;
     sus_manager_name?: string | null;
     sus_manager_level?: string | null;
+    municipality?: string | null;
+    aih_issuer?: string | null;
+    clinical_director_id?: number | null;
 };
 
 const selectClassName =
@@ -27,10 +31,14 @@ export default function UnitForm({
     unit,
     ufs,
     timezones,
+    directors,
+    municipalityLabel,
 }: {
     unit: Unit | null;
     ufs: string[];
     timezones: string[];
+    directors: { id: number; name: string }[];
+    municipalityLabel?: string | null;
 }) {
     const title = unit ? 'Editar unidade' : 'Nova unidade';
 
@@ -270,6 +278,74 @@ export default function UnitForm({
                                                 }
                                             />
                                         </div>
+                                    </div>
+                                    <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
+                                        <MunicipalityField
+                                            name="municipality"
+                                            label="Município do hospital"
+                                            defaultCode={
+                                                unit?.municipality ?? null
+                                            }
+                                            defaultLabel={
+                                                municipalityLabel ?? null
+                                            }
+                                            error={errors.municipality}
+                                        />
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="aih_issuer">
+                                                Órgão emissor da AIH
+                                            </Label>
+                                            <Input
+                                                id="aih_issuer"
+                                                name="aih_issuer"
+                                                maxLength={10}
+                                                defaultValue={
+                                                    unit?.aih_issuer ?? ''
+                                                }
+                                                aria-invalid={
+                                                    !!errors.aih_issuer
+                                                }
+                                                className="h-11"
+                                            />
+                                            <InputError
+                                                message={errors.aih_issuer}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid gap-2 sm:max-w-md">
+                                        <Label htmlFor="clinical_director_id">
+                                            Diretor clínico (AIH)
+                                        </Label>
+                                        <select
+                                            id="clinical_director_id"
+                                            name="clinical_director_id"
+                                            defaultValue={
+                                                unit?.clinical_director_id ?? ''
+                                            }
+                                            aria-invalid={
+                                                !!errors.clinical_director_id
+                                            }
+                                            className={selectClassName}
+                                        >
+                                            <option value="">Selecione</option>
+                                            {directors.map((director) => (
+                                                <option
+                                                    key={director.id}
+                                                    value={director.id}
+                                                >
+                                                    {director.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-sm text-muted-foreground">
+                                            Só profissionais com o Cartão
+                                            Nacional de Saúde no cadastro.
+                                        </p>
+                                        <InputError
+                                            message={
+                                                errors.clinical_director_id
+                                            }
+                                        />
                                     </div>
                                 </fieldset>
                             </div>

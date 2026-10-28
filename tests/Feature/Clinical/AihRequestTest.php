@@ -215,14 +215,18 @@ class AihRequestTest extends ClinicalTestCase
         $billing->grant(Role::Billing, $this->unit);
         $missing = 'Sem o número da AIH autorizada: registre-o quando o gestor devolver o laudo autorizado.';
         $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
-            ->where('aih', ['number' => null, 'canRecord' => true, 'principal' => null])->where('susPending', fn ($pending) => collect($pending)->contains($missing)));
-        $record = fn (string $number) => $this->post(route('billing-accounts.aih-number', $account), ['aih_number' => $number]);
+            ->where('aih', ['number' => null, 'authorizer' => null, 'canRecord' => true, 'principal' => null])->where('susPending', fn ($pending) => collect($pending)->contains($missing)
+                // Step 6b.6b1: the AIH carries the patient's address.
+                && collect($pending)->contains('O paciente não tem o endereço completo no cadastro (logradouro, número, bairro e município): exigido na AIH.')));
+        $record = fn (string $number, string $cns = '7001 2345 6780 900') => $this->post(route('billing-accounts.aih-number', $account), ['aih_number' => $number, 'aih_authorizer_cns' => $cns]);
+        // Step 6b.6b1: with the CNS of the manager's doctor who authorized it.
+        $record('3526100000012', '123456789010001')->assertSessionHasErrors(['aih_authorizer_cns' => 'Cartão Nacional de Saúde inválido.']);
 
         $record('123456789012')->assertSessionHasErrors(['aih_number' => 'O número da AIH tem 13 dígitos.']);
         $record('3526 1000 0001-2')->assertSessionHasNoErrors();
         $this->assertSame('3526100000012', $account->fresh()->aih_number);
         $record('3526100000013')->assertSessionHasNoErrors();
-        $this->assertSame('3526100000013', $account->fresh()->aih_number);
+        $this->assertSame(['3526100000013', '700123456780900'], [$account->fresh()->aih_number, $account->fresh()->aih_authorizer_cns]);
         $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
             ->where('aih.number', '3526100000013')->where('susPending', fn ($pending) => ! collect($pending)->contains($missing)));
         $this->assertSame([false, true], AuditEvent::query()->where('action', 'billing_account.aih_number_recorded')->orderBy('id')->pluck('context')->map(fn ($context) => $context['replaced'])->all());
@@ -234,17 +238,17 @@ class AihRequestTest extends ClinicalTestCase
         $this->travelTo(now()->addHour());
         $second = $this->admitted('sus', 'A-2');
         $other = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $second->emergency_episode_id)->sole();
-        $this->actingAs($billing->user)->post(route('billing-accounts.aih-number', $other), ['aih_number' => '3526100000013'])
+        $this->actingAs($billing->user)->post(route('billing-accounts.aih-number', $other), ['aih_number' => '3526100000013', 'aih_authorizer_cns' => '700123456780900'])
             ->assertSessionHasErrors(['aih_number' => 'Este número de AIH já está em outra conta.']);
         $appointment = $this->arrived($this->doctor, $this->unit, '11:20');
         $consultation = BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
-        $this->actingAs($billing->user)->post(route('billing-accounts.aih-number', $consultation), ['aih_number' => '3526100000099'])
+        $this->actingAs($billing->user)->post(route('billing-accounts.aih-number', $consultation), ['aih_number' => '3526100000099', 'aih_authorizer_cns' => '700123456780900'])
             ->assertSessionHasErrors(['aih_number' => 'Só a conta de uma internação SUS recebe o número da AIH.']);
 
         // Billing of another unit does not reach it.
         $outsider = Membership::factory()->for($this->unit->tenant)->create();
         $outsider->grant(Role::Billing, $this->other);
-        $this->actingAs($outsider->user)->post(route('billing-accounts.aih-number', $other), ['aih_number' => '3526100000098'])->assertForbidden();
+        $this->actingAs($outsider->user)->post(route('billing-accounts.aih-number', $other), ['aih_number' => '3526100000098', 'aih_authorizer_cns' => '700123456780900'])->assertForbidden();
     }
 
     /**

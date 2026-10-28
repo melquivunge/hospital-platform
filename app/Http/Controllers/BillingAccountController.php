@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Billing\SusRules;
 use App\Billing\TissLotXml;
 use App\Clinical\ClinicalAccess;
+use App\Clinical\PatientIdentity;
 use App\Models\Admission;
 use App\Models\AuditEvent;
 use App\Models\BillingAccount;
@@ -136,6 +137,7 @@ class BillingAccountController extends Controller
             // Step 6b.5b1: the authorized AIH's number, on the stay's account of a SUS admission.
             'aih' => $account->modality !== 'sus' || SusRules::instrument($stay) !== 'aih' ? null : [
                 'number' => $stay->aih_number,
+                'authorizer' => $stay->aih_authorizer_cns,
                 'canRecord' => $stay->is($account) && $account->status === 'open',
                 // Step 6b.5b2: the principal procedure, from the report or billing's change (never the report's text).
                 'principal' => ($principal = DB::table('aih_principals')->where('billing_account_id', $stay->id)->orderByDesc('id')->first()) === null ? null : [
@@ -335,12 +337,20 @@ class BillingAccountController extends Controller
     public function recordAihNumber(Request $request, BillingAccount $account): RedirectResponse
     {
         abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
-        $data = $request->validate(['aih_number' => ['required', 'string', 'max:20']], [], ['aih_number' => 'número da AIH']);
+        $data = $request->validate([
+            'aih_number' => ['required', 'string', 'max:20'],
+            'aih_authorizer_cns' => ['required', 'string', 'max:20'],
+        ], [], ['aih_number' => 'número da AIH', 'aih_authorizer_cns' => 'CNS do médico autorizador']);
         $number = (string) preg_replace('/\D/', '', $data['aih_number']);
         if (strlen($number) !== 13) {
             throw ValidationException::withMessages(['aih_number' => 'O número da AIH tem 13 dígitos.']);
         }
-        DB::transaction(function () use ($account, $number) {
+        // Step 6b.6b1 (user's decision, 28/10/2026): the manager's doctor who authorized it, by the CNS.
+        $authorizer = (string) PatientIdentity::digits($data['aih_authorizer_cns']);
+        if (! PatientIdentity::validCns($authorizer)) {
+            throw ValidationException::withMessages(['aih_authorizer_cns' => 'Cartão Nacional de Saúde inválido.']);
+        }
+        DB::transaction(function () use ($account, $number, $authorizer) {
             $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
             if ($locked->modality !== 'sus' || $locked->complement_of_id !== null || SusRules::instrument($locked) !== 'aih') {
                 throw ValidationException::withMessages(['aih_number' => 'Só a conta de uma internação SUS recebe o número da AIH.']);
@@ -353,7 +363,7 @@ class BillingAccountController extends Controller
             }
             $replaced = $locked->aih_number !== null && $locked->aih_number !== $number;
             try {
-                $locked->forceFill(['aih_number' => $number])->save();
+                $locked->forceFill(['aih_number' => $number, 'aih_authorizer_cns' => $authorizer])->save();
             } catch (UniqueConstraintViolationException) {
                 // Another account took it at the same moment: the unique index decides.
                 throw ValidationException::withMessages(['aih_number' => 'Este número de AIH já está em outra conta.']);

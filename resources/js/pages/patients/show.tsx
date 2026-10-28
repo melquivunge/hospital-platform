@@ -24,6 +24,7 @@ type Patient = PatientSummary & {
     guardian_phone: string | null;
     raceColor: string | null;
     ethnicity: string | null;
+    address: string | null;
 };
 
 function formatCpf(cpf: string | null): string | null {
@@ -68,6 +69,7 @@ export default function PatientShow({
         ],
         [
             ['Nome da mãe', patient.mother_name],
+            ['Endereço', patient.address],
             ['Telefone', patient.phone],
             ['E-mail', patient.email],
         ],

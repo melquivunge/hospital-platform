@@ -886,6 +886,7 @@ function Authorize({ accountId, items }: { accountId: number; items: Item[] }) {
 
 type AihData = {
     number: string | null;
+    authorizer: string | null;
     canRecord: boolean;
     principal: {
         procedure: string;
@@ -923,6 +924,8 @@ function AihNumber({
                             <span className="font-medium text-foreground tabular-nums">
                                 {aih.number}
                             </span>
+                            {aih.authorizer &&
+                                ` · autorizada pelo CNS ${aih.authorizer}`}
                         </>
                     ) : (
                         'Aguardando o número da AIH autorizada pelo gestor.'
@@ -978,6 +981,24 @@ function AihNumber({
                                 <InputError
                                     id="aih_number-error"
                                     message={errors.aih_number}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="aih_authorizer_cns">
+                                    CNS do médico autorizador
+                                </Label>
+                                <Input
+                                    id="aih_authorizer_cns"
+                                    name="aih_authorizer_cns"
+                                    inputMode="numeric"
+                                    autoComplete="off"
+                                    required
+                                    maxLength={20}
+                                    aria-invalid={!!errors.aih_authorizer_cns}
+                                    className="h-11 w-56 tabular-nums"
+                                />
+                                <InputError
+                                    message={errors.aih_authorizer_cns}
                                 />
                             </div>
                             <Button

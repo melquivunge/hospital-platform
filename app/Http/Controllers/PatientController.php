@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Clinical\Ethnicity;
+use App\Clinical\Municipality;
 use App\Clinical\PatientIdentity;
 use App\Http\Requests\Clinical\PatientRequest;
 use App\Models\AuditEvent;
@@ -126,6 +127,10 @@ class PatientController extends Controller
                 // Step 6b.6a1: self-declared race/color and, when indigenous, the ethnicity, by name.
                 'raceColor' => Patient::RACE_COLORS[$patient->race_color] ?? null,
                 'ethnicity' => $patient->ethnicity === null ? null : (Ethnicity::all()[$patient->ethnicity] ?? $patient->ethnicity),
+                // Step 6b.6b1: the address, the municipality by name.
+                'address' => collect([trim(($patient->address_street ?? '').' '.($patient->address_number ?? '')), $patient->address_complement, $patient->address_district,
+                    Municipality::label($patient->address_municipality), $patient->address_zip === null ? null : substr($patient->address_zip, 0, 5).'-'.substr($patient->address_zip, 5)])
+                    ->filter()->implode(', ') ?: null,
                 'cpf' => $patient->cpf,
                 'cns' => $patient->cns,
             ],
@@ -150,7 +155,8 @@ class PatientController extends Controller
 
         return Inertia::render('patients/form', [
             'patient' => [
-                ...$patient->only('id', 'registered_unit_id', 'name', 'social_name', 'sex', 'cpf', 'cns', 'mother_name', 'phone', 'email', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'race_color', 'ethnicity'),
+                ...$patient->only('id', 'registered_unit_id', 'name', 'social_name', 'sex', 'cpf', 'cns', 'mother_name', 'phone', 'email', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'race_color', 'ethnicity', 'address_street', 'address_number', 'address_complement', 'address_district', 'address_municipality', 'address_zip'),
+                'municipalityLabel' => Municipality::label($patient->address_municipality),
                 'birth_date' => $patient->birth_date?->toDateString(),
             ],
             'units' => self::units($request, $patient->registered_unit_id),

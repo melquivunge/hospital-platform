@@ -2,6 +2,7 @@
 
 namespace App\Billing;
 
+use App\Clinical\Municipality;
 use App\Clinical\PatientIdentity;
 use App\Models\BillingAccount;
 use App\Models\Unit;
@@ -71,7 +72,7 @@ final class BpaFile
             }
             $presented[] = $account->id;
             $stay = self::stay($account);
-            $patient = DB::table('patients')->where('id', $stay->patient_id)->first(['name', 'birth_date', 'sex', 'cns', 'cpf', 'race_color', 'ethnicity']);
+            $patient = DB::table('patients')->where('id', $stay->patient_id)->first(['name', 'birth_date', 'sex', 'cns', 'cpf', 'race_color', 'ethnicity', 'address_municipality']);
             $cid = collect(SusRules::diagnoses($stay))->firstWhere('principal', true)['code'] ?? null;
             foreach ($items as $item) {
                 $day = substr((string) $item->performed_on, 0, 10);
@@ -111,7 +112,7 @@ final class BpaFile
                 }
                 $individual[] = [
                     'cmp' => $done, 'cnsmed' => $professional?->cns, 'cbo' => $cbo, 'date' => str_replace('-', '', $day), 'code' => $item->code,
-                    'cnspac' => $cns, 'sex' => $patient->sex === 'female' ? 'F' : 'M', 'cid' => $cid, 'age' => $age, 'quantity' => (int) $item->quantity,
+                    'cnspac' => $cns, 'ibge' => Municipality::sus($patient->address_municipality), 'sex' => $patient->sex === 'female' ? 'F' : 'M', 'cid' => $cid, 'age' => $age, 'quantity' => (int) $item->quantity,
                     // Character of care (SUS table): 01 elective (a booked consultation), 02 urgency (the emergency).
                     'character' => $stay->appointment_id !== null ? '01' : '02',
                     'name' => $patient->name, 'birth' => $patient->birth_date === null ? null : str_replace('-', '', substr((string) $patient->birth_date, 0, 10)),
@@ -149,11 +150,11 @@ final class BpaFile
             $lines[] = self::line([
                 '03', self::num($unit->cnes, 7), $line['cmp'], self::num($line['cnsmed'], 15), self::alpha($line['cbo'], 6), $line['date'],
                 self::num($sheet, 3), self::num($index % self::I_PER_SHEET + 1, 2), self::num($line['code'], 10), self::blankOr($line['cnspac'], 15),
-                $line['sex'], self::blank(6), self::alpha($line['cid'], 4), self::num($line['age'], 3), self::num($line['quantity'], 6),
+                $line['sex'], self::blankOr($line['ibge'], 6), self::alpha($line['cid'], 4), self::num($line['age'], 3), self::num($line['quantity'], 6),
                 $line['character'], self::blank(13), 'BPA', self::alpha($line['name'], 30), self::blankOr($line['birth'], 8), $line['race'],
                 self::blankOr($line['ethnicity'], 4),
                 // Nationality, service, classification, team (sequence and area), OPM CNPJ, address and contact: blank
-                // (optional in the layout; the municipality waits for the address, user's decision 28/10/2026).
+                // (optional in the layout; the nationality waits for the official table).
                 self::blank(3 + 3 + 3 + 8 + 4 + 14 + 8 + 3 + 30 + 10 + 5 + 30 + 11 + 40),
                 self::blank(10), self::blankOr($line['cpf'], 11), ' ', ' ',
             ], 351);
