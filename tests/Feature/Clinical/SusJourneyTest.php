@@ -219,7 +219,9 @@ class SusJourneyTest extends TestCase
         $presentation = (int) DB::table('sus_aih_file_accounts')->where('sus_aih_file_id', $aih->id)->value('id');
         $this->post(route('sus-aih.returns.store', $aih), ['presentation_id' => $presentation, 'approved' => '0', 'reason' => 'Laudo sem o CID secundário K42.9 justificado.'])->assertSessionHasNoErrors();
         $this->post(route('billing-accounts.reopen', $outpatient))->assertSessionHasErrors('reopen', null, 'reopen');
-        $this->post(route('billing-accounts.reopen', $stay))->assertSessionHasNoErrors();
+        // Rejected without an approval before: billing reopens it; the manager, without billing, does not.
+        $this->actingAs($users['gestao'])->post(route('billing-accounts.reopen', $stay))->assertForbidden();
+        $this->actingAs($users['faturamento'])->post(route('billing-accounts.reopen', $stay))->assertSessionHasNoErrors();
         $this->post(route('billing-accounts.close', $stay))->assertSessionHasNoErrors();
         $this->post(route('sus-aih.store'), ['unit_id' => $unit->id, 'competence' => '2026-12'])->assertSessionHasNoErrors();
         $again = SusAihFile::withoutTenantScope()->where('competence', '2026-12-01')->sole();
@@ -233,11 +235,20 @@ class SusJourneyTest extends TestCase
         $report('2026-11')->assertInertia(fn (Assert $page) => $page->where('sus.competences', ['2026-12', '2026-11'])
             ->where('sus.bpa.presented', ['quantity' => 1, 'totalCents' => $bpaValue])->where('sus.bpa.approved', ['quantity' => 1, 'totalCents' => $bpaValue])
             ->where('sus.aih.presented', ['quantity' => 1, 'totalCents' => $aihValue])->where('sus.aih.rejected', ['quantity' => 1, 'totalCents' => $aihValue])
-            ->where('sus.rejections', [['label' => 'AIH 3526100000012', 'quantity' => 1, 'totalCents' => $aihValue, 'reason' => 'Laudo sem o CID secundário K42.9 justificado.']]));
+            ->where('sus.rejections', [['label' => 'AIH 3526100000012', 'quantity' => 1, 'totalCents' => $aihValue, 'reason' => 'Laudo sem o CID secundário K42.9 justificado.', 'reopen' => []]]));
         $report('2026-12')->assertInertia(fn (Assert $page) => $page->where('sus.bpa.presented.quantity', 0)
             ->where('sus.aih.approved', ['quantity' => 1, 'totalCents' => $aihValue])->where('sus.rejections', []));
 
-        // 12. Billing never reads the record; the audit keeps ids only: no patient name, CID, procedure nor reason.
+        // 12. The second person (user's decision, 6b.8): the BPA line approved before is rejected later by billing; the
+        // account reopens only by the unit manager, from the report.
+        $this->actingAs($users['faturamento'])->post(route('sus-bpa.returns.store', $bpa), ['line_id' => $line, 'approved' => '0', 'reason' => 'CBO sem habilitação.'])->assertSessionHasNoErrors();
+        $this->get(route('billing-accounts.show', $outpatient))->assertInertia(fn (Assert $page) => $page->where('bpa.canReopen', false)->where('bpa.needsManager', true));
+        $this->post(route('billing-accounts.reopen', $outpatient))->assertSessionHasErrors('reopen', null, 'reopen');
+        $report('2026-11')->assertInertia(fn (Assert $page) => $page->where('sus.rejections.0.reopen', [$outpatient->id]));
+        $this->post(route('billing-accounts.reopen', $outpatient))->assertSessionHasNoErrors();
+        $this->assertSame('open', BillingAccount::withoutTenantScope()->findOrFail($outpatient->id)->status);
+
+        // 13. Billing never reads the record; the audit keeps ids only: no patient name, CID, procedure nor reason.
         $this->actingAs($users['faturamento'])->get(route('visits.show', Visit::withoutTenantScope()->whereNotNull('appointment_id')->sole()))->assertForbidden();
         $this->assertTrue(DB::table('clinical_reads')->where('user_id', $users['gestao']->id)->where('reason', 'billing')->exists());
         $trail = AuditEvent::query()->pluck('context')->toJson();

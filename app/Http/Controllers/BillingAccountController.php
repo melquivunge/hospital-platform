@@ -34,6 +34,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use stdClass;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
@@ -92,6 +93,10 @@ class BillingAccountController extends Controller
         $authors = $authors->union(User::query()->whereKey($answers->pluck('author_user_id')->unique()->all())->pluck('name', 'id'));
         // A complementary account belongs to its stay's account (the CID and the AIH's number are the stay's).
         $stay = $account->complement_of_id === null ? $account : BillingAccount::query()->findOrFail($account->complement_of_id);
+
+        // Step 6b.8: who recorded a rejection after the manager's approval (read once; empty for the others).
+        $recorders = $account->modality === 'sus' && $account->status === 'closed' ? self::approvedBefore($account->id) : [];
+        $mayReopen = $account->status === 'closed' && self::mayReopen($request->user(), $account, $recorders);
 
         return Inertia::render('billing-accounts/show', [
             'account' => [
@@ -157,7 +162,9 @@ class BillingAccountController extends Controller
                         'approved' => ($return = DB::table('sus_aih_returns')->where('sus_aih_file_account_id', $presented->id)->orderByDesc('id')->first()) === null ? null : (bool) $return->approved,
                         'reason' => $return?->reason,
                     ],
-                'canReopen' => $stay->is($account) && $account->status === 'closed' && self::rejected($stay->id),
+                'canReopen' => $stay->is($account) && $account->status === 'closed' && self::rejected($stay->id) && $mayReopen,
+                // Step 6b.8: approved before the rejection, it reopens only by the unit manager.
+                'needsManager' => $stay->is($account) && $account->status === 'closed' && $recorders !== [] && ! $mayReopen,
                 // Step 6b.5b2: the principal procedure, from the report or billing's change (never the report's text).
                 'principal' => ($principal = DB::table('aih_principals')->where('billing_account_id', $stay->id)->orderByDesc('id')->first()) === null ? null : [
                     'procedure' => "{$principal->procedure_code} · {$principal->procedure_name}",
@@ -177,7 +184,8 @@ class BillingAccountController extends Controller
                         'competence' => Carbon::parse($line->competence)->format('m/Y'),
                         'reason' => DB::table('sus_bpa_line_returns')->where('sus_bpa_file_line_id', $line->id)->orderByDesc('id')->value('reason'),
                     ])->values(),
-                'canReopen' => $account->status === 'closed' && self::rejected($account->id),
+                'canReopen' => $account->status === 'closed' && self::rejected($account->id) && $mayReopen,
+                'needsManager' => $account->status === 'closed' && $recorders !== [] && ! $mayReopen,
             ],
             // Step 6b.2 (ADR-0011): the SUS account shows the CID-10 codes of its stay, never the record.
             'diagnoses' => $account->modality === 'sus' ? SusRules::diagnoses($stay) : [],
@@ -375,16 +383,22 @@ class BillingAccountController extends Controller
      */
     public function reopen(Request $request, BillingAccount $account): RedirectResponse
     {
-        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
-        DB::transaction(function () use ($account) {
+        // Step 6b.8: also the unit manager, who reopens an account approved before its rejection.
+        abort_unless(in_array($account->unit_id, [...self::unitIds(UnitPolicy::currentMembership($request->user())), ...StockInventoryController::managerUnitIds($request->user())], true), 403);
+        DB::transaction(function () use ($account, $request) {
             // The AIH file generation's lock: an account it is presenting does not reopen under it.
             Unit::query()->whereKey($account->unit_id)->lockForUpdate()->firstOrFail();
             $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
             if ($locked->status !== 'closed' || ! self::rejected($locked->id)) {
                 throw ValidationException::withMessages(['reopen' => 'Só a conta de uma AIH ou de uma linha de BPA rejeitada pelo gestor é reaberta.'])->errorBag('reopen');
             }
+            $recorders = self::approvedBefore($locked->id);
+            if (! self::mayReopen($request->user(), $locked, $recorders)) {
+                abort_if($recorders === [], 403);
+                throw ValidationException::withMessages(['reopen' => 'O gestor aprovou esta conta antes da rejeição: a reabertura é do gestor da unidade, por quem não registrou a rejeição.'])->errorBag('reopen');
+            }
             $locked->forceFill(['status' => 'open', 'closed_at' => null, 'closed_by_user_id' => null, 'aih_bed_specialty' => null])->save();
-            AuditEvent::record('billing_account.reopened', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id]);
+            AuditEvent::record('billing_account.reopened', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'approved_before' => $recorders !== []]);
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Conta reaberta para correção.']);
 
@@ -595,6 +609,42 @@ class BillingAccountController extends Controller
     private static function rejected(int $account): bool
     {
         return (bool) DB::selectOne('SELECT sus_aih_rejected(?) OR sus_bpa_rejected(?) AS rejected', [$account, $account])->rejected;
+    }
+
+    /**
+     * Step 6b.8 (user's decision, 29/10/2026): who recorded a rejection of the AIH presentation or BPA line (the latest
+     * of each rejected item) that is rejected now after an approval. Empty: no approval was reversed.
+     *
+     * @return list<int>
+     */
+    public static function approvedBefore(int $account): array
+    {
+        return array_values(array_unique(array_map(fn (stdClass $row) => (int) $row->user, DB::select(<<<'SQL'
+            SELECT r.recorded_by_user_id AS user FROM sus_aih_returns r
+            WHERE sus_aih_rejected(?) AND NOT r.approved AND r.sus_aih_file_account_id = (SELECT max(id) FROM sus_aih_file_accounts WHERE billing_account_id = ?)
+                AND EXISTS (SELECT 1 FROM sus_aih_returns y WHERE y.sus_aih_file_account_id = r.sus_aih_file_account_id AND y.approved)
+            UNION
+            SELECT r.recorded_by_user_id FROM billing_account_items i
+                JOIN LATERAL (SELECT max(sus_bpa_file_line_id) AS line FROM sus_bpa_file_line_items WHERE billing_account_item_id = i.id) l ON true
+                JOIN sus_bpa_line_returns r ON r.sus_bpa_file_line_id = l.line AND NOT r.approved
+            WHERE i.billing_account_id = ? AND sus_bpa_item_rejected(i.id)
+                AND EXISTS (SELECT 1 FROM sus_bpa_line_returns y WHERE y.sus_bpa_file_line_id = l.line AND y.approved)
+            SQL, [$account, $account, $account]))));
+    }
+
+    /**
+     * Whether the person reopens the account (closed and rejected): billing of its unit; but approved before its
+     * rejection, only a manager of the unit who recorded none of those rejections (a second person).
+     *
+     * @param  list<int>|null  $recorders  approvedBefore(), when already read
+     */
+    public static function mayReopen(User $user, BillingAccount $account, ?array $recorders = null): bool
+    {
+        $recorders ??= self::approvedBefore($account->id);
+
+        return $recorders === []
+            ? in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($user)), true)
+            : in_array($account->unit_id, StockInventoryController::managerUnitIds($user), true) && ! in_array($user->id, $recorders, true);
     }
 
     private static function lockOpen(BillingAccount $account, string $field, string $bag = 'item'): BillingAccount

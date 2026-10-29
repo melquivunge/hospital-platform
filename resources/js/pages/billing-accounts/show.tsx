@@ -153,9 +153,12 @@ export default function BillingAccountShow({
                         )}
                     </section>
                 )}
-                {bpa && (bpa.rejected.length > 0 || bpa.canReopen) && (
-                    <BpaReturn accountId={account.id} bpa={bpa} />
-                )}
+                {bpa &&
+                    (bpa.rejected.length > 0 ||
+                        bpa.canReopen ||
+                        bpa.needsManager) && (
+                        <BpaReturn accountId={account.id} bpa={bpa} />
+                    )}
                 {aih && (
                     <AihNumber
                         accountId={account.id}
@@ -896,6 +899,7 @@ type BpaData = {
         reason: string | null;
     }[];
     canReopen: boolean;
+    needsManager: boolean;
 };
 
 /**
@@ -926,6 +930,13 @@ function BpaReturn({ accountId, bpa }: { accountId: number; bpa: BpaData }) {
                     Volta no BPA de uma competência seguinte.
                 </p>
             </div>
+            {bpa.needsManager && (
+                <p className="text-sm text-muted-foreground">
+                    Aprovada antes e rejeitada depois: a reabertura para
+                    correção é de um gestor da unidade que não registrou a
+                    rejeição, em Relatórios de faturamento.
+                </p>
+            )}
             {bpa.canReopen && (
                 <Form
                     {...BillingAccountController.reopen.form(accountId)}
@@ -974,6 +985,7 @@ type AihData = {
         reason: string | null;
     } | null;
     canReopen: boolean;
+    needsManager: boolean;
 };
 
 /**
@@ -1048,6 +1060,13 @@ function AihNumber({
                     </p>
                 )}
             </div>
+            {aih.needsManager && (
+                <p className="text-sm text-muted-foreground">
+                    Aprovada antes e rejeitada depois: a reabertura para
+                    correção é de um gestor da unidade que não registrou a
+                    rejeição, em Relatórios de faturamento.
+                </p>
+            )}
             {aih.canReopen && (
                 <Form
                     {...BillingAccountController.reopen.form(accountId)}

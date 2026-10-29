@@ -8,8 +8,7 @@ Plataforma hospitalar SaaS multi-cliente. Entregas concluídas e mescladas: V1 (
 
 ## Ponto exato de retomada
 
-1. **Decisão pendente da 6b:** retorno do gestor e reabertura da conta pelo faturamento sem segunda pessoa (README, limites da entrega 6b). A entrega 6b (SUS) está completa: revisão integrada 6b.8 com `SusJourneyTest`, telas conferidas e revisão de segurança; decisões e o que não foi verificado em `plans/web-v9-sus.md`.
-2. Depois: entrega 7 (portal do paciente e indicadores), sem contrato ainda.
+1. **Entrega 7** (portal do paciente e indicadores), sem contrato ainda: começar pelo contrato do produto. A entrega 6b (SUS) está completa, com a revisão integrada 6b.8 (`SusJourneyTest`) e a segunda pessoa na reabertura da conta aprovada e rejeitada depois; decisões e o que não foi verificado em `plans/web-v9-sus.md`.
 
 - **GitHub:** repositório público desde 28/10/2026, então o CI roda; se voltar a ser privado, o Actions fica bloqueado pela cobrança e a proteção da `main` exige plano Pro.
 - **Bloqueios externos:** fornecedor ICP-Brasil (só há o assinador de teste), importação real nos programas do DATASUS (só Windows), hospedagem.

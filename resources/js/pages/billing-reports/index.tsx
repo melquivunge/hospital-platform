@@ -1,6 +1,8 @@
-import { Head, router } from '@inertiajs/react';
+import { Form, Head, router } from '@inertiajs/react';
 import { Download } from 'lucide-react';
 import type { FormEvent, ReactNode } from 'react';
+import BillingAccountController from '@/actions/App/Http/Controllers/BillingAccountController';
+import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
@@ -38,6 +40,7 @@ type Sus = {
         quantity: number;
         totalCents: number;
         reason: string;
+        reopen: number[];
     }[];
 };
 type Received = {
@@ -303,7 +306,11 @@ export default function BillingReports({
                             title={row.label}
                             detail={`Quantidade ${row.quantity} · ${row.reason}`}
                             cents={row.totalCents}
-                        />
+                        >
+                            {row.reopen.map((accountId) => (
+                                <Reopen key={accountId} accountId={accountId} />
+                            ))}
+                        </Row>
                     ))}
                 </Section>
             </Page>
@@ -352,10 +359,12 @@ function Row({
     title,
     detail,
     cents,
+    children,
 }: {
     title: string;
     detail: string;
     cents: number;
+    children?: ReactNode;
 }) {
     return (
         <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
@@ -364,7 +373,41 @@ function Row({
                 <span className="text-sm text-muted-foreground">{detail}</span>
             </span>
             <span className="font-medium tabular-nums">{money(cents)}</span>
+            {children}
         </li>
+    );
+}
+
+/**
+ * Step 6b.8 (user's decision, 29/10/2026): an account the manager approved before its rejection reopens only by the
+ * unit manager, never by who recorded the rejection: the second person.
+ */
+function Reopen({ accountId }: { accountId: number }) {
+    return (
+        <Form
+            {...BillingAccountController.reopen.form(accountId)}
+            errorBag="reopen"
+            options={{ preserveScroll: true }}
+            className="grid w-full gap-2"
+        >
+            {({ processing, errors }) => (
+                <>
+                    <p className="text-sm text-muted-foreground">
+                        Aprovada antes e rejeitada depois: a reabertura para
+                        correção é sua.
+                    </p>
+                    <Button
+                        type="submit"
+                        variant="outline"
+                        disabled={processing}
+                        className="min-h-11 w-fit"
+                    >
+                        Reabrir a conta {accountId}
+                    </Button>
+                    <InputError message={errors.reopen} />
+                </>
+            )}
+        </Form>
     );
 }
 
