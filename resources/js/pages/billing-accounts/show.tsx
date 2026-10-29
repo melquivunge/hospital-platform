@@ -79,6 +79,7 @@ export default function BillingAccountShow({
     diagnoses,
     susPending,
     aih,
+    bpa,
     canChangePrincipal,
 }: {
     account: AccountSummary & {
@@ -103,6 +104,7 @@ export default function BillingAccountShow({
     diagnoses: { code: string; name: string | null; principal: boolean }[];
     susPending: string[];
     aih: AihData | null;
+    bpa: BpaData | null;
     canChangePrincipal: boolean;
 }) {
     // A compensation, and the item it compensates, no longer count as pending.
@@ -150,6 +152,9 @@ export default function BillingAccountShow({
                             </ul>
                         )}
                     </section>
+                )}
+                {bpa && (bpa.rejected.length > 0 || bpa.canReopen) && (
+                    <BpaReturn accountId={account.id} bpa={bpa} />
                 )}
                 {aih && (
                     <AihNumber
@@ -881,6 +886,69 @@ function Authorize({ accountId, items }: { accountId: number; items: Item[] }) {
                 )}
             </Form>
         </details>
+    );
+}
+
+type BpaData = {
+    rejected: {
+        procedure: string;
+        competence: string;
+        reason: string | null;
+    }[];
+    canReopen: boolean;
+};
+
+/**
+ * Step 6b.7b: the BPA lines of this account's items the manager rejected; they go back in the file of a later
+ * competence, and the account reopens to be corrected first.
+ */
+function BpaReturn({ accountId, bpa }: { accountId: number; bpa: BpaData }) {
+    return (
+        <section
+            aria-labelledby="bpa-return-heading"
+            className="mb-6 grid gap-3 rounded-xl border bg-card px-5 py-4"
+        >
+            <div>
+                <h2 id="bpa-return-heading" className="font-medium">
+                    BPA rejeitado pelo gestor
+                </h2>
+                <ul className="mt-1 grid gap-1 text-sm text-muted-foreground">
+                    {bpa.rejected.map((line, index) => (
+                        <li key={index}>
+                            <span className="font-medium text-foreground tabular-nums">
+                                {line.procedure}
+                            </span>{' '}
+                            (competência {line.competence}): {line.reason}
+                        </li>
+                    ))}
+                </ul>
+                <p className="mt-1 text-sm text-muted-foreground">
+                    Volta no BPA de uma competência seguinte.
+                </p>
+            </div>
+            {bpa.canReopen && (
+                <Form
+                    {...BillingAccountController.reopen.form(accountId)}
+                    errorBag="reopen"
+                    options={{ preserveScroll: true }}
+                    className="grid gap-2"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                disabled={processing}
+                                className="min-h-11 w-fit"
+                            >
+                                Reabrir a conta para corrigir
+                            </Button>
+                            <InputError message={errors.reopen} />
+                        </>
+                    )}
+                </Form>
+            )}
+        </section>
     );
 }
 

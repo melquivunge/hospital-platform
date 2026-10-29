@@ -32,22 +32,24 @@ final class BpaFile
 
     /**
      * The unit's closed SUS accounts whose instrument is the BPA and that no file presented yet (user's decision,
-     * 28/10/2026), oldest first.
+     * 28/10/2026), or with an item in a line the manager rejected (step 6b.7b), oldest first.
      *
      * @return Collection<int, BillingAccount>
      */
     public static function accounts(int $unitId): Collection
     {
         return BillingAccount::query()->where('unit_id', $unitId)->where('modality', 'sus')->where('status', 'closed')
-            ->whereNotIn('id', DB::table('sus_bpa_file_accounts')->select('billing_account_id'))->orderBy('id')->get()
+            ->where(fn ($query) => $query->whereNotIn('id', DB::table('sus_bpa_file_accounts')->select('billing_account_id'))->orWhereRaw('sus_bpa_rejected(id)'))
+            ->orderBy('id')->get()
             ->filter(fn (BillingAccount $account) => SusRules::instrument(self::stay($account)) === 'bpa')->values();
     }
 
     /**
-     * The file's text, or what keeps it from being generated.
+     * The file's text and its lines with the items each carries, or what keeps it from being generated. An item already
+     * presented goes again only when its line was rejected, in a competence after that line's (step 6b.7b).
      *
      * @param  Collection<int, BillingAccount>  $accounts
-     * @return array{text: string, lines: int, sheets: int, accounts: list<int>, problems: list<string>}
+     * @return array{text: string, lines: int, sheets: int, accounts: list<int>, rows: list<array{kind: string, sheet: int, sequence: int, code: string, cmp: string, quantity: int, items: list<int>}>, problems: list<string>}
      */
     public static function build(Unit $unit, string $competence, Collection $accounts): array
     {
@@ -65,6 +67,13 @@ final class BpaFile
                 ->get(['id', 'origin_type', 'origin_id', 'code', 'quantity', 'performed_on']);
             $compensated = $items->where('origin_type', 'compensation')->pluck('origin_id')->flip();
             $items = $items->reject(fn ($item) => $item->origin_type === 'compensation' || $compensated->has($item->id) || $item->code === null || $item->quantity <= 0);
+            // Each item's latest line (the one the SQL functions read): its file's competence and whether it was rejected.
+            $before = DB::table('sus_bpa_file_line_items AS li')->join('sus_bpa_file_lines AS l', 'l.id', '=', 'li.sus_bpa_file_line_id')->join('sus_bpa_files AS f', 'f.id', '=', 'l.sus_bpa_file_id')
+                ->whereIn('li.billing_account_item_id', $items->pluck('id'))
+                ->whereRaw('li.sus_bpa_file_line_id = (SELECT max(x.sus_bpa_file_line_id) FROM sus_bpa_file_line_items x WHERE x.billing_account_item_id = li.billing_account_item_id)')
+                ->selectRaw("li.billing_account_item_id AS id, to_char(f.competence, 'YYYY-MM') AS competence, sus_bpa_item_rejected(li.billing_account_item_id) AS rejected")
+                ->get()->keyBy('id');
+            $items = $items->filter(fn ($item) => ($earlier = $before->get($item->id)) === null || ($earlier->rejected && $earlier->competence < $competence));
             // Nothing to present stays out (never marked presented); a procedure done after the competence waits for a
             // later file, so a line is never later than its header (review finding, 6b.6a2).
             if ($items->isEmpty() || substr((string) $items->max('performed_on'), 0, 7) > $competence) {
@@ -94,7 +103,8 @@ final class BpaFile
                 }
                 if (! SusRules::individual($procedure)) {
                     $key = "{$done}|{$cbo}|{$item->code}|{$age}";
-                    $consolidated[$key] = ['cmp' => $done, 'cbo' => $cbo, 'code' => $item->code, 'age' => $age, 'quantity' => ($consolidated[$key]['quantity'] ?? 0) + (int) $item->quantity];
+                    $consolidated[$key] = ['cmp' => $done, 'cbo' => $cbo, 'code' => $item->code, 'age' => $age, 'quantity' => ($consolidated[$key]['quantity'] ?? 0) + (int) $item->quantity,
+                        'items' => [...($consolidated[$key]['items'] ?? []), (int) $item->id]];
 
                     continue;
                 }
@@ -119,6 +129,7 @@ final class BpaFile
                     'race' => (string) $patient->race_color, 'ethnicity' => $patient->race_color === '05' ? $patient->ethnicity : null,
                     // One document only: the CNS, else the CPF.
                     'cpf' => $cns === null ? $patient->cpf : null,
+                    'items' => [(int) $item->id],
                 ];
             }
         }
@@ -129,10 +140,11 @@ final class BpaFile
             $problems[] = 'O arquivo passaria de 999 folhas: gere-o com menos contas.';
         }
         if ($problems !== []) {
-            return ['text' => '', 'lines' => 0, 'sheets' => 0, 'accounts' => [], 'problems' => array_values(array_unique($problems))];
+            return ['text' => '', 'lines' => 0, 'sheets' => 0, 'accounts' => [], 'rows' => [], 'problems' => array_values(array_unique($problems))];
         }
 
         $lines = [];
+        $rows = [];
         $control = 0;
         $sheet = 0;
         // Sheets numbered through the file: the consolidated ones first.
@@ -142,6 +154,7 @@ final class BpaFile
                 '02', self::num($unit->cnes, 7), $line['cmp'], self::alpha($line['cbo'], 6), self::num($sheet, 3), self::num($index % self::C_PER_SHEET + 1, 2),
                 self::num($line['code'], 10), self::num($line['age'], 3), self::num($line['quantity'], 6), 'BPA',
             ], 48);
+            $rows[] = ['kind' => 'C', 'sheet' => $sheet, 'sequence' => $index % self::C_PER_SHEET + 1, 'code' => $line['code'], 'cmp' => $line['cmp'], 'quantity' => $line['quantity'], 'items' => $line['items']];
             $control += (int) $line['code'] + $line['quantity'];
         }
         $first = $sheet;
@@ -158,6 +171,7 @@ final class BpaFile
                 self::blank(3 + 3 + 3 + 8 + 4 + 14 + 8 + 3 + 30 + 10 + 5 + 30 + 11 + 40),
                 self::blank(10), self::blankOr($line['cpf'], 11), ' ', ' ',
             ], 351);
+            $rows[] = ['kind' => 'I', 'sheet' => $sheet, 'sequence' => $index % self::I_PER_SHEET + 1, 'code' => $line['code'], 'cmp' => $line['cmp'], 'quantity' => $line['quantity'], 'items' => $line['items']];
             $control += (int) $line['code'] + $line['quantity'];
         }
         $header = self::line([
@@ -167,7 +181,7 @@ final class BpaFile
             self::alpha($unit->sus_manager_name, 40), (string) $unit->sus_manager_level, self::alpha(self::VERSION, 10),
         ], 130);
 
-        return ['text' => $header.implode('', $lines), 'lines' => count($lines), 'sheets' => $sheet, 'accounts' => $presented, 'problems' => []];
+        return ['text' => $header.implode('', $lines), 'lines' => count($lines), 'sheets' => $sheet, 'accounts' => $presented, 'rows' => $rows, 'problems' => []];
     }
 
     /** A complementary account is presented with its stay's patient, diagnosis and care. */

@@ -157,13 +157,27 @@ class BillingAccountController extends Controller
                         'approved' => ($return = DB::table('sus_aih_returns')->where('sus_aih_file_account_id', $presented->id)->orderByDesc('id')->first()) === null ? null : (bool) $return->approved,
                         'reason' => $return?->reason,
                     ],
-                'canReopen' => $stay->is($account) && $account->status === 'closed' && (bool) DB::selectOne('SELECT sus_aih_rejected(?) AS rejected', [$stay->id])->rejected,
+                'canReopen' => $stay->is($account) && $account->status === 'closed' && self::rejected($stay->id),
                 // Step 6b.5b2: the principal procedure, from the report or billing's change (never the report's text).
                 'principal' => ($principal = DB::table('aih_principals')->where('billing_account_id', $stay->id)->orderByDesc('id')->first()) === null ? null : [
                     'procedure' => "{$principal->procedure_code} · {$principal->procedure_name}",
                     'fromReport' => $principal->aih_request_id !== null,
                     'reason' => $principal->reason,
                 ],
+            ],
+            // Step 6b.7b: the BPA lines of this account's items the manager rejected (latest line of each item).
+            'bpa' => $account->modality !== 'sus' || SusRules::instrument($stay) !== 'bpa' ? null : [
+                'rejected' => DB::table('sus_bpa_file_line_items AS li')->join('billing_account_items AS i', 'i.id', '=', 'li.billing_account_item_id')
+                    ->join('sus_bpa_file_lines AS l', 'l.id', '=', 'li.sus_bpa_file_line_id')->join('sus_bpa_files AS f', 'f.id', '=', 'l.sus_bpa_file_id')
+                    ->where('i.billing_account_id', $account->id)->whereRaw('sus_bpa_item_rejected(i.id)')
+                    ->whereRaw('li.sus_bpa_file_line_id = (SELECT max(x.sus_bpa_file_line_id) FROM sus_bpa_file_line_items x WHERE x.billing_account_item_id = i.id)')
+                    ->orderBy('l.id')->get(['l.id', 'l.procedure_code', 'f.competence'])->unique('id')
+                    ->map(fn (object $line) => [
+                        'procedure' => $line->procedure_code,
+                        'competence' => Carbon::parse($line->competence)->format('m/Y'),
+                        'reason' => DB::table('sus_bpa_line_returns')->where('sus_bpa_file_line_id', $line->id)->orderByDesc('id')->value('reason'),
+                    ])->values(),
+                'canReopen' => $account->status === 'closed' && self::rejected($account->id),
             ],
             // Step 6b.2 (ADR-0011): the SUS account shows the CID-10 codes of its stay, never the record.
             'diagnoses' => $account->modality === 'sus' ? SusRules::diagnoses($stay) : [],
@@ -355,8 +369,8 @@ class BillingAccountController extends Controller
     }
 
     /**
-     * Step 6b.7a (user's decision, 29/10/2026): billing reopens the closed account of an AIH the manager rejected, to
-     * correct it before it is presented again. The bed specialty goes back to the sector's; the character and exit reason
+     * Step 6b.7a (user's decision, 29/10/2026): billing reopens the closed account of an AIH the manager rejected (step
+     * 6b.7b: or with an item in a rejected BPA line), to correct it before it is presented again. The bed specialty goes back to the sector's; the character and exit reason
      * stay as closed (billing's correction, if any), and the form shows them as billing's until changed.
      */
     public function reopen(Request $request, BillingAccount $account): RedirectResponse
@@ -366,8 +380,8 @@ class BillingAccountController extends Controller
             // The AIH file generation's lock: an account it is presenting does not reopen under it.
             Unit::query()->whereKey($account->unit_id)->lockForUpdate()->firstOrFail();
             $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
-            if ($locked->status !== 'closed' || ! DB::selectOne('SELECT sus_aih_rejected(?) AS rejected', [$locked->id])->rejected) {
-                throw ValidationException::withMessages(['reopen' => 'Só a conta de uma AIH rejeitada pelo gestor é reaberta.'])->errorBag('reopen');
+            if ($locked->status !== 'closed' || ! self::rejected($locked->id)) {
+                throw ValidationException::withMessages(['reopen' => 'Só a conta de uma AIH ou de uma linha de BPA rejeitada pelo gestor é reaberta.'])->errorBag('reopen');
             }
             $locked->forceFill(['status' => 'open', 'closed_at' => null, 'closed_by_user_id' => null, 'aih_bed_specialty' => null])->save();
             AuditEvent::record('billing_account.reopened', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id]);
@@ -577,6 +591,12 @@ class BillingAccountController extends Controller
     /**
      * Inside the transaction: the account, locked, while it is open and its modality is billed here.
      */
+    /** Step 6b.7: whether the manager rejected the account's AIH or a BPA line of its items (the latest return). */
+    private static function rejected(int $account): bool
+    {
+        return (bool) DB::selectOne('SELECT sus_aih_rejected(?) OR sus_bpa_rejected(?) AS rejected', [$account, $account])->rejected;
+    }
+
     private static function lockOpen(BillingAccount $account, string $field, string $bag = 'item'): BillingAccount
     {
         $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
