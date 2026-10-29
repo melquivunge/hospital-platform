@@ -215,7 +215,7 @@ class AihRequestTest extends ClinicalTestCase
         $billing->grant(Role::Billing, $this->unit);
         $missing = 'Sem o número da AIH autorizada: registre-o quando o gestor devolver o laudo autorizado.';
         $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
-            ->where('aih', ['number' => null, 'authorizer' => null, 'canRecord' => true, 'principal' => null])->where('susPending', fn ($pending) => collect($pending)->contains($missing)
+            ->where('aih.number', null)->where('aih.authorizer', null)->where('aih.canRecord', true)->where('aih.principal', null)->where('susPending', fn ($pending) => collect($pending)->contains($missing)
                 // Step 6b.6b1: the AIH carries the patient's address.
                 && collect($pending)->contains('O paciente não tem o endereço completo no cadastro (logradouro, número, bairro e município): exigido na AIH.')
                 // Step 6b.6b2: and the nationality and street type of the SISAIH01 tables.
@@ -349,5 +349,61 @@ class AihRequestTest extends ClinicalTestCase
         $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
             ->where('items', fn ($items) => collect($items)->where('origin', 'aih_principal')->isEmpty())
             ->where('susPending', fn ($pending) => collect($pending)->contains('O procedimento principal 0303140151 não tem valor na SIGTAP de 11/2026 (competência da internação): importe a competência ou troque o procedimento.')));
+    }
+
+    /**
+     * Step 6b.6b2b1 (user's decisions, 28/10/2026): the bed specialty comes from the stay's sector (set on the unit's
+     * page); the admission character is 02 (from the emergency room) and the exit reason the discharge's, until
+     * billing corrects them on the open account (empty goes back to the stay's).
+     */
+    public function test_the_aih_takes_the_sector_specialty_and_billing_corrects_character_and_exit_reason(): void
+    {
+        $admission = $this->admitted();
+        $account = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $admission->emergency_episode_id)->sole();
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $missing = 'O setor da internação não tem a especialidade SUS do leito (informada no cadastro do setor): exigida na AIH.';
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('aih.character', '02')->where('aih.exitReason', null)->where('aih.specialty', null)
+            ->where('aih.exitReasons', fn ($list) => collect($list)->contains(['code' => '42', 'name' => '42 · OBITO COM DECLARACAO DE OBITO FORNECIDA PELO INSTITUTO MEDICO LEGAL - IML']))
+            ->where('susPending', fn ($pending) => collect($pending)->contains($missing)));
+
+        // The unit's sector manager sets the specialty; only codes of the layout's table.
+        $sector = fn (array $data) => $this->actingAs($this->manager->user)->put(route('units.sectors.update', [$this->unit, $this->ward]), ['name' => $this->ward->name, ...$data]);
+        $sector(['sus_bed_specialty' => '15'])->assertSessionHasErrors('sus_bed_specialty');
+        $sector(['sus_bed_specialty' => '03'])->assertSessionHasNoErrors();
+        $this->get(route('units.show', $this->unit))->assertInertia(fn (Assert $page) => $page
+            ->where('sectors.0.sus_bed_specialty', '03')->where('bedSpecialties', fn ($list) => collect($list)->contains(['code' => '74', 'name' => '74 · UTI I'])));
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('aih.specialty', '03 · CLINICOS')->where('susPending', fn ($pending) => ! collect($pending)->contains($missing)));
+
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertSessionHasNoErrors();
+        $codes = fn (array $data) => $this->actingAs($billing->user)->post(route('billing-accounts.aih-codes', $account), $data);
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page->where('aih.exitReason', '12'));
+        $codes(['aih_character' => '07'])->assertSessionHasErrors('aih_character');
+        $codes(['aih_exit_reason' => '99'])->assertSessionHasErrors('aih_exit_reason');
+        $codes(['aih_character' => '03', 'aih_exit_reason' => '11'])->assertSessionHasNoErrors();
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page->where('aih.character', '03')->where('aih.exitReason', '11'));
+        $this->assertSame(['aih_character', 'aih_exit_reason'], AuditEvent::query()->where('action', 'billing_account.aih_codes_recorded')->sole()->context['fields']);
+        // Empty goes back to the stay's.
+        $codes([])->assertSessionHasNoErrors();
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('aih.character', '02')->where('aih.exitReason', '12')->where('aih.characterCorrection', null)->where('aih.exitReasonCorrection', null));
+
+        // A consultation's account has no AIH; billing of another unit does not reach it; a closed account does not change.
+        $appointment = $this->arrived($this->doctor, $this->unit, '11:20');
+        $consultation = BillingAccount::withoutTenantScope()->where('appointment_id', $appointment->id)->sole();
+        $this->actingAs($billing->user)->post(route('billing-accounts.aih-codes', $consultation), ['aih_character' => '01'])->assertSessionHasErrors('aih_character');
+        $outsider = Membership::factory()->for($this->unit->tenant)->create();
+        $outsider->grant(Role::Billing, $this->other);
+        $this->actingAs($outsider->user)->post(route('billing-accounts.aih-codes', $account), ['aih_character' => '01'])->assertForbidden();
+        // Closing freezes the three codes: a later change of the sector no longer reaches the closed AIH.
+        $closing = BillingAccount::withoutTenantScope()->findOrFail($account->id);
+        $closing->forceFill(['aih_character' => SusRules::aihCharacter($closing), 'aih_exit_reason' => SusRules::aihExitReason($closing), 'aih_bed_specialty' => SusRules::aihSpecialty($closing)]);
+        $this->assertSame(['02', '12', '03'], [$closing->aih_character, $closing->aih_exit_reason, $closing->aih_bed_specialty]);
+        DB::table('billing_accounts')->where('id', $account->id)->update(['status' => 'closed', 'closed_at' => now(), 'closed_by_user_id' => $billing->user_id, 'aih_bed_specialty' => '03']);
+        $this->actingAs($this->manager->user)->put(route('units.sectors.update', [$this->unit, $this->ward]), ['name' => $this->ward->name, 'sus_bed_specialty' => '07'])->assertSessionHasNoErrors();
+        $this->assertSame('03', SusRules::aihSpecialty(BillingAccount::withoutTenantScope()->findOrFail($account->id)));
+        $this->actingAs($billing->user)->post(route('billing-accounts.aih-codes', $account), ['aih_character' => '01'])->assertSessionHasErrors(['aih_character' => 'Esta conta já foi fechada.']);
     }
 }

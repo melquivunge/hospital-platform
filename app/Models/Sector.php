@@ -14,8 +14,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $tenant_id
  * @property int $unit_id
  * @property string $name
+ * @property string|null $sus_bed_specialty the SUS bed specialty (ESPEC_AIH, step 6b.6b2b1)
  */
-#[Fillable(['tenant_id', 'unit_id', 'name'])]
+#[Fillable(['tenant_id', 'unit_id', 'name', 'sus_bed_specialty'])]
 class Sector extends Model
 {
     /** @use HasFactory<SectorFactory> */

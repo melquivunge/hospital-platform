@@ -139,6 +139,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     // Step 6b.5b1: the authorized AIH's number.
     Route::post('billing-accounts/{account}/aih-number', [BillingAccountController::class, 'recordAihNumber'])->middleware('throttle:30,1')->name('billing-accounts.aih-number');
     // Step 6b.5b2: billing changes the AIH's principal procedure.
+    Route::post('billing-accounts/{account}/aih-codes', [BillingAccountController::class, 'recordAihCodes'])->middleware('throttle:30,1')->name('billing-accounts.aih-codes');
     Route::post('billing-accounts/{account}/aih-principal', [BillingAccountController::class, 'changeAihPrincipal'])->middleware('throttle:30,1')->name('billing-accounts.aih-principal');
     Route::post('billing-accounts/{account}/close', [BillingAccountController::class, 'close'])->middleware('throttle:30,1')->name('billing-accounts.close');
     Route::post('billing-accounts/{account}/payment', [BillingAccountController::class, 'receive'])->middleware('throttle:30,1')->name('billing-accounts.payment.store');

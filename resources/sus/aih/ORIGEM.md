@@ -14,3 +14,9 @@
   etapa 6b.6b2 (28/10/2026): o bloco de 64 KiB da tabela tem 330 marcas de código; a que sobra é de um registro da
   tabela vizinha de municípios (PILOES/RN), não uma nacionalidade. Os códigos "RESERVADO" (020, 048, 049, 050) não são
   oferecidos no cadastro. Exemplos: 010 BRASIL, 045 PORTUGAL; 081 RUA, 008 AVENIDA.
+- `carater-internacao.json` (6 códigos, CAR_INTERN) e `motivos-saida.json` (21 códigos, MOT_SAÍDA): tabelas
+  TB_CARAC_INTERN e TB_MOT_COBR do banco `SISAIH00.GDB` do mesmo instalador (SHA-256 do arquivo extraído:
+  8fb69714599613471efbf5a036b237cef2e74159fecff20520763b2e88e54ca4), lidas das páginas do banco (código, tamanho,
+  nome), texto sem alteração. Limite: o programa 01.15 é de 2008; códigos criados depois nessas tabelas não estão
+  aqui (conferir na importação real no SISAIH01).
+- `especialidades-leito.json` (32 códigos, ESPEC_AIH): a lista do próprio layout 07/2026 (página 2).

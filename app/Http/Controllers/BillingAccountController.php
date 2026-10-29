@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Billing\SusRules;
 use App\Billing\TissLotXml;
+use App\Clinical\AihCodes;
 use App\Clinical\ClinicalAccess;
 use App\Clinical\PatientIdentity;
 use App\Models\Admission;
@@ -139,6 +140,15 @@ class BillingAccountController extends Controller
                 'number' => $stay->aih_number,
                 'authorizer' => $stay->aih_authorizer_cns,
                 'canRecord' => $stay->is($account) && $account->status === 'open',
+                // Step 6b.6b2b1: admission character, exit reason and bed specialty, with billing's corrections.
+                'character' => SusRules::aihCharacter($stay),
+                'exitReason' => SusRules::aihExitReason($stay),
+                // Billing's own corrections (the form shows these; empty = the stay's).
+                'characterCorrection' => $stay->aih_character,
+                'exitReasonCorrection' => $stay->aih_exit_reason,
+                'specialty' => ($specialty = SusRules::aihSpecialty($stay)) === null ? null : $specialty.' · '.(AihCodes::bedSpecialties()[$specialty] ?? ''),
+                'characters' => collect(AihCodes::characters())->map(fn (string $name, int|string $code) => ['code' => (string) $code, 'name' => "{$code} · {$name}"])->values(),
+                'exitReasons' => collect(AihCodes::exitReasons())->map(fn (string $name, int|string $code) => ['code' => (string) $code, 'name' => "{$code} · {$name}"])->values(),
                 // Step 6b.5b2: the principal procedure, from the report or billing's change (never the report's text).
                 'principal' => ($principal = DB::table('aih_principals')->where('billing_account_id', $stay->id)->orderByDesc('id')->first()) === null ? null : [
                     'procedure' => "{$principal->procedure_code} · {$principal->procedure_name}",
@@ -321,6 +331,11 @@ class BillingAccountController extends Controller
                 && TissLotXml::passwords([$locked->id])->isEmpty()) {
                 throw $refuse('A internação pelo convênio precisa da senha antes de fechar: registre a autorização (número e validade) da diária.');
             }
+            // Step 6b.6b2b1: the AIH's codes are frozen as they were at the close (a later sector or discharge change
+            // does not reach a closed AIH).
+            if ($locked->modality === 'sus' && $locked->complement_of_id === null && SusRules::instrument($locked) === 'aih') {
+                $locked->forceFill(['aih_character' => SusRules::aihCharacter($locked), 'aih_exit_reason' => SusRules::aihExitReason($locked), 'aih_bed_specialty' => SusRules::aihSpecialty($locked)]);
+            }
             $locked->forceFill(['status' => 'closed', 'closed_at' => now(), 'closed_by_user_id' => $request->user()->id])->save();
             $total = (int) (clone $items)->sum(DB::raw('quantity * unit_price_cents'));
             AuditEvent::record('billing_account.closed', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'total_cents' => $total, 'complement_of_id' => $locked->complement_of_id]);
@@ -372,6 +387,37 @@ class BillingAccountController extends Controller
             AuditEvent::record('billing_account.aih_number_recorded', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'replaced' => $replaced]);
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Número da AIH registrado.']);
+
+        return back();
+    }
+
+    /**
+     * Step 6b.6b2b1 (user's decisions, 28/10/2026): billing corrects the AIH's admission character and exit reason on
+     * the open stay account (an empty choice goes back to the stay's).
+     */
+    public function recordAihCodes(Request $request, BillingAccount $account): RedirectResponse
+    {
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $data = $request->validate([
+            'aih_character' => ['nullable', Rule::in(array_map('strval', array_keys(AihCodes::characters())))],
+            'aih_exit_reason' => ['nullable', Rule::in(array_map('strval', array_keys(AihCodes::exitReasons())))],
+        ], [], ['aih_character' => 'caráter da internação', 'aih_exit_reason' => 'motivo de saída']);
+        DB::transaction(function () use ($account, $data) {
+            $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
+            if ($locked->modality !== 'sus' || $locked->complement_of_id !== null || SusRules::instrument($locked) !== 'aih') {
+                throw ValidationException::withMessages(['aih_character' => 'Só a conta de uma internação SUS tem os dados da AIH.']);
+            }
+            if ($locked->status !== 'open') {
+                throw ValidationException::withMessages(['aih_character' => 'Esta conta já foi fechada.']);
+            }
+            $locked->forceFill(['aih_character' => $data['aih_character'] ?? null, 'aih_exit_reason' => $data['aih_exit_reason'] ?? null]);
+            if ($locked->isDirty()) {
+                $fields = array_keys($locked->getDirty());
+                $locked->save();
+                AuditEvent::record('billing_account.aih_codes_recorded', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'fields' => $fields]);
+            }
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Dados da AIH registrados.']);
 
         return back();
     }
