@@ -61,6 +61,10 @@ class SigtapImportTest extends ClinicalTestCase
         $layout = (string) file_get_contents(base_path('tests/Fixtures/sigtap/tb_procedimento_layout.txt'));
         $this->post(route('sigtap.store'), ['file' => $this->zip([], ['tb_procedimento_layout.txt' => (string) preg_replace('/^VL_SH,.*$/m', '', $layout)])])
             ->assertSessionHasErrors(['file' => 'O layout de tb_procedimento não tem a coluna VL_SH como na tabela oficial.']);
+        // Step 6b.8: far more lines than the official table (5,039 procedures) is refused before it fills the memory.
+        $line = strtok((string) file_get_contents(base_path('tests/Fixtures/sigtap/tb_procedimento.txt')), "\n")."\n";
+        $this->post(route('sigtap.store'), ['file' => $this->zip([], ['tb_procedimento.txt' => str_repeat($line, 50_001)])])
+            ->assertSessionHasErrors(['file' => 'tb_procedimento.txt tem linhas demais para a tabela oficial.']);
         $this->assertSame(0, DB::table('sigtap_competences')->count());
 
         $this->post(route('sigtap.store'), ['file' => $this->zip()])->assertSessionHasNoErrors()->assertRedirect(route('sigtap.index'))

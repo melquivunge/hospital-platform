@@ -35,6 +35,8 @@ class BillingReportController extends Controller
     {
         [$units, $unit, $from, $to] = $this->scope($request);
         $competence = self::competence($request, $unit);
+        // Step 6b.8: the SUS rejections carry their reasons, which may name the diagnosis.
+        Inertia::encryptHistory();
 
         return Inertia::render('billing-reports/index', [
             'units' => $units->map->only('id', 'name')->values(),
