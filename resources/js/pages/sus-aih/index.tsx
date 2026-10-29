@@ -1,4 +1,4 @@
-import { Form, Head, router } from '@inertiajs/react';
+import { Form, Head, Link, router } from '@inertiajs/react';
 import AihFileController from '@/actions/App/Http/Controllers/AihFileController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -42,7 +42,7 @@ export default function SusAihIndex({
                 <PageHeader
                     eyebrow={unit?.name}
                     title="AIH (SUS)"
-                    description="Arquivo das internações SUS no layout de importação do SISAIH01. Leva as contas de internação fechadas, com alta até a competência, que ainda não foram apresentadas."
+                    description="Arquivo das internações SUS no layout de importação do SISAIH01. Leva as contas de internação fechadas, com alta até a competência, ainda não apresentadas ou rejeitadas pelo gestor numa competência anterior."
                 />
                 {units.length > 1 && (
                     <div className="mb-6 grid w-full max-w-sm gap-2">
@@ -163,19 +163,34 @@ export default function SusAihIndex({
                                             {file.by && ` por ${file.by}`}
                                         </span>
                                     </span>
-                                    <Button
-                                        asChild
-                                        variant="outline"
-                                        className="min-h-11"
-                                    >
-                                        <a
-                                            href={AihFileController.download.url(
-                                                file.id,
-                                            )}
+                                    <span className="flex flex-wrap gap-2">
+                                        <Button
+                                            asChild
+                                            variant="outline"
+                                            className="min-h-11"
                                         >
-                                            Baixar arquivo
-                                        </a>
-                                    </Button>
+                                            <Link
+                                                href={AihFileController.show.url(
+                                                    file.id,
+                                                )}
+                                            >
+                                                Retorno do gestor
+                                            </Link>
+                                        </Button>
+                                        <Button
+                                            asChild
+                                            variant="outline"
+                                            className="min-h-11"
+                                        >
+                                            <a
+                                                href={AihFileController.download.url(
+                                                    file.id,
+                                                )}
+                                            >
+                                                Baixar arquivo
+                                            </a>
+                                        </Button>
+                                    </span>
                                 </li>
                             ))}
                         </ul>

@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -149,6 +150,14 @@ class BillingAccountController extends Controller
                 'specialty' => ($specialty = SusRules::aihSpecialty($stay)) === null ? null : $specialty.' · '.(AihCodes::bedSpecialties()[$specialty] ?? ''),
                 'characters' => collect(AihCodes::characters())->map(fn (string $name, int|string $code) => ['code' => (string) $code, 'name' => "{$code} · {$name}"])->values(),
                 'exitReasons' => collect(AihCodes::exitReasons())->map(fn (string $name, int|string $code) => ['code' => (string) $code, 'name' => "{$code} · {$name}"])->values(),
+                // Step 6b.7a: the manager's return of the latest presentation; a rejected one reopens to be corrected.
+                'return' => ($presented = DB::table('sus_aih_file_accounts AS fa')->join('sus_aih_files AS f', 'f.id', '=', 'fa.sus_aih_file_id')
+                    ->where('fa.billing_account_id', $stay->id)->orderByDesc('fa.id')->first(['fa.id', 'f.competence'])) === null ? null : [
+                        'competence' => Carbon::parse($presented->competence)->format('m/Y'),
+                        'approved' => ($return = DB::table('sus_aih_returns')->where('sus_aih_file_account_id', $presented->id)->orderByDesc('id')->first()) === null ? null : (bool) $return->approved,
+                        'reason' => $return?->reason,
+                    ],
+                'canReopen' => $stay->is($account) && $account->status === 'closed' && (bool) DB::selectOne('SELECT sus_aih_rejected(?) AS rejected', [$stay->id])->rejected,
                 // Step 6b.5b2: the principal procedure, from the report or billing's change (never the report's text).
                 'principal' => ($principal = DB::table('aih_principals')->where('billing_account_id', $stay->id)->orderByDesc('id')->first()) === null ? null : [
                     'procedure' => "{$principal->procedure_code} · {$principal->procedure_name}",
@@ -341,6 +350,29 @@ class BillingAccountController extends Controller
             AuditEvent::record('billing_account.closed', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id, 'total_cents' => $total, 'complement_of_id' => $locked->complement_of_id]);
         });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Conta fechada.']);
+
+        return back();
+    }
+
+    /**
+     * Step 6b.7a (user's decision, 29/10/2026): billing reopens the closed account of an AIH the manager rejected, to
+     * correct it before it is presented again. The bed specialty goes back to the sector's; the character and exit reason
+     * stay as closed (billing's correction, if any), and the form shows them as billing's until changed.
+     */
+    public function reopen(Request $request, BillingAccount $account): RedirectResponse
+    {
+        abort_unless(in_array($account->unit_id, self::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        DB::transaction(function () use ($account) {
+            // The AIH file generation's lock: an account it is presenting does not reopen under it.
+            Unit::query()->whereKey($account->unit_id)->lockForUpdate()->firstOrFail();
+            $locked = BillingAccount::query()->lockForUpdate()->findOrFail($account->id);
+            if ($locked->status !== 'closed' || ! DB::selectOne('SELECT sus_aih_rejected(?) AS rejected', [$locked->id])->rejected) {
+                throw ValidationException::withMessages(['reopen' => 'Só a conta de uma AIH rejeitada pelo gestor é reaberta.'])->errorBag('reopen');
+            }
+            $locked->forceFill(['status' => 'open', 'closed_at' => null, 'closed_by_user_id' => null, 'aih_bed_specialty' => null])->save();
+            AuditEvent::record('billing_account.reopened', $locked->tenant_id, $locked, ['unit_id' => $locked->unit_id]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Conta reaberta para correção.']);
 
         return back();
     }

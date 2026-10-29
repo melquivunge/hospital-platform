@@ -8,7 +8,7 @@ Plataforma hospitalar SaaS multi-cliente. Entregas concluídas e mescladas: V1 (
 
 ## Ponto exato de retomada
 
-1. **6b.7:** retorno do gestor (aprovado ou rejeitado por AIH e por linha de BPA, com reapresentação) e relatórios SUS. A 6b.6 (arquivos BPA e AIH) está feita: `App\Billing\BpaFile` e `App\Billing\AihFile`, telas `sus-bpa` e `sus-aih`; a lista do que só a importação real no SISAIH01 confirma está no plano ("Não verificado"). Texto de layouts em PDF: extrair com o PDFKit do macOS (`osascript -l JavaScript`).
+1. **6b.7b:** linhas do BPA guardadas no arquivo, retorno do gestor por linha e reapresentação dos itens rejeitados; depois **6b.7c** (relatórios SUS). Decisões e a 6b.7a (retorno da AIH, reapresentação, reabertura da conta: `AihFileController::show/recordReturn`, `BillingAccountController::reopen`, função `sus_aih_rejected`) no plano. A 6b.6 (arquivos BPA e AIH) está feita: `App\Billing\BpaFile` e `App\Billing\AihFile`, telas `sus-bpa` e `sus-aih`; a lista do que só a importação real no SISAIH01 confirma está no plano ("Não verificado"). Texto de layouts em PDF: extrair com o PDFKit do macOS (`osascript -l JavaScript`).
 2. **6b.8:** revisão integrada da entrega 6b.
 3. Depois: entrega 7 (portal do paciente e indicadores), sem contrato ainda.
 
