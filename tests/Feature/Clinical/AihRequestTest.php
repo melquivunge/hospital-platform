@@ -521,6 +521,13 @@ class AihRequestTest extends ClinicalTestCase
         $this->actingAs($other->user)->get(route('sus-aih.show', $file))->assertForbidden();
         $this->post(route('sus-aih.returns.store', $file), ['presentation_id' => $presentation, 'approved' => '1'])->assertForbidden();
         $this->post(route('billing-accounts.reopen', $account))->assertForbidden();
+        // Step 6b.7c: in the manager's report of the competence, valued by the account's items, with the reason.
+        $total = (int) DB::table('billing_account_items')->where('billing_account_id', $account->id)->sum(DB::raw('quantity * coalesce(unit_price_cents, 0)'));
+        $this->assertGreaterThan(0, $total);
+        $this->actingAs($this->manager->user)->get(route('billing-reports.index', ['unit' => $this->unit->id, 'competence' => '2026-11']))->assertInertia(fn (Assert $page) => $page
+            ->where('sus.aih.presented', ['quantity' => 1, 'totalCents' => $total])->where('sus.aih.rejected', ['quantity' => 1, 'totalCents' => $total])
+            ->where('sus.aih.approved.quantity', 0)->where('sus.bpa.presented.quantity', 0)
+            ->where('sus.rejections', [['label' => 'AIH 3526100000012', 'quantity' => 1, 'totalCents' => $total, 'reason' => 'Laudo sem assinatura.']]));
         $this->actingAs($billing->user);
 
         // Back in the queue, but only for a later competence.

@@ -173,7 +173,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('cid10', Cid10Controller::class)->middleware('throttle:60,1')->name('cid10.search');
     // Step 6b.6b1: the IBGE municipality search of the address fields.
     Route::get('municipalities', MunicipalityController::class)->middleware('throttle:60,1')->name('municipalities.search');
-    // Step 6.6: the unit manager's billing reports (numbers only) and their CSV.
+    // Step 6.6: the unit manager's billing reports (numbers only) and their CSV; step 6b.7c: the SUS by competence, with the rejections' reasons.
     Route::get('billing-reports', [BillingReportController::class, 'index'])->middleware('throttle:120,1')->name('billing-reports.index');
     Route::get('billing-reports.csv', [BillingReportController::class, 'csv'])->middleware('throttle:20,1')->name('billing-reports.csv');
     // Step 6.5c2: the glosa appeal, its file and the insurer's answer.
