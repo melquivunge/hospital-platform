@@ -176,12 +176,23 @@ class BillingReportController extends Controller
             SQL, $bindings));
 
         $rejected = fn (Collection $rows) => $rows->filter(fn (stdClass $row) => $row->approved === false);
+        $lineAccounts = fn (stdClass $row) => array_map('intval', explode(',', trim((string) $row->accounts, '{}')));
         $accounts = BillingAccount::query()->whereKey($rejected($aih)->pluck('account')
-            ->merge($rejected($bpa)->flatMap(fn (stdClass $row) => array_map('intval', explode(',', trim((string) $row->accounts, '{}')))))->unique()->all())->get();
+            ->merge($rejected($bpa)->flatMap($lineAccounts))->unique()->all())->get();
         $patients = Patient::query()->whereKey($accounts->pluck('patient_id')->unique()->all())->get()->keyBy('id');
         foreach ($accounts as $account) {
             ClinicalAccess::recordRead($request->user(), $patients->get($account->patient_id), $account);
         }
+        // Step 6b.8: an account approved before its rejection reopens only by the unit manager (a second person).
+        $reopen = $accounts->filter(fn (BillingAccount $account) => $account->status === 'closed' && ($recorders = BillingAccountController::approvedBefore($account->id)) !== []
+            && BillingAccountController::mayReopen($request->user(), $account, $recorders))->modelKeys();
+        // Each account's button once, on its first rejection.
+        $offer = function (array $ids) use (&$reopen): array {
+            $offered = array_values(array_intersect($ids, $reopen));
+            $reopen = array_values(array_diff($reopen, $offered));
+
+            return $offered;
+        };
 
         $totals = fn (Collection $rows, callable $quantity) => array_map(fn (?bool $approved) => [
             'quantity' => (int) $rows->whereStrict('approved', $approved)->sum($quantity), 'totalCents' => (int) $rows->whereStrict('approved', $approved)->sum('total'),
@@ -194,8 +205,8 @@ class BillingReportController extends Controller
             'bpa' => $totals($bpa, fn (stdClass $row) => (int) $row->quantity),
             'aih' => $totals($aih, fn () => 1),
             'rejections' => [
-                ...$rejected($bpa)->map(fn (stdClass $row) => ['label' => "BPA-{$row->kind} folha {$row->sheet} linha {$row->sequence} · {$row->procedure_code}", 'quantity' => (int) $row->quantity, 'totalCents' => (int) $row->total, 'reason' => (string) $row->reason])->values(),
-                ...$rejected($aih)->map(fn (stdClass $row) => ['label' => 'AIH '.($row->aih_number ?? 'sem número'), 'quantity' => 1, 'totalCents' => (int) $row->total, 'reason' => (string) $row->reason])->values(),
+                ...$rejected($bpa)->map(fn (stdClass $row) => ['label' => "BPA-{$row->kind} folha {$row->sheet} linha {$row->sequence} · {$row->procedure_code}", 'quantity' => (int) $row->quantity, 'totalCents' => (int) $row->total, 'reason' => (string) $row->reason, 'reopen' => $offer($lineAccounts($row))])->values(),
+                ...$rejected($aih)->map(fn (stdClass $row) => ['label' => 'AIH '.($row->aih_number ?? 'sem número'), 'quantity' => 1, 'totalCents' => (int) $row->total, 'reason' => (string) $row->reason, 'reopen' => $offer([(int) $row->account])])->values(),
             ],
         ];
     }

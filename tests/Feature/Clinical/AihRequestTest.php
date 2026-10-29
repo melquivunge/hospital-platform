@@ -527,17 +527,32 @@ class AihRequestTest extends ClinicalTestCase
         $this->actingAs($this->manager->user)->get(route('billing-reports.index', ['unit' => $this->unit->id, 'competence' => '2026-11']))->assertInertia(fn (Assert $page) => $page
             ->where('sus.aih.presented', ['quantity' => 1, 'totalCents' => $total])->where('sus.aih.rejected', ['quantity' => 1, 'totalCents' => $total])
             ->where('sus.aih.approved.quantity', 0)->where('sus.bpa.presented.quantity', 0)
-            ->where('sus.rejections', [['label' => 'AIH 3526100000012', 'quantity' => 1, 'totalCents' => $total, 'reason' => 'Laudo sem assinatura.']]));
+            ->where('sus.rejections', [['label' => 'AIH 3526100000012', 'quantity' => 1, 'totalCents' => $total, 'reason' => 'Laudo sem assinatura.', 'reopen' => [$account->id]]]));
         $this->actingAs($billing->user);
 
         // Back in the queue, but only for a later competence.
         $this->assertSame([$account->id], AihFile::accounts($this->unit->id)->modelKeys());
         $this->travelTo('2026-12-02 09:00:00');
         $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
-            ->where('aih.return', ['competence' => '11/2026', 'approved' => false, 'reason' => 'Laudo sem assinatura.'])->where('aih.canReopen', true));
+            ->where('aih.return', ['competence' => '11/2026', 'approved' => false, 'reason' => 'Laudo sem assinatura.'])->where('aih.canReopen', false)->where('aih.needsManager', true));
+
+        // Step 6b.8 (user's decision): approved before the rejection, billing does not reopen it, nor a manager who
+        // recorded the rejection; the unit manager does (a second person).
+        $this->post(route('billing-accounts.reopen', $account))->assertSessionHasErrors('reopen', null, 'reopen');
+        // A colleague rejecting again (the latest) does not clear the first one who rejected.
+        $colleague = Membership::factory()->for($this->unit->tenant)->create();
+        $colleague->grant(Role::Billing, $this->unit);
+        $this->actingAs($colleague->user)->post(route('sus-aih.returns.store', $file), ['presentation_id' => $presentation, 'approved' => '0', 'reason' => 'Laudo sem assinatura.'])->assertSessionHasNoErrors();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $billing->grant(Role::UnitManager, $this->unit);
+        app(CurrentTenant::class)->set(null);
+        $this->actingAs($billing->user->fresh())->post(route('billing-accounts.reopen', $account))->assertSessionHasErrors('reopen', null, 'reopen');
+        $this->assertSame('closed', BillingAccount::withoutTenantScope()->findOrFail($account->id)->status);
 
         // Reopened to be corrected: the codes go back to the derived ones; the presentation's return no longer changes.
-        $this->post(route('billing-accounts.reopen', $account))->assertSessionHasNoErrors();
+        $this->actingAs($this->manager->user)->post(route('billing-accounts.reopen', $account))->assertSessionHasNoErrors();
+        $this->assertTrue(AuditEvent::query()->where('action', 'billing_account.reopened')->whereJsonContains('context->approved_before', true)->exists());
+        $this->actingAs($billing->user);
         $reopened = BillingAccount::withoutTenantScope()->findOrFail($account->id);
         $this->assertSame(['open', null, '02', '12', null], [$reopened->status, $reopened->closed_at, $reopened->aih_character, $reopened->aih_exit_reason, $reopened->aih_bed_specialty]);
         $this->post(route('sus-aih.returns.store', $file), ['presentation_id' => $presentation, 'approved' => '1'])->assertSessionHasErrors('reason', null, "return{$presentation}");

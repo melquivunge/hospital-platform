@@ -191,7 +191,7 @@ class BpaFileTest extends ClinicalTestCase
             ->where('sus.bpa', ['approved' => ['quantity' => 1, 'totalCents' => $price], 'rejected' => ['quantity' => 1, 'totalCents' => $price],
                 'waiting' => ['quantity' => 0, 'totalCents' => 0], 'presented' => ['quantity' => 2, 'totalCents' => 2 * $price]])
             ->where('sus.aih.presented', ['quantity' => 0, 'totalCents' => 0])
-            ->where('sus.rejections', [['label' => 'BPA-I folha 1 linha 1 · 0301010072', 'quantity' => 1, 'totalCents' => $price, 'reason' => 'CBO incompatível.']]));
+            ->where('sus.rejections', [['label' => 'BPA-I folha 1 linha 1 · 0301010072', 'quantity' => 1, 'totalCents' => $price, 'reason' => 'CBO incompatível.', 'reopen' => []]]));
         $this->assertSame($reads + 1, DB::table('clinical_reads')->where('user_id', $this->manager->user->id)->count());
         $this->get(route('billing-reports.index', ['unit' => $this->unit->id, 'competence' => '2026-10']))->assertInertia(fn (Assert $page) => $page
             ->where('sus.bpa.presented.quantity', 0)->where('sus.rejections', []));
