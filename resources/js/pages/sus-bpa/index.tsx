@@ -1,4 +1,4 @@
-import { Form, Head, router } from '@inertiajs/react';
+import { Form, Head, Link, router } from '@inertiajs/react';
 import BpaFileController from '@/actions/App/Http/Controllers/BpaFileController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
@@ -44,7 +44,7 @@ export default function SusBpaIndex({
                 <PageHeader
                     eyebrow={unit?.name}
                     title="BPA (SUS)"
-                    description="Arquivo da produção ambulatorial no layout do BPA Magnético. Leva as contas SUS fechadas que ainda não foram apresentadas."
+                    description="Arquivo da produção ambulatorial no layout do BPA Magnético. Leva as contas SUS fechadas ainda não apresentadas e os itens de linhas rejeitadas pelo gestor numa competência anterior."
                 />
                 {units.length > 1 && (
                     <div className="mb-6 grid w-full max-w-sm gap-2">
@@ -173,19 +173,34 @@ export default function SusBpaIndex({
                                             {file.by && ` por ${file.by}`}
                                         </span>
                                     </span>
-                                    <Button
-                                        asChild
-                                        variant="outline"
-                                        className="min-h-11"
-                                    >
-                                        <a
-                                            href={BpaFileController.download.url(
-                                                file.id,
-                                            )}
+                                    <span className="flex flex-wrap gap-2">
+                                        <Button
+                                            asChild
+                                            variant="outline"
+                                            className="min-h-11"
                                         >
-                                            Baixar arquivo
-                                        </a>
-                                    </Button>
+                                            <Link
+                                                href={BpaFileController.show.url(
+                                                    file.id,
+                                                )}
+                                            >
+                                                Retorno do gestor
+                                            </Link>
+                                        </Button>
+                                        <Button
+                                            asChild
+                                            variant="outline"
+                                            className="min-h-11"
+                                        >
+                                            <a
+                                                href={BpaFileController.download.url(
+                                                    file.id,
+                                                )}
+                                            >
+                                                Baixar arquivo
+                                            </a>
+                                        </Button>
+                                    </span>
                                 </li>
                             ))}
                         </ul>

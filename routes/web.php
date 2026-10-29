@@ -150,6 +150,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('sus-bpa', [BpaFileController::class, 'index'])->middleware('throttle:120,1')->name('sus-bpa.index');
     Route::post('sus-bpa', [BpaFileController::class, 'store'])->middleware('throttle:10,1')->name('sus-bpa.store');
     Route::get('sus-bpa/{file}/download', [BpaFileController::class, 'download'])->middleware('throttle:30,1')->name('sus-bpa.download');
+    Route::get('sus-bpa/{file}', [BpaFileController::class, 'show'])->middleware('throttle:120,1')->name('sus-bpa.show');
+    Route::post('sus-bpa/{file}/returns', [BpaFileController::class, 'recordReturn'])->middleware('throttle:60,1')->name('sus-bpa.returns.store');
     // Step 6b.6b2b2: the SISAIH01 import file.
     Route::get('sus-aih', [AihFileController::class, 'index'])->middleware('throttle:120,1')->name('sus-aih.index');
     Route::post('sus-aih', [AihFileController::class, 'store'])->middleware('throttle:10,1')->name('sus-aih.store');
