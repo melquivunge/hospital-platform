@@ -181,6 +181,25 @@ class BpaFileTest extends ClinicalTestCase
         $return($first, ['approved' => '0', 'reason' => 'CBO incompatível.'])->assertSessionHasNoErrors();
         $return($second, ['approved' => '1'])->assertSessionHasNoErrors();
         $this->assertFalse(DB::table('audit_events')->where('action', 'sus_bpa_return.recorded')->where('context', 'like', '%CBO%')->exists());
+
+        // Step 6b.7c: the manager's report of the competence, by the return, with the rejection's reason (its read logged).
+        $price = (int) DB::table('billing_account_items')->where('billing_account_id', $rejected->id)->value('unit_price_cents');
+        $this->assertGreaterThan(0, $price);
+        $reads = DB::table('clinical_reads')->where('user_id', $this->manager->user->id)->count();
+        $this->actingAs($this->manager->user)->get(route('billing-reports.index', ['unit' => $this->unit->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('filters.competence', '2026-11')->where('sus.competences', ['2026-11'])
+            ->where('sus.bpa', ['approved' => ['quantity' => 1, 'totalCents' => $price], 'rejected' => ['quantity' => 1, 'totalCents' => $price],
+                'waiting' => ['quantity' => 0, 'totalCents' => 0], 'presented' => ['quantity' => 2, 'totalCents' => 2 * $price]])
+            ->where('sus.aih.presented', ['quantity' => 0, 'totalCents' => 0])
+            ->where('sus.rejections', [['label' => 'BPA-I folha 1 linha 1 · 0301010072', 'quantity' => 1, 'totalCents' => $price, 'reason' => 'CBO incompatível.']]));
+        $this->assertSame($reads + 1, DB::table('clinical_reads')->where('user_id', $this->manager->user->id)->count());
+        $this->get(route('billing-reports.index', ['unit' => $this->unit->id, 'competence' => '2026-10']))->assertInertia(fn (Assert $page) => $page
+            ->where('sus.bpa.presented.quantity', 0)->where('sus.rejections', []));
+        foreach (['2026-13', ['2026-11']] as $invalid) {
+            $this->get(route('billing-reports.index', ['unit' => $this->unit->id, 'competence' => $invalid]))->assertInertia(fn (Assert $page) => $page->where('filters.competence', '2026-11'));
+        }
+        $this->actingAs($this->billing->user)->get(route('billing-reports.index', ['competence' => '2026-11']))->assertForbidden();
+
         $this->assertSame([$rejected->id], BpaFile::accounts($this->unit->id)->modelKeys());
         $this->post(route('billing-accounts.reopen', $approved))->assertSessionHasErrors('reopen', null, 'reopen');
         $this->get(route('billing-accounts.show', $rejected))->assertInertia(fn (Assert $page) => $page

@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Clinical\ClinicalAccess;
 use App\Models\AuditEvent;
+use App\Models\BillingAccount;
 use App\Models\BillingLot;
 use App\Models\Insurer;
+use App\Models\Patient;
 use App\Models\Unit;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -13,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use stdClass;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
@@ -30,12 +34,14 @@ class BillingReportController extends Controller
     public function index(Request $request): Response
     {
         [$units, $unit, $from, $to] = $this->scope($request);
+        $competence = self::competence($request, $unit);
 
         return Inertia::render('billing-reports/index', [
             'units' => $units->map->only('id', 'name')->values(),
             'unitId' => $unit->id,
-            'filters' => ['from' => $from->toDateString(), 'to' => $to->subDay()->toDateString()],
+            'filters' => ['from' => $from->toDateString(), 'to' => $to->subDay()->toDateString(), 'competence' => $competence],
             ...self::report($unit, $from, $to),
+            'sus' => self::sus($request, $unit, $competence),
         ]);
     }
 
@@ -134,6 +140,75 @@ class BillingReportController extends Controller
                 ...self::sortedBy($recoveries->map(fn ($row) => ['group' => 'Convênio · '.$insurers->get($row->insurer_id), 'label' => 'Recuperado em recurso (itens)', 'count' => (int) $row->count, 'totalCents' => (int) $row->total]), 'group'),
             ],
         ];
+    }
+
+    /**
+     * Step 6b.7c (user's decision, 29/10/2026): the SUS files of a competence (YYYY-MM) and the manager's returns, BPA
+     * and AIH apart: quantity and SIGTAP value presented, approved, rejected and without return, and the rejections with
+     * their reasons. A BPA line's quantity and value are its items'; an AIH counts one, valued by the items its account
+     * had when the file was generated. The value the manager actually paid is not recorded. A reason may name the
+     * diagnosis: the read of each rejected account is logged, as on the return screens.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sus(Request $request, Unit $unit, string $competence): array
+    {
+        $latest = fn (string $table, string $key, string $id) => "LEFT JOIN LATERAL (SELECT approved, reason FROM {$table} WHERE {$key} = {$id} ORDER BY id DESC LIMIT 1) r ON true";
+        $bindings = [$unit->id, "{$competence}-01"];
+        $bpa = collect(DB::select(<<<SQL
+            SELECT l.kind, l.sheet, l.sequence, l.procedure_code, l.quantity, r.approved, r.reason,
+                (SELECT coalesce(sum(i.quantity * coalesce(i.unit_price_cents, 0)), 0) FROM sus_bpa_file_line_items li
+                    JOIN billing_account_items i ON i.id = li.billing_account_item_id WHERE li.sus_bpa_file_line_id = l.id) AS total,
+                (SELECT array_agg(DISTINCT i.billing_account_id) FROM sus_bpa_file_line_items li
+                    JOIN billing_account_items i ON i.id = li.billing_account_item_id WHERE li.sus_bpa_file_line_id = l.id) AS accounts
+            FROM sus_bpa_files f JOIN sus_bpa_file_lines l ON l.sus_bpa_file_id = f.id {$latest('sus_bpa_line_returns', 'sus_bpa_file_line_id', 'l.id')}
+            WHERE f.unit_id = ? AND f.competence = ? ORDER BY l.sheet, l.sequence
+            SQL, $bindings));
+        $aih = collect(DB::select(<<<SQL
+            SELECT a.aih_number, a.id AS account, r.approved, r.reason,
+                (SELECT coalesce(sum(i.quantity * coalesce(i.unit_price_cents, 0)), 0) FROM billing_account_items i
+                    WHERE i.billing_account_id = a.id AND i.created_at <= f.generated_at) AS total
+            FROM sus_aih_files f JOIN sus_aih_file_accounts fa ON fa.sus_aih_file_id = f.id JOIN billing_accounts a ON a.id = fa.billing_account_id
+                {$latest('sus_aih_returns', 'sus_aih_file_account_id', 'fa.id')}
+            WHERE f.unit_id = ? AND f.competence = ? ORDER BY fa.id
+            SQL, $bindings));
+
+        $rejected = fn (Collection $rows) => $rows->filter(fn (stdClass $row) => $row->approved === false);
+        $accounts = BillingAccount::query()->whereKey($rejected($aih)->pluck('account')
+            ->merge($rejected($bpa)->flatMap(fn (stdClass $row) => array_map('intval', explode(',', trim((string) $row->accounts, '{}')))))->unique()->all())->get();
+        $patients = Patient::query()->whereKey($accounts->pluck('patient_id')->unique()->all())->get()->keyBy('id');
+        foreach ($accounts as $account) {
+            ClinicalAccess::recordRead($request->user(), $patients->get($account->patient_id), $account);
+        }
+
+        $totals = fn (Collection $rows, callable $quantity) => array_map(fn (?bool $approved) => [
+            'quantity' => (int) $rows->whereStrict('approved', $approved)->sum($quantity), 'totalCents' => (int) $rows->whereStrict('approved', $approved)->sum('total'),
+        ], ['approved' => true, 'rejected' => false, 'waiting' => null]) + ['presented' => ['quantity' => (int) $rows->sum($quantity), 'totalCents' => (int) $rows->sum('total')]];
+
+        return [
+            'competences' => DB::table('sus_bpa_files')->where('unit_id', $unit->id)->select('competence')
+                ->union(DB::table('sus_aih_files')->where('unit_id', $unit->id)->select('competence'))->orderByDesc('competence')->pluck('competence')
+                ->map(fn ($day) => substr((string) $day, 0, 7))->all(),
+            'bpa' => $totals($bpa, fn (stdClass $row) => (int) $row->quantity),
+            'aih' => $totals($aih, fn () => 1),
+            'rejections' => [
+                ...$rejected($bpa)->map(fn (stdClass $row) => ['label' => "BPA-{$row->kind} folha {$row->sheet} linha {$row->sequence} · {$row->procedure_code}", 'quantity' => (int) $row->quantity, 'totalCents' => (int) $row->total, 'reason' => (string) $row->reason])->values(),
+                ...$rejected($aih)->map(fn (stdClass $row) => ['label' => 'AIH '.($row->aih_number ?? 'sem número'), 'quantity' => 1, 'totalCents' => (int) $row->total, 'reason' => (string) $row->reason])->values(),
+            ],
+        ];
+    }
+
+    /** The chosen competence (YYYY-MM), else the unit's latest SUS file's, else the previous month in its zone. */
+    private static function competence(Request $request, Unit $unit): string
+    {
+        $chosen = $request->query('competence');
+        if (is_string($chosen) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $chosen) === 1) {
+            return $chosen;
+        }
+        $latest = DB::table('sus_bpa_files')->where('unit_id', $unit->id)->max('competence');
+        $aih = DB::table('sus_aih_files')->where('unit_id', $unit->id)->max('competence');
+
+        return substr((string) (max($latest, $aih) ?? CarbonImmutable::now($unit->timezone ?? 'UTC')->subMonthNoOverflow()->toDateString()), 0, 7);
     }
 
     /**

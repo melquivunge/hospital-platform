@@ -25,6 +25,21 @@ type Glosa = {
     appealingCents: number;
     recoveredCents: number;
 };
+type SusTotals = Record<
+    'presented' | 'approved' | 'rejected' | 'waiting',
+    { quantity: number; totalCents: number }
+>;
+type Sus = {
+    competences: string[];
+    bpa: SusTotals;
+    aih: SusTotals;
+    rejections: {
+        label: string;
+        quantity: number;
+        totalCents: number;
+        reason: string;
+    }[];
+};
 type Received = {
     group: string;
     label: string;
@@ -34,7 +49,8 @@ type Received = {
 
 /**
  * Step 6.6 (ADR-0010): the unit manager's billing reports, numbers only: production by modality in the period, the
- * accounts pending now, the glosas by reason and what was received; the CSV has the same numbers.
+ * accounts pending now, the glosas by reason and what was received; the CSV has the same numbers. Step 6b.7c: the SUS
+ * files of a competence, BPA and AIH, by the manager's return, and the rejections with their reasons.
  */
 export default function BillingReports({
     units,
@@ -44,17 +60,20 @@ export default function BillingReports({
     pending,
     glosas,
     received,
+    sus,
 }: {
     units: { id: number; name: string }[];
     unitId: number;
-    filters: { from: string; to: string };
+    filters: { from: string; to: string; competence: string };
     production: Production[];
     pending: Pending[];
     glosas: Glosa[];
     received: Received[];
+    sus: Sus;
 }) {
     const unit = units.find((option) => option.id === unitId);
     const query = { unit: unitId, from: filters.from, to: filters.to };
+    const [year, month] = filters.competence.split('-');
     const apply = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
@@ -69,6 +88,7 @@ export default function BillingReports({
                     unit: field('unit') || unitId,
                     from: field('from'),
                     to: field('to'),
+                    competence: field('competence'),
                 },
             }).url,
             {},
@@ -85,7 +105,7 @@ export default function BillingReports({
                 <PageHeader
                     eyebrow={unit?.name}
                     title="Relatórios de faturamento"
-                    description="Produção, glosas e recebido no período, no horário da unidade; contas pendentes hoje. Só números, sem dado de paciente."
+                    description="Produção, glosas e recebido no período, no horário da unidade; contas pendentes hoje; o SUS por competência. Sem dado de paciente."
                     actions={
                         <Button asChild variant="outline" className="min-h-11">
                             <a href={csv({ query }).url} download>
@@ -136,6 +156,32 @@ export default function BillingReports({
                             defaultValue={filters.to}
                             className="h-11"
                         />
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="competence">Competência SUS</Label>
+                        <select
+                            id="competence"
+                            name="competence"
+                            defaultValue={filters.competence}
+                            className={selectClassName}
+                        >
+                            {[
+                                ...new Set([
+                                    filters.competence,
+                                    ...sus.competences,
+                                ]),
+                            ]
+                                .sort()
+                                .reverse()
+                                .map((competence) => (
+                                    <option key={competence} value={competence}>
+                                        {competence
+                                            .split('-')
+                                            .reverse()
+                                            .join('/')}
+                                    </option>
+                                ))}
+                        </select>
                     </div>
                     <div className="self-end">
                         <Button type="submit" className="min-h-11">
@@ -203,6 +249,59 @@ export default function BillingReports({
                             key={position}
                             title={row.group}
                             detail={`${row.label} · ${row.count}`}
+                            cents={row.totalCents}
+                        />
+                    ))}
+                </Section>
+
+                {(
+                    [
+                        ['BPA', 'bpa', 'procedimento', 'procedimentos'],
+                        ['AIH', 'aih', 'AIH', 'AIHs'],
+                    ] as const
+                ).map(([name, key, one, many]) => (
+                    <Section
+                        key={key}
+                        title={`SUS · ${name} · ${month}/${year}`}
+                        note="Valor SIGTAP do arquivo da competência, pelo retorno do gestor registrado no faturamento. O valor efetivamente pago não é registrado."
+                        empty={
+                            sus[key].presented.quantity === 0 &&
+                            `Nenhum arquivo ${name} nesta competência.`
+                        }
+                        total={sus[key].presented.totalCents}
+                    >
+                        {(
+                            [
+                                ['presented', 'Apresentado'],
+                                ['approved', 'Aprovado'],
+                                ['rejected', 'Rejeitado'],
+                                ['waiting', 'Sem retorno'],
+                            ] as const
+                        ).map(([stage, label]) => (
+                            <Row
+                                key={stage}
+                                title={label}
+                                detail={`${sus[key][stage].quantity} ${sus[key][stage].quantity === 1 ? one : many}`}
+                                cents={sus[key][stage].totalCents}
+                            />
+                        ))}
+                    </Section>
+                ))}
+
+                <Section
+                    title={`SUS · rejeições · ${month}/${year}`}
+                    note="Cada linha do BPA e cada AIH que o gestor rejeitou, com o motivo."
+                    empty={
+                        sus.rejections.length === 0 &&
+                        'Nenhuma rejeição nesta competência.'
+                    }
+                    total={sum(sus.rejections, (row) => row.totalCents)}
+                >
+                    {sus.rejections.map((row, position) => (
+                        <Row
+                            key={position}
+                            title={row.label}
+                            detail={`Quantidade ${row.quantity} · ${row.reason}`}
                             cents={row.totalCents}
                         />
                     ))}
