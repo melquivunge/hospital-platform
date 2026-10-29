@@ -217,7 +217,9 @@ class AihRequestTest extends ClinicalTestCase
         $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
             ->where('aih', ['number' => null, 'authorizer' => null, 'canRecord' => true, 'principal' => null])->where('susPending', fn ($pending) => collect($pending)->contains($missing)
                 // Step 6b.6b1: the AIH carries the patient's address.
-                && collect($pending)->contains('O paciente não tem o endereço completo no cadastro (logradouro, número, bairro e município): exigido na AIH.')));
+                && collect($pending)->contains('O paciente não tem o endereço completo no cadastro (logradouro, número, bairro e município): exigido na AIH.')
+                // Step 6b.6b2: and the nationality and street type of the SISAIH01 tables.
+                && collect($pending)->contains('O paciente não tem nacionalidade ou tipo de logradouro no cadastro: exigidos na AIH.')));
         $record = fn (string $number, string $cns = '7001 2345 6780 900') => $this->post(route('billing-accounts.aih-number', $account), ['aih_number' => $number, 'aih_authorizer_cns' => $cns]);
         // Step 6b.6b1: with the CNS of the manager's doctor who authorized it.
         $record('3526100000012', '123456789010001')->assertSessionHasErrors(['aih_authorizer_cns' => 'Cartão Nacional de Saúde inválido.']);
@@ -229,6 +231,12 @@ class AihRequestTest extends ClinicalTestCase
         $this->assertSame(['3526100000013', '700123456780900'], [$account->fresh()->aih_number, $account->fresh()->aih_authorizer_cns]);
         $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
             ->where('aih.number', '3526100000013')->where('susPending', fn ($pending) => ! collect($pending)->contains($missing)));
+        // Step 6b.6b2: one of the two codes is not enough; with both, the pending item goes away.
+        $codes = 'O paciente não tem nacionalidade ou tipo de logradouro no cadastro: exigidos na AIH.';
+        $this->patient->forceFill(['nationality' => '010'])->save();
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page->where('susPending', fn ($pending) => collect($pending)->contains($codes)));
+        $this->patient->forceFill(['address_street_type' => '081'])->save();
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page->where('susPending', fn ($pending) => ! collect($pending)->contains($codes)));
         $this->assertSame([false, true], AuditEvent::query()->where('action', 'billing_account.aih_number_recorded')->orderBy('id')->pluck('context')->map(fn ($context) => $context['replaced'])->all());
         $this->assertStringNotContainsString('3526100000013', AuditEvent::query()->pluck('context')->toJson());
 

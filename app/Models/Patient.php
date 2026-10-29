@@ -41,10 +41,12 @@ use Illuminate\Validation\ValidationException;
  * @property string|null $address_district
  * @property string|null $address_municipality IBGE code, 7 digits
  * @property string|null $address_zip
+ * @property string|null $nationality SISAIH01 code, 3 digits (step 6b.6b2)
+ * @property string|null $address_street_type SISAIH01 code, 3 digits
  * @property int $created_by_user_id
  * @property int|null $merged_into_id
  */
-#[Fillable(['registered_unit_id', 'name', 'social_name', 'birth_date', 'sex', 'cpf', 'cns', 'mother_name', 'phone', 'email', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'race_color', 'ethnicity', 'address_street', 'address_number', 'address_complement', 'address_district', 'address_municipality', 'address_zip'])]
+#[Fillable(['registered_unit_id', 'name', 'social_name', 'birth_date', 'sex', 'cpf', 'cns', 'mother_name', 'phone', 'email', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'race_color', 'ethnicity', 'address_street', 'address_number', 'address_complement', 'address_district', 'address_municipality', 'address_zip', 'nationality', 'address_street_type'])]
 class Patient extends Model
 {
     use BelongsToTenant;

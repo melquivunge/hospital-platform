@@ -24,6 +24,7 @@ type Patient = PatientSummary & {
     guardian_phone: string | null;
     raceColor: string | null;
     ethnicity: string | null;
+    nationality: string | null;
     address: string | null;
 };
 
@@ -61,6 +62,7 @@ export default function PatientShow({
             ...(patient.ethnicity
                 ? [['Etnia', patient.ethnicity] as [string, string]]
                 : []),
+            ['Nacionalidade', patient.nationality],
             ['Unidade do cadastro', patient.unit],
         ],
         [

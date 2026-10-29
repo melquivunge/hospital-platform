@@ -201,7 +201,7 @@ final class SusRules
                 $problems[] = 'A função de quem atendeu (CBO '.($cbo ?? 'ausente').") não é compatível com {$item->code} na SIGTAP.";
             }
         }
-        $patient = DB::table('patients')->where('id', $stay->patient_id)->first(['cns', 'cpf', 'race_color', 'address_street', 'address_number', 'address_district', 'address_municipality']);
+        $patient = DB::table('patients')->where('id', $stay->patient_id)->first(['cns', 'cpf', 'race_color', 'address_street', 'address_number', 'address_district', 'address_municipality', 'nationality', 'address_street_type']);
         // Step 6b.6a1 (user's decision, 28/10/2026): the BPA-I and the AIH carry the self-declared race/color.
         if ($patient->race_color === null && ($individual || self::instrument($stay) === 'aih')) {
             $problems[] = 'O paciente não tem raça/cor no cadastro (a recepção completa o cadastro): exigida no BPA-I e na AIH.';
@@ -209,6 +209,10 @@ final class SusRules
         // Step 6b.6b1 (user's decision, 28/10/2026): the AIH carries the patient's address.
         if (self::instrument($stay) === 'aih' && in_array(null, [$patient->address_street, $patient->address_number, $patient->address_district, $patient->address_municipality], true)) {
             $problems[] = 'O paciente não tem o endereço completo no cadastro (logradouro, número, bairro e município): exigido na AIH.';
+        }
+        // Step 6b.6b2: the SISAIH01 record requires the nationality and the street type (official tables).
+        if (self::instrument($stay) === 'aih' && in_array(null, [$patient->nationality, $patient->address_street_type], true)) {
+            $problems[] = 'O paciente não tem nacionalidade ou tipo de logradouro no cadastro: exigidos na AIH.';
         }
         if (($patient->cns === null || ! PatientIdentity::validCns($patient->cns)) && $patient->cpf === null) {
             $problems[] = 'O paciente não tem CNS nem CPF no cadastro (a recepção completa o cadastro).';
