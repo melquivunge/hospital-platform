@@ -8,7 +8,7 @@ Plataforma hospitalar SaaS multi-cliente. Entregas concluídas e mescladas: V1 (
 
 ## Ponto exato de retomada
 
-1. **6b.8:** revisão integrada da entrega 6b (jornada num cliente novo, telas, revisão de segurança, limites de produção no README). A 6b.7 está feita: retorno da AIH (6b.7a), retorno por linha do BPA (6b.7b: `sus_bpa_file_lines`, funções `sus_aih_rejected`, `sus_bpa_item_rejected`, `sus_bpa_rejected`) e os relatórios SUS por competência (6b.7c, em `BillingReportController::sus`); decisões e o que não foi verificado no plano. A 6b.6 (arquivos BPA e AIH) está feita: `App\Billing\BpaFile` e `App\Billing\AihFile`, telas `sus-bpa` e `sus-aih`. Texto de layouts em PDF: extrair com o PDFKit do macOS (`osascript -l JavaScript`).
+1. **Decisão pendente da 6b:** retorno do gestor e reabertura da conta pelo faturamento sem segunda pessoa (README, limites da entrega 6b). A entrega 6b (SUS) está completa: revisão integrada 6b.8 com `SusJourneyTest`, telas conferidas e revisão de segurança; decisões e o que não foi verificado em `plans/web-v9-sus.md`.
 2. Depois: entrega 7 (portal do paciente e indicadores), sem contrato ainda.
 
 - **GitHub:** repositório público desde 28/10/2026, então o CI roda; se voltar a ser privado, o Actions fica bloqueado pela cobrança e a proteção da `main` exige plano Pro.

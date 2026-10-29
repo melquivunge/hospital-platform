@@ -23,8 +23,16 @@ final class SigtapImport
         'rl_procedimento_ocupacao' => ['CO_PROCEDIMENTO', 'CO_OCUPACAO'],
     ];
 
-    /** The real files are under 50 MB unpacked and their lines under 400 bytes: beyond is not the official table. */
-    private const MAX_ENTRY_BYTES = 100 * 1024 * 1024;
+    /**
+     * Step 6b.8: the official 10/2026 table has 5,039 procedures, 285,176 relation lines in all (the largest file,
+     * rl_procedimento_ocupacao, 195,224 lines and 4.7 MB unpacked) and lines under 400 bytes; caps well beyond that bound
+     * the memory of a file that is not the official table.
+     */
+    private const MAX_ENTRY_BYTES = 20 * 1024 * 1024;
+
+    private const MAX_PROCEDURES = 50_000;
+
+    private const MAX_RELATIONS = 1_000_000;
 
     private const MAX_LINE_BYTES = 4096;
 
@@ -60,7 +68,11 @@ final class SigtapImport
 
             $procedures = [];
             $competences = [];
-            self::lines($zip, 'tb_procedimento', function (string $line) use ($layouts, &$procedures, &$competences) {
+            $count = 0;
+            self::lines($zip, 'tb_procedimento', function (string $line) use ($layouts, &$procedures, &$competences, &$count) {
+                if (++$count > self::MAX_PROCEDURES) {
+                    throw new SigtapImportException('tb_procedimento.txt tem linhas demais para a tabela oficial.');
+                }
                 $row = self::row($line, $layouts['tb_procedimento']);
                 if (preg_match('/^\d{10}$/', $row['CO_PROCEDIMENTO']) !== 1) {
                     throw new SigtapImportException('Linha de procedimento sem código de 10 dígitos.');
@@ -83,8 +95,12 @@ final class SigtapImport
             if ($procedures === [] || count($competences) !== 1 || preg_match('/^(\d{4})(0[1-9]|1[0-2])$/', (string) array_key_first($competences), $month) !== 1) {
                 throw new SigtapImportException('A tabela precisa ter procedimentos de uma só competência (AAAAMM).');
             }
+            $count = 0;
             foreach (['rl_procedimento_registro' => ['registers', 'CO_REGISTRO'], 'rl_procedimento_cid' => ['cids', 'CO_CID'], 'rl_procedimento_ocupacao' => ['cbos', 'CO_OCUPACAO']] as $file => [$key, $column]) {
-                self::lines($zip, $file, function (string $line) use ($layouts, $file, $key, $column, &$procedures) {
+                self::lines($zip, $file, function (string $line) use ($layouts, $file, $key, $column, &$procedures, &$count) {
+                    if (++$count > self::MAX_RELATIONS) {
+                        throw new SigtapImportException("{$file}.txt tem linhas demais para a tabela oficial.");
+                    }
                     $row = self::row($line, $layouts[$file]);
                     if (isset($procedures[$row['CO_PROCEDIMENTO']]) && preg_match('/^[0-9A-Z]{2,6}$/', $row[$column]) === 1) {
                         $procedures[$row['CO_PROCEDIMENTO']][$key][] = $row[$column];
