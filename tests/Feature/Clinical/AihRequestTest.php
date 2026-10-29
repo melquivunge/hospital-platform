@@ -15,12 +15,14 @@ use App\Models\Membership;
 use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Sector;
+use App\Models\SusAihFile;
 use App\Models\Visit;
 use App\Professionals\QualificationStatus;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use ZipArchive;
 
@@ -405,5 +407,78 @@ class AihRequestTest extends ClinicalTestCase
         $this->actingAs($this->manager->user)->put(route('units.sectors.update', [$this->unit, $this->ward]), ['name' => $this->ward->name, 'sus_bed_specialty' => '07'])->assertSessionHasNoErrors();
         $this->assertSame('03', SusRules::aihSpecialty(BillingAccount::withoutTenantScope()->findOrFail($account->id)));
         $this->actingAs($billing->user)->post(route('billing-accounts.aih-codes', $account), ['aih_character' => '01'])->assertSessionHasErrors(['aih_character' => 'Esta conta já foi fechada.']);
+    }
+
+    /**
+     * Step 6b.6b2b2 (ADR-0011): a SUS stay closed with everything the AIH asks for goes to the SISAIH01 file of the
+     * competence once, in the official layout (1800 positions, CR+LF), checked field by field; the close froze its codes.
+     */
+    public function test_a_closed_aih_goes_to_the_sisaih01_file_in_the_official_layout(): void
+    {
+        $this->importSigtap();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        DB::table('professionals')->where('id', $this->doctor->id)->update(['cns' => '700123456780900']);
+        DB::table('units')->where('id', $this->unit->id)->update(['cnes' => '1234567', 'aih_issuer' => 'M355030001', 'municipality' => '3550308', 'clinical_director_id' => $this->doctor->id]);
+        DB::table('sectors')->where('id', $this->ward->id)->update(['sus_bed_specialty' => '03']);
+        DB::table('patients')->where('id', $this->patient->id)->update([
+            'cns' => '123456789010000', 'cpf' => null, 'birth_date' => '1980-05-17', 'sex' => 'female', 'race_color' => '03', 'mother_name' => 'Maria Prado', 'phone' => '(11) 98765-4321',
+            'nationality' => '010', 'address_street_type' => '081', 'address_street' => 'das Flores', 'address_number' => '120', 'address_district' => 'Centro', 'address_municipality' => '3550308', 'address_zip' => '01310100',
+        ]);
+        app(CurrentTenant::class)->set(null);
+        $admission = $this->admitted();
+        $account = BillingAccount::withoutTenantScope()->where('emergency_episode_id', $admission->emergency_episode_id)->sole();
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.aih-request.store', $admission), [
+            'procedure_code' => '0303140151', 'cid_principal' => 'J18.9', 'justification' => 'Pneumonia com hipoxemia.', 'password' => 'password',
+        ])->assertSessionHasNoErrors();
+        $billing = Membership::factory()->for($this->unit->tenant)->create();
+        $billing->grant(Role::Billing, $this->unit);
+        $this->actingAs($billing->user)->post(route('billing-accounts.aih-number', $account), ['aih_number' => '3526100000012', 'aih_authorizer_cns' => '700123456780900'])->assertSessionHasNoErrors();
+        // A secondary procedure (block 009): the official SIGTAP cut has none registered as secondary in the AIH, so a
+        // synthetic one (registers 04), done by the stay's doctor (CBO of the unit's function), on day 1 (its
+        // competence must not move to the previous month in the unit's timezone).
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        DB::table('job_functions')->update(['cbo' => '225125']);
+        DB::table('sigtap_procedures')->insert([
+            'tenant_id' => $this->unit->tenant_id, 'sigtap_competence_id' => DB::table('sigtap_competences')->value('id'), 'code' => '0999999999', 'name' => 'PROCEDIMENTO SINTETICO DE TESTE',
+            'sex' => 'I', 'min_age_months' => 0, 'max_age_months' => 1560, 'max_quantity' => 999, 'sh_cents' => 1000, 'sa_cents' => 0, 'sp_cents' => 500, 'registers' => '{04}', 'cids' => '{}', 'cbos' => '{}',
+        ]);
+        DB::table('billing_account_items')->insert([
+            'tenant_id' => $this->unit->tenant_id, 'billing_account_id' => $account->id, 'origin_type' => 'manual', 'code' => '0999999999', 'name' => 'Procedimento sintético',
+            'quantity' => 2, 'unit_price_cents' => 1500, 'needs_authorization' => false, 'performed_on' => '2026-11-01', 'created_at' => now(), 'reason' => 'Teste.', 'author_user_id' => $billing->user_id,
+        ]);
+        app(CurrentTenant::class)->set(null);
+        $this->travelTo('2026-11-18 09:00:00');
+        $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertSessionHasNoErrors();
+
+        // The close freezes the AIH's codes.
+        $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page->where('susPending', []));
+        $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
+        $closed = BillingAccount::withoutTenantScope()->findOrFail($account->id);
+        $this->assertSame(['closed', '02', '12', '03'], [$closed->status, $closed->aih_character, $closed->aih_exit_reason, $closed->aih_bed_specialty]);
+
+        $this->post(route('sus-aih.store'), ['unit_id' => $this->unit->id, 'competence' => '2026-12'])->assertSessionHasErrors('competence');
+        $this->post(route('sus-aih.store'), ['unit_id' => $this->unit->id, 'competence' => '2026-11'])->assertSessionHasNoErrors();
+        $file = SusAihFile::withoutTenantScope()->sole();
+        $text = (string) Storage::disk('local')->get($file->path);
+        $this->assertSame([1802, 1, hash('sha256', $text)], [strlen($text), $file->account_count, $file->sha256]);
+        $this->assertStringEndsWith("\r\n", $text);
+        $field = fn (int $start, int $end) => substr($text, $start - 1, $end - $start + 1);
+        foreach ([
+            [1, 8, '00000000'], [12, 17, '202611'], [21, 30, 'M355030001'], [31, 37, '1234567'], [38, 43, '355030'], [44, 56, '3526100000012'],
+            [57, 58, '01'], [59, 60, '03'], [106, 107, '02'], [137, 144, '20261113'], [145, 152, '20261113'], [153, 160, '20261118'],
+            [161, 170, '0303140151'], [171, 171, '2'], [172, 181, '0303140151'], [182, 183, '02'], [184, 185, '12'],
+            [186, 201, '2700123456780900'], [202, 217, '2700123456780900'], [218, 233, '2700123456780900'], [234, 249, '2700123456780900'],
+            [250, 253, 'J189'], [258, 268, '00000000000'], [269, 274, 'JOANA '], [339, 346, '19800517'], [347, 347, 'F'], [348, 349, '03'],
+            [350, 360, 'MARIA PRADO'], [490, 490, '5'], [491, 494, '0000'], [502, 516, '123456789010000'], [517, 519, '010'], [520, 522, '081'],
+            [523, 532, 'DAS FLORES'], [573, 579, '120    '], [595, 600, 'CENTRO'], [625, 630, '355030'], [631, 632, 'SP'], [633, 640, '01310100'],
+            [664, 742, '2700123456780900225125'.'00'.str_repeat('0', 14).'5000000001234567'.'0999999999002202611000000'], [743, 821, str_repeat('0', 79)], [1450, 1450, '1'], [1530, 1531, '11'], [1532, 1540, '987654321'], [1636, 1800, str_repeat('0', 165)],
+        ] as [$start, $end, $expected]) {
+            $this->assertSame($expected, $field($start, $end), "Positions {$start}-{$end}.");
+        }
+        $this->assertSame(1, preg_match('/^[A-Z0-9 .,\/()-]{1800}\r\n$/', $text));
+        // Once per competence and account: the next file has nothing to present.
+        $this->post(route('sus-aih.store'), ['unit_id' => $this->unit->id, 'competence' => '2026-11'])->assertSessionHasErrors('competence');
+        $this->get(route('sus-aih.download', $file))->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="AIH-1234567-202611.txt"');
+        $this->assertTrue(DB::table('clinical_reads')->where('patient_id', $this->patient->id)->where('reason', 'billing')->exists());
     }
 }

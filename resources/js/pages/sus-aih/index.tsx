@@ -1,0 +1,191 @@
+import { Form, Head, router } from '@inertiajs/react';
+import AihFileController from '@/actions/App/Http/Controllers/AihFileController';
+import InputError from '@/components/input-error';
+import { Page, PageHeader } from '@/components/page';
+import { selectClassName } from '@/components/role-fields';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { index } from '@/routes/sus-aih';
+
+type AihFile = {
+    id: number;
+    competence: string;
+    accounts: number;
+    generatedAt: string;
+    by: string | null;
+};
+
+/**
+ * Step 6b.6b2b2 (ADR-0011): the unit's SISAIH01 files. The file of a competence is generated once, with every closed
+ * AIH account discharged until then and not presented yet, and downloaded to import into the SISAIH01.
+ */
+export default function SusAihIndex({
+    units,
+    unitId,
+    ready,
+    competence,
+    files,
+}: {
+    units: { id: number; name: string }[];
+    unitId: number;
+    ready: number;
+    competence: string;
+    files: AihFile[];
+}) {
+    const unit = units.find((option) => option.id === unitId);
+
+    return (
+        <>
+            <Head title="AIH (SUS)" />
+            <Page width="narrow">
+                <PageHeader
+                    eyebrow={unit?.name}
+                    title="AIH (SUS)"
+                    description="Arquivo das internações SUS no layout de importação do SISAIH01. Leva as contas de internação fechadas, com alta até a competência, que ainda não foram apresentadas."
+                />
+                {units.length > 1 && (
+                    <div className="mb-6 grid w-full max-w-sm gap-2">
+                        <Label htmlFor="unit">Unidade</Label>
+                        <select
+                            id="unit"
+                            value={unitId}
+                            onChange={(event) =>
+                                router.get(
+                                    index({
+                                        query: { unit: event.target.value },
+                                    }).url,
+                                )
+                            }
+                            className={selectClassName}
+                        >
+                            {units.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                    {option.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                <section
+                    aria-labelledby="generate-heading"
+                    className="mb-8 grid gap-4 rounded-xl border bg-card p-5 sm:p-6"
+                >
+                    <div>
+                        <h2 id="generate-heading" className="font-medium">
+                            Gerar arquivo
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            {ready === 0
+                                ? 'Nenhuma conta de internação SUS fechada esperando apresentação.'
+                                : ready === 1
+                                  ? '1 conta fechada esperando apresentação.'
+                                  : `${ready} contas fechadas esperando apresentação.`}
+                        </p>
+                    </div>
+                    <Form
+                        {...AihFileController.store.form()}
+                        className="flex flex-wrap items-end gap-3"
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <input
+                                    type="hidden"
+                                    name="unit_id"
+                                    value={unitId}
+                                />
+                                <div className="grid gap-2">
+                                    <Label htmlFor="competence">
+                                        Competência de apresentação
+                                    </Label>
+                                    <Input
+                                        id="competence"
+                                        name="competence"
+                                        type="month"
+                                        required
+                                        max={competence}
+                                        defaultValue={competence}
+                                        aria-invalid={!!errors.competence}
+                                        aria-describedby={
+                                            errors.competence
+                                                ? 'competence-error'
+                                                : undefined
+                                        }
+                                        className="h-11 w-48"
+                                    />
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={processing || ready === 0}
+                                    className="min-h-11"
+                                >
+                                    Gerar arquivo da AIH
+                                </Button>
+                                <InputError
+                                    id="competence-error"
+                                    message={errors.competence}
+                                    className="w-full whitespace-pre-line"
+                                />
+                            </>
+                        )}
+                    </Form>
+                </section>
+
+                <section aria-labelledby="files-heading">
+                    <h2
+                        id="files-heading"
+                        className="mb-3 text-lg font-semibold tracking-tight"
+                    >
+                        Arquivos gerados
+                    </h2>
+                    {files.length === 0 ? (
+                        <p className="rounded-xl border bg-card px-5 py-12 text-center text-muted-foreground">
+                            Nenhum arquivo da AIH gerado nesta unidade.
+                        </p>
+                    ) : (
+                        <ul className="divide-y rounded-xl border bg-card">
+                            {files.map((file) => (
+                                <li
+                                    key={file.id}
+                                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-sm"
+                                >
+                                    <span className="grid gap-1">
+                                        <span className="font-medium tabular-nums">
+                                            Competência {file.competence}
+                                        </span>
+                                        <span className="text-muted-foreground tabular-nums">
+                                            {file.accounts}{' '}
+                                            {file.accounts === 1
+                                                ? 'AIH'
+                                                : 'AIHs'}{' '}
+                                            · gerado em {file.generatedAt}
+                                            {file.by && ` por ${file.by}`}
+                                        </span>
+                                    </span>
+                                    <Button
+                                        asChild
+                                        variant="outline"
+                                        className="min-h-11"
+                                    >
+                                        <a
+                                            href={AihFileController.download.url(
+                                                file.id,
+                                            )}
+                                        >
+                                            Baixar arquivo
+                                        </a>
+                                    </Button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </section>
+            </Page>
+        </>
+    );
+}
+
+SusAihIndex.layout = {
+    breadcrumbs: [{ title: 'AIH (SUS)', href: index() }],
+};

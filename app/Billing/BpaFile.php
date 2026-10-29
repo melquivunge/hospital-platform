@@ -177,7 +177,7 @@ final class BpaFile
     }
 
     /** Who did the item's procedure (id and CNS): the visit's professional, the exam's signer, the surgeon. */
-    private static function professional(BillingAccount $stay, stdClass $item): ?stdClass
+    public static function professional(BillingAccount $stay, stdClass $item): ?stdClass
     {
         $id = match ($item->origin_type) {
             'visit' => DB::table('visits')->where('id', $item->origin_id)->value('professional_id'),
