@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdmissionController;
+use App\Http\Controllers\AihFileController;
 use App\Http\Controllers\AihRequestController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AttendanceController;
@@ -149,6 +150,10 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('sus-bpa', [BpaFileController::class, 'index'])->middleware('throttle:120,1')->name('sus-bpa.index');
     Route::post('sus-bpa', [BpaFileController::class, 'store'])->middleware('throttle:10,1')->name('sus-bpa.store');
     Route::get('sus-bpa/{file}/download', [BpaFileController::class, 'download'])->middleware('throttle:30,1')->name('sus-bpa.download');
+    // Step 6b.6b2b2: the SISAIH01 import file.
+    Route::get('sus-aih', [AihFileController::class, 'index'])->middleware('throttle:120,1')->name('sus-aih.index');
+    Route::post('sus-aih', [AihFileController::class, 'store'])->middleware('throttle:10,1')->name('sus-aih.store');
+    Route::get('sus-aih/{file}/download', [AihFileController::class, 'download'])->middleware('throttle:30,1')->name('sus-aih.download');
     // Step 6.5b1: the TISS lots of a unit.
     Route::get('billing-lots', [BillingLotController::class, 'index'])->middleware('throttle:120,1')->name('billing-lots.index');
     Route::post('billing-lots', [BillingLotController::class, 'store'])->middleware('throttle:30,1')->name('billing-lots.store');

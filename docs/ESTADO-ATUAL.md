@@ -8,10 +8,9 @@ Plataforma hospitalar SaaS multi-cliente. Entregas concluídas e mescladas: V1 (
 
 ## Ponto exato de retomada
 
-1. **6b.6b2b2:** (decisões do usuário e a 6b.6b2b1, dados da AIH, no plano) o gerador do arquivo do SISAIH01 (registro de 1800 posições; tipo 01 AIH principal com até 9 procedimentos secundários no bloco 009; conferir campo a campo com o PDF, como no `BpaFileTest`). Texto do layout: extrair com o PDFKit do macOS (`osascript -l JavaScript`, sem instalar nada). Conferir de novo, ao gerar, os códigos de nacionalidade e tipo de logradouro nas tabelas (o banco só confere o formato). A 6b.6b2a (nacionalidade e tipo de logradouro no cadastro, `App\Clinical\AihCodes`, migração 009700) está na branch `feat/sus-aih-patient-codes`.
-2. **6b.7:** retorno do gestor (aprovado ou rejeitado por AIH e por linha de BPA, com reapresentação) e relatórios SUS.
-3. **6b.8:** revisão integrada da entrega 6b.
-4. Depois: entrega 7 (portal do paciente e indicadores), sem contrato ainda.
+1. **6b.7:** retorno do gestor (aprovado ou rejeitado por AIH e por linha de BPA, com reapresentação) e relatórios SUS. A 6b.6 (arquivos BPA e AIH) está feita: `App\Billing\BpaFile` e `App\Billing\AihFile`, telas `sus-bpa` e `sus-aih`; a lista do que só a importação real no SISAIH01 confirma está no plano ("Não verificado"). Texto de layouts em PDF: extrair com o PDFKit do macOS (`osascript -l JavaScript`).
+2. **6b.8:** revisão integrada da entrega 6b.
+3. Depois: entrega 7 (portal do paciente e indicadores), sem contrato ainda.
 
 - **GitHub:** repositório público desde 28/10/2026, então o CI roda; se voltar a ser privado, o Actions fica bloqueado pela cobrança e a proteção da `main` exige plano Pro.
 - **Bloqueios externos:** fornecedor ICP-Brasil (só há o assinador de teste), importação real nos programas do DATASUS (só Windows), hospedagem.
