@@ -88,6 +88,22 @@ class BpaRegistrationTest extends ClinicalTestCase
         $this->get(route('patients.show', $this->patient))->assertInertia(fn (Assert $page) => $page->where('patient.address', 'Rua das Flores 120, Centro, São Paulo/SP, 01310-100'));
         $this->get(route('patients.edit', $this->patient))->assertInertia(fn (Assert $page) => $page->where('patient.municipalityLabel', 'São Paulo/SP'));
 
+        // Step 6b.6b2: nationality and street type from the official SISAIH01 tables ("RESERVADO" is not a choice).
+        $this->get(route('patients.edit', $this->patient))->assertInertia(fn (Assert $page) => $page
+            ->where('nationalities', fn ($list) => collect($list)->contains(['code' => '010', 'name' => 'Brasil']) && ! collect($list)->contains('code', '020'))
+            ->where('streetTypes', fn ($list) => collect($list)->contains(['code' => '081', 'name' => 'Rua'])));
+        $update(['nationality' => '020'])->assertSessionHasErrors('nationality');
+        $update(['address_street_type' => '999'])->assertSessionHasErrors('address_street_type');
+        $update(['nationality' => '010', 'address_street_type' => '081', 'address_street' => 'das Flores', 'address_number' => '120', 'address_district' => 'Centro', 'address_municipality' => '3550308'])->assertSessionHasNoErrors();
+        $this->assertSame(['010', '081'], [$this->patient->fresh()->nationality, $this->patient->fresh()->address_street_type]);
+        $this->get(route('patients.show', $this->patient))->assertInertia(fn (Assert $page) => $page
+            ->where('patient.nationality', 'Brasil')->where('patient.address', 'Rua das Flores 120, Centro, São Paulo/SP'));
+        try {
+            DB::transaction(fn () => DB::table('patients')->where('id', $this->patient->id)->update(['nationality' => '10']));
+            $this->fail('The database accepted a nationality code that is not 3 digits.');
+        } catch (QueryException) {
+        }
+
         $admin = Membership::factory()->for($this->unit->tenant)->withRole(Role::NetworkAdmin)->create();
         $save = fn (array $data) => $this->actingAs($admin->user)->put(route('units.update', $this->unit), ['name' => $this->unit->name, 'uf' => 'SP', 'timezone' => 'America/Sao_Paulo', ...$data]);
         // The clinical director needs the Cartão Nacional de Saúde.

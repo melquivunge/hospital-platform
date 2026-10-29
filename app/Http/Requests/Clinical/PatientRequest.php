@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Clinical;
 
+use App\Clinical\AihCodes;
 use App\Clinical\Ethnicity;
 use App\Clinical\Municipality;
 use App\Clinical\PatientIdentity;
@@ -33,7 +34,7 @@ class PatientRequest extends FormRequest
             'address_zip' => is_string($this->input('address_zip')) ? (PatientIdentity::digits($this->input('address_zip')) ?: null) : $this->input('address_zip'),
             'cns' => is_string($this->input('cns')) ? PatientIdentity::digits($this->input('cns')) : $this->input('cns'),
             'email' => $text('email') === null ? null : mb_strtolower($text('email')),
-            ...collect(['social_name', 'mother_name', 'phone', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'birth_date', 'sex', 'race_color', 'ethnicity', 'address_street', 'address_number', 'address_complement', 'address_district', 'address_municipality'])
+            ...collect(['social_name', 'mother_name', 'phone', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'birth_date', 'sex', 'race_color', 'ethnicity', 'address_street', 'address_number', 'address_complement', 'address_district', 'address_municipality', 'nationality', 'address_street_type'])
                 ->mapWithKeys(fn (string $key) => [$key => $text($key)])->all(),
         ]);
     }
@@ -91,6 +92,9 @@ class PatientRequest extends FormRequest
             'address_district' => ['nullable', 'string', 'max:30'],
             'address_municipality' => ['nullable', Rule::in(array_keys(Municipality::all()))],
             'address_zip' => ['nullable', 'regex:/^[0-9]{8}$/'],
+            // Step 6b.6b2: codes of the official SISAIH01 tables.
+            'nationality' => ['nullable', Rule::in(array_map('strval', array_keys(AihCodes::nationalities())))],
+            'address_street_type' => ['nullable', Rule::in(array_map('strval', array_keys(AihCodes::streetTypes())))],
             'confirm_new' => ['sometimes', 'boolean'],
         ];
     }
@@ -119,6 +123,8 @@ class PatientRequest extends FormRequest
             'address_district' => 'bairro',
             'address_municipality' => 'município',
             'address_zip' => 'CEP',
+            'nationality' => 'nacionalidade',
+            'address_street_type' => 'tipo de logradouro',
         ];
     }
 }

@@ -10,6 +10,7 @@
   (`ftp://ftp2.datasus.gov.br/public/sistemas/dsweb/SIHD/Programas/SISAIH01_VER0115.exe`, SHA-256
   2ac1daa42ebdffd4683dfa1570b3f4475da800cccf7f2f73047d2dd7f43dd9ee), baixado em 28/10/2026, extraído com `innoextract`.
   Os registros foram lidos diretamente das páginas do banco Firebird (nome seguido do código), sem o servidor Firebird.
-  Tipos de logradouro: todos os 129 registros da tabela conferidos. Nacionalidades: 329 registros lidos; o trecho do
-  arquivo tem 331 marcas de código (2 podem ser de outra tabela vizinha; conferir na etapa 6b.6b2). Exemplos: 010 BRASIL,
-  045 PORTUGAL; 081 RUA, 008 AVENIDA.
+  Tipos de logradouro: todos os 129 registros da tabela conferidos. Nacionalidades: 329 registros lidos. Conferido na
+  etapa 6b.6b2 (28/10/2026): o bloco de 64 KiB da tabela tem 330 marcas de código; a que sobra é de um registro da
+  tabela vizinha de municípios (PILOES/RN), não uma nacionalidade. Os códigos "RESERVADO" (020, 048, 049, 050) não são
+  oferecidos no cadastro. Exemplos: 010 BRASIL, 045 PORTUGAL; 081 RUA, 008 AVENIDA.

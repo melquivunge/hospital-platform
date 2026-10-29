@@ -43,6 +43,8 @@ type Patient = {
     address_municipality?: string | null;
     address_zip?: string | null;
     municipalityLabel?: string | null;
+    nationality?: string | null;
+    address_street_type?: string | null;
 };
 
 /** Patient registration (step 3.2): without documents it stays provisional, completed later. */
@@ -52,12 +54,16 @@ export default function PatientForm({
     duplicates,
     raceColors,
     ethnicities,
+    nationalities,
+    streetTypes,
 }: {
     patient: Patient | null;
     units: { id: number; name: string }[];
     duplicates: PatientSummary[];
     raceColors: Record<string, string>;
     ethnicities: { code: string; name: string }[];
+    nationalities: { code: string; name: string }[];
+    streetTypes: { code: string; name: string }[];
 }) {
     const title = patient ? 'Editar cadastro' : 'Novo paciente';
     // Step 6b.6a1: the ethnicity is asked only for the indigenous race/color (05).
@@ -315,6 +321,32 @@ export default function PatientForm({
                                             </select>
                                         </Field>
                                     )}
+                                    <Field
+                                        id="nationality"
+                                        label="Nacionalidade"
+                                        hint="Exigida na conta da internação SUS (AIH)."
+                                        error={errors.nationality}
+                                    >
+                                        <select
+                                            id="nationality"
+                                            name="nationality"
+                                            defaultValue={
+                                                patient?.nationality ?? ''
+                                            }
+                                            aria-invalid={!!errors.nationality}
+                                            className={selectClassName}
+                                        >
+                                            <option value="">Selecione</option>
+                                            {nationalities.map((option) => (
+                                                <option
+                                                    key={option.code}
+                                                    value={option.code}
+                                                >
+                                                    {option.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </Field>
                                 </div>
                             </Section>
 
@@ -324,6 +356,34 @@ export default function PatientForm({
                             >
                                 <div className="grid gap-6 sm:grid-cols-2">
                                     <Field
+                                        id="address_street_type"
+                                        label="Tipo de logradouro"
+                                        error={errors.address_street_type}
+                                    >
+                                        <select
+                                            id="address_street_type"
+                                            name="address_street_type"
+                                            defaultValue={
+                                                patient?.address_street_type ??
+                                                ''
+                                            }
+                                            aria-invalid={
+                                                !!errors.address_street_type
+                                            }
+                                            className={selectClassName}
+                                        >
+                                            <option value="">Selecione</option>
+                                            {streetTypes.map((option) => (
+                                                <option
+                                                    key={option.code}
+                                                    value={option.code}
+                                                >
+                                                    {option.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </Field>
+                                    <Field
                                         id="address_street"
                                         label="Logradouro"
                                         error={errors.address_street}
@@ -332,7 +392,7 @@ export default function PatientForm({
                                             id="address_street"
                                             name="address_street"
                                             maxLength={50}
-                                            placeholder="Ex.: Rua das Flores"
+                                            placeholder="Ex.: das Flores"
                                             defaultValue={
                                                 patient?.address_street ?? ''
                                             }
