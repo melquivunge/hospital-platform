@@ -32,6 +32,9 @@ use Illuminate\Support\Facades\DB;
  * @property int|null $complement_of_id the account it complements (step 6.4a): what the stay produced after it closed
  * @property string|null $aih_number the authorized AIH's number, on a SUS admission's account (step 6b.5b1)
  * @property string|null $aih_authorizer_cns the CNS of the manager's doctor who authorized it (step 6b.6b1)
+ * @property string|null $aih_character billing's correction of the AIH's admission character (step 6b.6b2b1)
+ * @property string|null $aih_exit_reason billing's correction of the AIH's exit reason
+ * @property string|null $aih_bed_specialty the AIH's bed specialty, frozen when the account closes
  */
 class BillingAccount extends Model
 {

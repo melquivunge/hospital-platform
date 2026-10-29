@@ -82,6 +82,43 @@ final class SusRules
     }
 
     /**
+     * Step 6b.6b2b1 (user's decisions, 28/10/2026): the discharge type's AIH exit reason (MOT_SAÍDA); billing may
+     * correct it with any code of the table (for example 11, cured, or 42, death certificate by the IML).
+     */
+    public const EXIT_REASONS = ['improved' => '12', 'at_request' => '14', 'evasion' => '16', 'transfer_out' => '31', 'death' => '41'];
+
+    /** The AIH's admission character (CAR_INTERN): billing's correction, else 02 (every SUS stay comes from the emergency room). */
+    public static function aihCharacter(BillingAccount $stay): string
+    {
+        return $stay->aih_character ?? '02';
+    }
+
+    /** The AIH's exit reason: billing's correction, else the discharge type's; null before the discharge. */
+    public static function aihExitReason(BillingAccount $stay): ?string
+    {
+        return $stay->aih_exit_reason
+            ?? self::EXIT_REASONS[DB::table('admissions')->where('emergency_episode_id', $stay->emergency_episode_id ?? 0)->value('discharge_type') ?? ''] ?? null;
+    }
+
+    /**
+     * The AIH's bed specialty (ESPEC_AIH): frozen at the close, else the SUS specialty of the sector of the stay's bed
+     * (else the requested one: in transit, until the new bed).
+     */
+    public static function aihSpecialty(BillingAccount $stay): ?string
+    {
+        if ($stay->aih_bed_specialty !== null) {
+            return $stay->aih_bed_specialty;
+        }
+        $admission = DB::table('admissions')->where('emergency_episode_id', $stay->emergency_episode_id ?? 0)->first(['bed_id', 'requested_sector_id']);
+        if ($admission === null) {
+            return null;
+        }
+        $sector = $admission->bed_id === null ? null : DB::table('beds')->where('id', $admission->bed_id)->value('sector_id');
+
+        return DB::table('sectors')->where('id', $sector ?? $admission->requested_sector_id)->value('sus_bed_specialty');
+    }
+
+    /**
      * Whether the stay's current principal procedure is in the money: its active item, or a care record's item that
      * billed the same procedure.
      */
@@ -213,6 +250,10 @@ final class SusRules
         // Step 6b.6b2: the SISAIH01 record requires the nationality and the street type (official tables).
         if (self::instrument($stay) === 'aih' && in_array(null, [$patient->nationality, $patient->address_street_type], true)) {
             $problems[] = 'O paciente não tem nacionalidade ou tipo de logradouro no cadastro: exigidos na AIH.';
+        }
+        // Step 6b.6b2b1 (user's decision, 28/10/2026): the bed specialty comes from the sector.
+        if (self::instrument($stay) === 'aih' && self::aihSpecialty($stay) === null) {
+            $problems[] = 'O setor da internação não tem a especialidade SUS do leito (informada no cadastro do setor): exigida na AIH.';
         }
         if (($patient->cns === null || ! PatientIdentity::validCns($patient->cns)) && $patient->cpf === null) {
             $problems[] = 'O paciente não tem CNS nem CPF no cadastro (a recepção completa o cadastro).';

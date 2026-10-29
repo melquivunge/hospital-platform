@@ -888,6 +888,13 @@ type AihData = {
     number: string | null;
     authorizer: string | null;
     canRecord: boolean;
+    character: string;
+    exitReason: string | null;
+    characterCorrection: string | null;
+    exitReasonCorrection: string | null;
+    specialty: string | null;
+    characters: { code: string; name: string }[];
+    exitReasons: { code: string; name: string }[];
     principal: {
         procedure: string;
         fromReport: boolean;
@@ -946,7 +953,90 @@ function AihNumber({
                         'Sem procedimento principal: aguardando o laudo da AIH.'
                     )}
                 </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                    Especialidade do leito:{' '}
+                    <span className="font-medium text-foreground">
+                        {aih.specialty ?? 'não informada no setor'}
+                    </span>
+                </p>
             </div>
+            {aih.canRecord && (
+                <Form
+                    {...BillingAccountController.recordAihCodes.form(accountId)}
+                    key={`${aih.characterCorrection}-${aih.exitReasonCorrection}`}
+                    errorBag="aihCodes"
+                    options={{ preserveScroll: true }}
+                    className="flex flex-wrap items-end gap-3"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <div className="grid min-w-0 gap-2">
+                                <Label htmlFor="aih_character">
+                                    Caráter da internação
+                                </Label>
+                                <select
+                                    id="aih_character"
+                                    name="aih_character"
+                                    defaultValue={aih.characterCorrection ?? ''}
+                                    aria-invalid={!!errors.aih_character}
+                                    className={`${selectClassName} max-w-full sm:w-72`}
+                                >
+                                    <option value="">
+                                        Pela internação (02 · URGENCIA)
+                                    </option>
+                                    {aih.characters.map((option) => (
+                                        <option
+                                            key={option.code}
+                                            value={option.code}
+                                        >
+                                            {option.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError message={errors.aih_character} />
+                            </div>
+                            <div className="grid min-w-0 gap-2">
+                                <Label htmlFor="aih_exit_reason">
+                                    Motivo de saída
+                                </Label>
+                                <select
+                                    id="aih_exit_reason"
+                                    name="aih_exit_reason"
+                                    defaultValue={
+                                        aih.exitReasonCorrection ?? ''
+                                    }
+                                    aria-invalid={!!errors.aih_exit_reason}
+                                    className={`${selectClassName} max-w-full sm:w-72`}
+                                >
+                                    <option value="">
+                                        {aih.exitReasonCorrection === null &&
+                                        aih.exitReason
+                                            ? `Pela alta (${aih.exitReason})`
+                                            : 'Pela alta'}
+                                    </option>
+                                    {aih.exitReasons.map((option) => (
+                                        <option
+                                            key={option.code}
+                                            value={option.code}
+                                        >
+                                            {option.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError message={errors.aih_exit_reason} />
+                            </div>
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                disabled={processing}
+                                className="min-h-11"
+                            >
+                                Salvar
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            )}
             {aih.canRecord && (
                 <Form
                     {...BillingAccountController.recordAihNumber.form(

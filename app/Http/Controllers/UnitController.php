@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Clinical\AihCodes;
 use App\Clinical\Municipality;
 use App\Http\Requests\Tenancy\UnitRequest;
 use App\Models\AuditEvent;
@@ -75,7 +76,9 @@ class UnitController extends Controller
 
         return Inertia::render('units/show', [
             'unit' => [...$unit->only('id', 'name', 'uf', 'timezone'), 'complete' => $unit->isComplete()],
-            'sectors' => $unit->sectors()->orderBy('name')->get(['id', 'name']),
+            'sectors' => $unit->sectors()->orderBy('name')->get(['id', 'name', 'sus_bed_specialty']),
+            // Step 6b.6b2b1: the SUS bed specialties a sector may have.
+            'bedSpecialties' => collect(AihCodes::bedSpecialties())->map(fn (string $name, int|string $code) => ['code' => (string) $code, 'name' => "{$code} · {$name}"])->values(),
             'canUpdate' => Gate::allows('update', $unit),
             'canManageSectors' => Gate::allows('create', [Sector::class, $unit]),
             // Coordinates are shown only to who manages the points.

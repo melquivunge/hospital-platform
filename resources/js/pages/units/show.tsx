@@ -3,6 +3,7 @@ import { LayoutList, MapPin, Pencil, Plus, TriangleAlert } from 'lucide-react';
 import AttendancePointController from '@/actions/App/Http/Controllers/AttendancePointController';
 import SectorController from '@/actions/App/Http/Controllers/SectorController';
 import InputError from '@/components/input-error';
+import { selectClassName } from '@/components/role-fields';
 import { Page, PageHeader, WarningBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,7 @@ type Unit = {
     complete: boolean;
 };
 
-type Sector = { id: number; name: string };
+type Sector = { id: number; name: string; sus_bed_specialty: string | null };
 
 type AttendancePoint = {
     id: number;
@@ -34,9 +35,11 @@ export default function UnitShow({
     canUpdate,
     canManageSectors,
     attendancePoints,
+    bedSpecialties,
 }: {
     unit: Unit;
     sectors: Sector[];
+    bedSpecialties: { code: string; name: string }[];
     canUpdate: boolean;
     canManageSectors: boolean;
     attendancePoints: AttendancePoint[] | null;
@@ -117,6 +120,7 @@ export default function UnitShow({
                                             <SectorRenameForm
                                                 unitId={unit.id}
                                                 sector={sector}
+                                                bedSpecialties={bedSpecialties}
                                             />
                                         ) : (
                                             <span className="flex min-h-11 items-center font-medium">
@@ -407,9 +411,11 @@ function Detail({ label, value }: { label: string; value?: string | null }) {
 function SectorRenameForm({
     unitId,
     sector,
+    bedSpecialties,
 }: {
     unitId: number;
     sector: Sector;
+    bedSpecialties: { code: string; name: string }[];
 }) {
     const inputId = `sector-${sector.id}`;
 
@@ -438,6 +444,19 @@ function SectorRenameForm({
                             }
                             className="h-11 min-w-0 flex-1"
                         />
+                        <select
+                            name="sus_bed_specialty"
+                            aria-label={`Especialidade SUS do leito de ${sector.name}`}
+                            defaultValue={sector.sus_bed_specialty ?? ''}
+                            className={`${selectClassName} min-w-0 flex-1`}
+                        >
+                            <option value="">Especialidade SUS do leito</option>
+                            {bedSpecialties.map((option) => (
+                                <option key={option.code} value={option.code}>
+                                    {option.name}
+                                </option>
+                            ))}
+                        </select>
                         <Button
                             type="submit"
                             variant="outline"

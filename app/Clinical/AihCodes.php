@@ -3,8 +3,9 @@
 namespace App\Clinical;
 
 /**
- * Step 6b.6b2: the official SISAIH01 tables of nationality and street type (resources/sus/aih/ORIGEM.md): code (3
- * digits; json_decode makes codes from 100 up int keys) => name. The table's "RESERVADO" codes are not choices.
+ * Step 6b.6b2: the official SISAIH01 tables (resources/sus/aih/ORIGEM.md): code => name. Nationality and street
+ * type have 3 digits (json_decode makes codes from 100 up int keys); admission character, exit reason and bed
+ * specialty have 2. The table's "RESERVADO" codes are not choices.
  */
 final class AihCodes
 {
@@ -25,6 +26,36 @@ final class AihCodes
     public static function streetTypes(): array
     {
         return self::table('tipos-logradouro');
+    }
+
+    /**
+     * Step 6b.6b2b1: CAR_INTERN.
+     *
+     * @return array<int|string, string>
+     */
+    public static function characters(): array
+    {
+        return self::table('carater-internacao');
+    }
+
+    /**
+     * Step 6b.6b2b1: MOT_SAÍDA.
+     *
+     * @return array<int|string, string>
+     */
+    public static function exitReasons(): array
+    {
+        return self::table('motivos-saida');
+    }
+
+    /**
+     * Step 6b.6b2b1: ESPEC_AIH.
+     *
+     * @return array<int|string, string>
+     */
+    public static function bedSpecialties(): array
+    {
+        return self::table('especialidades-leito');
     }
 
     /**

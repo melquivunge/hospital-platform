@@ -2,11 +2,13 @@
 
 namespace App\Http\Requests\Tenancy;
 
+use App\Clinical\AihCodes;
 use App\Models\Sector;
 use App\Models\Unit;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class SectorRequest extends FormRequest
 {
@@ -40,6 +42,8 @@ class SectorRequest extends FormRequest
                     $fail('Já existe um setor com este nome nesta unidade.');
                 }
             }],
+            // Step 6b.6b2b1: the SUS bed specialty of the official table (the AIH takes the stay's sector's).
+            'sus_bed_specialty' => ['nullable', Rule::in(array_map('strval', array_keys(AihCodes::bedSpecialties())))],
         ];
     }
 }
