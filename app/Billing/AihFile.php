@@ -27,19 +27,22 @@ final class AihFile
     private const TEAM = ['surgeon' => '1', 'assistant' => '2', 'anesthetist' => '6'];
 
     /**
-     * The unit's closed AIH accounts (the stay's, not a complement) that no file presented yet, oldest first.
+     * The unit's closed AIH accounts (the stay's, not a complement) that no file presented yet, or whose latest
+     * presentation the manager rejected (step 6b.7a), oldest first.
      *
      * @return Collection<int, BillingAccount>
      */
     public static function accounts(int $unitId): Collection
     {
         return BillingAccount::query()->where('unit_id', $unitId)->where('modality', 'sus')->where('status', 'closed')->whereNull('complement_of_id')
-            ->whereNotIn('id', DB::table('sus_aih_file_accounts')->select('billing_account_id'))->orderBy('id')->get()
+            ->where(fn ($query) => $query->whereNotIn('id', DB::table('sus_aih_file_accounts')->select('billing_account_id'))->orWhereRaw('sus_aih_rejected(id)'))
+            ->orderBy('id')->get()
             ->filter(fn (BillingAccount $account) => SusRules::instrument($account) === 'aih')->values();
     }
 
     /**
-     * The file's text, or what keeps it from being generated. An AIH discharged after the competence waits.
+     * The file's text, or what keeps it from being generated. An AIH discharged after the competence waits, and so does
+     * a rejected one until a competence after the one it was presented in.
      *
      * @param  Collection<int, BillingAccount>  $accounts
      * @return array{text: string, accounts: list<int>, problems: list<string>}
@@ -56,9 +59,13 @@ final class AihFile
         }
         $records = [];
         $presented = [];
+        $before = DB::table('sus_aih_file_accounts')->join('sus_aih_files', 'sus_aih_files.id', '=', 'sus_aih_file_accounts.sus_aih_file_id')
+            ->whereIn('billing_account_id', $accounts->pluck('id')->all())->groupBy('billing_account_id')->selectRaw("billing_account_id, to_char(max(competence), 'YYYY-MM') AS competence")
+            ->pluck('competence', 'billing_account_id');
         foreach ($accounts as $account) {
             $admission = DB::table('admissions')->where('emergency_episode_id', $account->emergency_episode_id)->first(['id', 'patient_id', 'responsible_professional_id', 'admitted_at', 'requested_at', 'discharged_at']);
-            if ($admission?->discharged_at === null || Carbon::parse($admission->discharged_at)->setTimezone($timezone)->format('Y-m') > $competence) {
+            if ($admission?->discharged_at === null || Carbon::parse($admission->discharged_at)->setTimezone($timezone)->format('Y-m') > $competence
+                || ($before->get($account->id) ?? '') >= $competence) {
                 continue;
             }
             $presented[] = $account->id;

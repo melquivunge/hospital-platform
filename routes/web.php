@@ -154,6 +154,9 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('sus-aih', [AihFileController::class, 'index'])->middleware('throttle:120,1')->name('sus-aih.index');
     Route::post('sus-aih', [AihFileController::class, 'store'])->middleware('throttle:10,1')->name('sus-aih.store');
     Route::get('sus-aih/{file}/download', [AihFileController::class, 'download'])->middleware('throttle:30,1')->name('sus-aih.download');
+    Route::get('sus-aih/{file}', [AihFileController::class, 'show'])->middleware('throttle:120,1')->name('sus-aih.show');
+    Route::post('sus-aih/{file}/returns', [AihFileController::class, 'recordReturn'])->middleware('throttle:60,1')->name('sus-aih.returns.store');
+    Route::post('billing-accounts/{account}/reopen', [BillingAccountController::class, 'reopen'])->middleware('throttle:30,1')->name('billing-accounts.reopen');
     // Step 6.5b1: the TISS lots of a unit.
     Route::get('billing-lots', [BillingLotController::class, 'index'])->middleware('throttle:120,1')->name('billing-lots.index');
     Route::post('billing-lots', [BillingLotController::class, 'store'])->middleware('throttle:30,1')->name('billing-lots.store');

@@ -14,6 +14,7 @@ use App\Policies\UnitPolicy;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -100,6 +101,86 @@ class AihFileController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => "Arquivo da AIH gerado: {$file->account_count} AIHs."]);
 
         return to_route('sus-aih.index', ['unit' => $unit->id]);
+    }
+
+    /**
+     * Step 6b.7a: the AIHs a file presented and the manager's return of each (no patient data: the AIH number and the
+     * account). A return is recorded while the AIH was not presented again.
+     */
+    public function show(Request $request, SusAihFile $file): Response
+    {
+        abort_unless(in_array($file->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $unit = Unit::query()->findOrFail($file->unit_id);
+        $timezone = $unit->timezone ?? 'UTC';
+        $rows = DB::table('sus_aih_file_accounts AS fa')->join('billing_accounts AS a', 'a.id', '=', 'fa.billing_account_id')
+            ->where('fa.sus_aih_file_id', $file->id)->orderBy('fa.id')
+            ->get(['fa.id', 'fa.billing_account_id', 'a.patient_id', 'a.aih_number', 'a.status', 'a.closed_at', DB::raw('(SELECT max(x.id) FROM sus_aih_file_accounts x WHERE x.billing_account_id = fa.billing_account_id) AS latest')]);
+        $returns = DB::table('sus_aih_returns')->whereIn('sus_aih_file_account_id', $rows->pluck('id'))->orderBy('id')->get()->keyBy('sus_aih_file_account_id');
+        // A rejection's reason may name the diagnosis: its read is logged, as the account's.
+        $rejected = $rows->filter(fn (object $row) => $returns->get($row->id)?->approved === false);
+        $patients = Patient::query()->whereKey($rejected->pluck('patient_id')->unique()->all())->get()->keyBy('id');
+        foreach (BillingAccount::query()->whereKey($rejected->pluck('billing_account_id')->all())->get() as $account) {
+            ClinicalAccess::recordRead($request->user(), $patients->get($account->patient_id), $account);
+        }
+
+        return Inertia::render('sus-aih/show', [
+            'file' => ['id' => $file->id, 'unitId' => $unit->id, 'unit' => $unit->name, 'competence' => $file->competence->format('m/Y')],
+            'aihs' => $rows->map(function (object $row) use ($returns, $timezone, $file) {
+                $return = $returns->get($row->id);
+
+                return [
+                    'id' => (int) $row->id,
+                    'accountId' => (int) $row->billing_account_id,
+                    'number' => $row->aih_number,
+                    'approved' => $return === null ? null : (bool) $return->approved,
+                    'reason' => $return?->reason,
+                    'recordedAt' => $return === null ? null : Carbon::parse($return->recorded_at)->setTimezone($timezone)->format('d/m/Y H:i'),
+                    'editable' => self::open($file, (int) $row->id, (int) $row->latest, $row->status, $row->closed_at),
+                ];
+            })->values(),
+        ]);
+    }
+
+    /** Step 6b.7a: billing records the manager's return of an AIH of the file; the latest one counts. */
+    public function recordReturn(Request $request, SusAihFile $file): RedirectResponse
+    {
+        abort_unless(in_array($file->unit_id, BillingAccountController::unitIds(UnitPolicy::currentMembership($request->user())), true), 403);
+        $data = $request->validate([
+            'presentation_id' => ['required', 'integer'],
+            'approved' => ['required', 'boolean'],
+            'reason' => ['nullable', 'required_if:approved,0', 'string', 'max:500'],
+        ], ['reason.required_if' => 'Informe o motivo da rejeição.'], ['reason' => 'motivo']);
+
+        DB::transaction(function () use ($request, $file, $data) {
+            // The generation's lock: the queue it reads does not change under it.
+            Unit::query()->whereKey($file->unit_id)->lockForUpdate()->firstOrFail();
+            $presentation = DB::table('sus_aih_file_accounts')->where('sus_aih_file_id', $file->id)->where('id', $data['presentation_id'])->first();
+            abort_if($presentation === null, 404);
+            $account = BillingAccount::query()->lockForUpdate()->whereKey($presentation->billing_account_id)->firstOrFail();
+            $latest = DB::table('sus_aih_file_accounts')->where('billing_account_id', $account->id)->max('id');
+            if (! self::open($file, (int) $presentation->id, (int) $latest, $account->status, $account->closed_at)) {
+                throw ValidationException::withMessages(['reason' => 'Esta AIH já foi reaberta ou apresentada de novo: o retorno desta apresentação não muda mais.'])->errorBag("return{$presentation->id}");
+            }
+            $approved = (bool) $data['approved'];
+            DB::table('sus_aih_returns')->insert([
+                'tenant_id' => $file->tenant_id, 'sus_aih_file_account_id' => $presentation->id, 'approved' => $approved,
+                'reason' => $approved ? null : trim((string) $data['reason']), 'recorded_by_user_id' => $request->user()->id, 'recorded_at' => now(),
+            ]);
+            // Ids only: the reason may name the diagnosis.
+            AuditEvent::record('sus_aih_return.recorded', $file->tenant_id, $account, ['sus_aih_file_id' => $file->id, 'approved' => $approved]);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Retorno registrado.']);
+
+        return back();
+    }
+
+    /**
+     * Whether a presentation's return may still be recorded: it is the account's latest, and the account was not
+     * reopened since (closed again after the file was generated) nor is open now.
+     */
+    private static function open(SusAihFile $file, int $presentation, int $latest, ?string $status, mixed $closedAt): bool
+    {
+        return $presentation === $latest && $status === 'closed' && $closedAt !== null && Carbon::parse($closedAt)->lte($file->generated_at);
     }
 
     /** The file as generated (its hash checked), for the SISAIH01; each presented account's read is logged. */

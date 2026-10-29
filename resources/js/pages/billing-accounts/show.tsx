@@ -900,6 +900,12 @@ type AihData = {
         fromReport: boolean;
         reason: string | null;
     } | null;
+    return: {
+        competence: string;
+        approved: boolean | null;
+        reason: string | null;
+    } | null;
+    canReopen: boolean;
 };
 
 /**
@@ -959,7 +965,43 @@ function AihNumber({
                         {aih.specialty ?? 'não informada no setor'}
                     </span>
                 </p>
+                {aih.return && (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Apresentada na competência {aih.return.competence}:{' '}
+                        <span className="font-medium text-foreground">
+                            {aih.return.approved === null
+                                ? 'sem retorno do gestor'
+                                : aih.return.approved
+                                  ? 'aprovada'
+                                  : `rejeitada (${aih.return.reason})`}
+                        </span>
+                        {aih.return.approved === false &&
+                            '. Volta no arquivo de uma competência seguinte.'}
+                    </p>
+                )}
             </div>
+            {aih.canReopen && (
+                <Form
+                    {...BillingAccountController.reopen.form(accountId)}
+                    errorBag="reopen"
+                    options={{ preserveScroll: true }}
+                    className="grid gap-2"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                disabled={processing}
+                                className="min-h-11 w-fit"
+                            >
+                                Reabrir a conta para corrigir
+                            </Button>
+                            <InputError message={errors.reopen} />
+                        </>
+                    )}
+                </Form>
+            )}
             {aih.canRecord && (
                 <Form
                     {...BillingAccountController.recordAihCodes.form(accountId)}

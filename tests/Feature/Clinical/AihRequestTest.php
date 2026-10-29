@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Clinical;
 
+use App\Billing\AihFile;
 use App\Billing\SigtapImport;
 use App\Billing\SusRules;
 use App\Models\Admission;
@@ -16,6 +17,7 @@ use App\Models\Professional;
 use App\Models\Qualification;
 use App\Models\Sector;
 use App\Models\SusAihFile;
+use App\Models\Unit;
 use App\Models\Visit;
 use App\Professionals\QualificationStatus;
 use App\Tenancy\CurrentTenant;
@@ -413,7 +415,13 @@ class AihRequestTest extends ClinicalTestCase
      * Step 6b.6b2b2 (ADR-0011): a SUS stay closed with everything the AIH asks for goes to the SISAIH01 file of the
      * competence once, in the official layout (1800 positions, CR+LF), checked field by field; the close froze its codes.
      */
-    public function test_a_closed_aih_goes_to_the_sisaih01_file_in_the_official_layout(): void
+    /**
+     * A SUS admission ready to close as an AIH (unit, patient, report, number, a secondary item on day 1), discharged on
+     * 18/11/2026.
+     *
+     * @return array{BillingAccount, Membership}
+     */
+    private function closableAih(): array
     {
         $this->importSigtap();
         app(CurrentTenant::class)->set($this->unit->tenant);
@@ -450,6 +458,13 @@ class AihRequestTest extends ClinicalTestCase
         $this->travelTo('2026-11-18 09:00:00');
         $this->actingAs($this->doctorAccount->user)->post(route('ward.discharge', $admission), ['cid_principal' => 'J18.9', 'type' => 'improved', 'summary' => 'Estável.', 'password' => 'password'])->assertSessionHasNoErrors();
 
+        return [$account, $billing];
+    }
+
+    public function test_a_closed_aih_goes_to_the_sisaih01_file_in_the_official_layout(): void
+    {
+        [$account, $billing] = $this->closableAih();
+
         // The close freezes the AIH's codes.
         $this->actingAs($billing->user)->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page->where('susPending', []));
         $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
@@ -480,5 +495,92 @@ class AihRequestTest extends ClinicalTestCase
         $this->post(route('sus-aih.store'), ['unit_id' => $this->unit->id, 'competence' => '2026-11'])->assertSessionHasErrors('competence');
         $this->get(route('sus-aih.download', $file))->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="AIH-1234567-202611.txt"');
         $this->assertTrue(DB::table('clinical_reads')->where('patient_id', $this->patient->id)->where('reason', 'billing')->exists());
+    }
+
+    public function test_billing_records_the_return_and_a_rejected_aih_is_reopened_and_presented_again(): void
+    {
+        [$account, $billing] = $this->closableAih();
+        $this->actingAs($billing->user)->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
+        $this->post(route('billing-accounts.reopen', $account))->assertSessionHasErrors('reopen', null, 'reopen');
+        $this->post(route('sus-aih.store'), ['unit_id' => $this->unit->id, 'competence' => '2026-11'])->assertSessionHasNoErrors();
+        $file = SusAihFile::withoutTenantScope()->sole();
+        $presentation = (int) DB::table('sus_aih_file_accounts')->where('sus_aih_file_id', $file->id)->value('id');
+        $this->get(route('sus-aih.show', $file))->assertInertia(fn (Assert $page) => $page->component('sus-aih/show')
+            ->where('aihs.0.number', '3526100000012')->where('aihs.0.approved', null)->where('aihs.0.editable', true));
+
+        // Rejected without a reason is refused; then approved, then (the latest counts) rejected with one.
+        $this->post(route('sus-aih.returns.store', $file), ['presentation_id' => $presentation, 'approved' => '0', 'reason' => ' '])->assertSessionHasErrors('reason');
+        $this->post(route('sus-aih.returns.store', $file), ['presentation_id' => $presentation, 'approved' => '1'])->assertSessionHasNoErrors();
+        $this->assertSame([], AihFile::accounts($this->unit->id)->all());
+        $this->post(route('sus-aih.returns.store', $file), ['presentation_id' => $presentation, 'approved' => '0', 'reason' => 'Laudo sem assinatura.'])->assertSessionHasNoErrors();
+        $this->assertSame(1, DB::table('audit_events')->where('action', 'sus_aih_return.recorded')->whereJsonContains('context->approved', false)->count());
+        $this->assertFalse(DB::table('audit_events')->where('action', 'sus_aih_return.recorded')->where('context', 'like', '%Laudo%')->exists());
+        // Another unit's billing sees nothing of it.
+        $other = Membership::factory()->for($this->unit->tenant)->create();
+        $other->grant(Role::Billing, Unit::factory()->for($this->unit->tenant)->create());
+        $this->actingAs($other->user)->get(route('sus-aih.show', $file))->assertForbidden();
+        $this->post(route('sus-aih.returns.store', $file), ['presentation_id' => $presentation, 'approved' => '1'])->assertForbidden();
+        $this->post(route('billing-accounts.reopen', $account))->assertForbidden();
+        $this->actingAs($billing->user);
+
+        // Back in the queue, but only for a later competence.
+        $this->assertSame([$account->id], AihFile::accounts($this->unit->id)->modelKeys());
+        $this->travelTo('2026-12-02 09:00:00');
+        $this->get(route('billing-accounts.show', $account))->assertInertia(fn (Assert $page) => $page
+            ->where('aih.return', ['competence' => '11/2026', 'approved' => false, 'reason' => 'Laudo sem assinatura.'])->where('aih.canReopen', true));
+
+        // Reopened to be corrected: the codes go back to the derived ones; the presentation's return no longer changes.
+        $this->post(route('billing-accounts.reopen', $account))->assertSessionHasNoErrors();
+        $reopened = BillingAccount::withoutTenantScope()->findOrFail($account->id);
+        $this->assertSame(['open', null, '02', '12', null], [$reopened->status, $reopened->closed_at, $reopened->aih_character, $reopened->aih_exit_reason, $reopened->aih_bed_specialty]);
+        $this->post(route('sus-aih.returns.store', $file), ['presentation_id' => $presentation, 'approved' => '1'])->assertSessionHasErrors('reason', null, "return{$presentation}");
+        $this->post(route('billing-accounts.reopen', $account))->assertSessionHasErrors('reopen', null, 'reopen');
+        $this->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
+        // Closed again, not presented yet: the old presentation's rejection stays final.
+        $this->get(route('sus-aih.show', $file))->assertInertia(fn (Assert $page) => $page->where('aihs.0.editable', false));
+        $this->post(route('sus-aih.returns.store', $file), ['presentation_id' => $presentation, 'approved' => '1'])->assertSessionHasErrors('reason', null, "return{$presentation}");
+        // Never again in the competence it was presented in.
+        $unit = $this->unit->fresh();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $this->assertNotSame([], AihFile::build($unit, '2026-11', AihFile::accounts($this->unit->id))['problems']);
+        $this->assertSame([], AihFile::build($unit, '2026-12', AihFile::accounts($this->unit->id))['problems']);
+        app(CurrentTenant::class)->set(null);
+
+        $this->post(route('sus-aih.store'), ['unit_id' => $this->unit->id, 'competence' => '2026-12'])->assertSessionHasNoErrors();
+        $again = SusAihFile::withoutTenantScope()->where('competence', '2026-12-01')->sole();
+        $text = (string) Storage::disk('local')->get($again->path);
+        $this->assertSame(['202612', '3526100000012'], [substr($text, 11, 6), substr($text, 43, 13)]);
+        $this->assertSame(2, DB::table('sus_aih_file_accounts')->where('billing_account_id', $account->id)->count());
+        $this->get(route('sus-aih.show', $file))->assertInertia(fn (Assert $page) => $page->where('aihs.0.editable', false));
+        $this->assertSame([], AihFile::accounts($this->unit->id)->all());
+    }
+
+    public function test_the_database_keeps_a_closed_aih_and_a_presented_one_as_they_are(): void
+    {
+        [$account, $billing] = $this->closableAih();
+        $this->actingAs($billing->user)->post(route('billing-accounts.close', $account))->assertSessionHasNoErrors();
+        $this->post(route('sus-aih.store'), ['unit_id' => $this->unit->id, 'competence' => '2026-11'])->assertSessionHasNoErrors();
+        $file = SusAihFile::withoutTenantScope()->sole();
+        app(CurrentTenant::class)->set($this->unit->tenant);
+        $reopen = fn () => DB::table('billing_accounts')->where('id', $account->id)->update(['status' => 'open', 'closed_at' => null, 'closed_by_user_id' => null, 'aih_bed_specialty' => null]);
+        $refused = function (callable $statement, string $state = 'P0001') {
+            try {
+                DB::transaction($statement);
+                $this->fail('The database accepted it.');
+            } catch (QueryException $exception) {
+                $this->assertStringContainsString($state, $exception->getMessage());
+            }
+        };
+        // Not rejected: no reopening, no second presentation.
+        $refused($reopen);
+        $refused(fn () => DB::table('sus_aih_file_accounts')->insert(['tenant_id' => $this->unit->tenant_id, 'sus_aih_file_id' => $file->id, 'billing_account_id' => $account->id]));
+        $presentation = (int) DB::table('sus_aih_file_accounts')->value('id');
+        DB::table('sus_aih_returns')->insert(['tenant_id' => $this->unit->tenant_id, 'sus_aih_file_account_id' => $presentation, 'approved' => false, 'reason' => 'Motivo.', 'recorded_by_user_id' => $billing->user_id, 'recorded_at' => now()]);
+        // Rejected: reopening changes nothing else, and the return is never changed.
+        $refused(fn () => DB::table('billing_accounts')->where('id', $account->id)->update(['status' => 'open', 'closed_at' => null, 'closed_by_user_id' => null, 'aih_bed_specialty' => null, 'aih_exit_reason' => '14']));
+        $refused(fn () => DB::table('sus_aih_returns')->update(['approved' => true]));
+        $refused(fn () => DB::table('sus_aih_returns')->insert(['tenant_id' => $this->unit->tenant_id, 'sus_aih_file_account_id' => $presentation, 'approved' => false, 'reason' => null, 'recorded_by_user_id' => $billing->user_id, 'recorded_at' => now()]), '23514');
+        $this->assertSame(1, $reopen());
+        app(CurrentTenant::class)->set(null);
     }
 }
