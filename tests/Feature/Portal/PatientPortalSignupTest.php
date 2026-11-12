@@ -9,6 +9,7 @@ use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\Feature\Clinical\ClinicalTestCase;
 
 /**
@@ -47,7 +48,7 @@ class PatientPortalSignupTest extends ClinicalTestCase
     }
 
     /**
-     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     * @return TestResponse<Response>
      */
     private function verify(string $code): TestResponse
     {
