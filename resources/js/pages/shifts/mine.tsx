@@ -11,6 +11,7 @@ import { Spinner } from '@/components/ui/spinner';
 import type { ShiftSummary } from '@/components/shift-display';
 import { formatDay, PeriodLabel, timeRange } from '@/components/shift-display';
 import { index as requests } from '@/routes/requests';
+import { index as vacancies } from '@/routes/vacancies';
 import { attendance, mine } from '@/routes/shifts';
 import { create as createSwap } from '@/routes/shifts/swap';
 import { create as createTransfer } from '@/routes/shifts/transfer';
@@ -60,6 +61,17 @@ export default function MyShifts({
                         <p className="font-medium">
                             Nenhum plantão publicado para você
                         </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Veja as vagas abertas nas suas unidades e
+                            candidate-se.
+                        </p>
+                        <Button
+                            asChild
+                            variant="outline"
+                            className="mt-4 min-h-11"
+                        >
+                            <Link href={vacancies()}>Ver vagas abertas</Link>
+                        </Button>
                     </div>
                 ) : (
                     <div className="grid gap-6">

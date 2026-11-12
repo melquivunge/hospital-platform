@@ -1,9 +1,21 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     AlarmClock,
+    Banknote,
+    Bed,
+    Clock,
+    Database,
+    HeartPulse,
+    House,
+    Settings,
+    Syringe,
+    UserRoundCheck,
+    Warehouse,
     ArrowLeftRight,
+    Bandage,
     BedDouble,
     BedSingle,
+    BookOpen,
     Boxes,
     BriefcaseMedical,
     Building2,
@@ -11,36 +23,41 @@ import {
     CalendarClock,
     CalendarDays,
     CalendarPlus,
+    CalendarRange,
     ChartColumn,
     ChartLine,
     ChartPie,
     ClipboardCheck,
+    ClipboardList,
     ClipboardPlus,
+    FileHeart,
+    FileSpreadsheet,
     FileUp,
     FlaskConical,
     Gauge,
     GitMerge,
     History,
     Hospital,
+    Hourglass,
     Landmark,
     LayoutGrid,
     ListOrdered,
     Megaphone,
+    Package,
     Pill,
     Receipt,
     Repeat,
     Scissors,
     ShieldCheck,
-    FileText,
     Siren,
     SlidersHorizontal,
     Stethoscope,
+    Tags,
     TestTube,
     TestTubeDiagonal,
     Users,
     UsersRound,
     Wallet,
-    Package,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
@@ -98,20 +115,11 @@ import { mine as mySurgeries } from '@/routes/surgery-record';
 import { index as surgerySchedule } from '@/routes/surgery-schedule';
 import { index as units } from '@/routes/units';
 import { index as vacancies } from '@/routes/vacancies';
-import type { NavItem } from '@/types';
+import type { NavGroup, NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Visão geral',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-    {
-        title: 'Unidades',
-        href: units(),
-        icon: Building2,
-    },
-];
+// Shows the items only when the person may use them.
+const when = (allowed: unknown, items: NavItem[]): NavItem[] =>
+    allowed ? items : [];
 
 export function AppSidebar() {
     const {
@@ -151,235 +159,289 @@ export function AppSidebar() {
         canManageAdmissions,
         canManageTriageLevels,
     } = usePage().props;
-    const navItems: NavItem[] = [
-        ...mainNavItems,
-        ...(canViewPatients
-            ? [{ title: 'Pacientes', href: patients(), icon: UsersRound }]
-            : []),
-        ...(canAttend
-            ? [
-                  {
-                      title: 'Meus atendimentos',
-                      href: visits(),
-                      icon: ClipboardPlus,
-                  },
-                  { title: 'Internados', href: ward(), icon: BedSingle },
-              ]
-            : []),
-        ...(canBookAppointments
-            ? [
-                  {
-                      title: 'Fila do dia',
-                      href: queue(),
-                      icon: ListOrdered,
-                  },
-                  {
-                      title: 'Agendamentos',
-                      href: appointments(),
-                      icon: CalendarPlus,
-                  },
-              ]
-            : []),
-        ...(canManageSchedules
-            ? [{ title: 'Agendas', href: schedules(), icon: CalendarClock }]
-            : []),
-        ...(canMergePatients
-            ? [
-                  {
-                      title: 'Unificar cadastros',
-                      href: patientMerges(),
-                      icon: GitMerge,
-                  },
-              ]
-            : []),
-        ...(canViewMyShifts
-            ? [
-                  {
-                      title: 'Meus plantões',
-                      href: myShifts(),
-                      icon: CalendarCheck,
-                  },
-                  { title: 'Vagas', href: vacancies(), icon: Megaphone },
-              ]
-            : []),
-        ...(canViewRequests
-            ? [{ title: 'Solicitações', href: requests(), icon: Repeat }]
-            : []),
-        ...(canViewShifts
-            ? [
-                  { title: 'Escala', href: shifts(), icon: CalendarDays },
-                  { title: 'Relatórios', href: reports(), icon: ChartColumn },
-              ]
-            : []),
-        ...(canViewProfessionals
-            ? [
-                  {
-                      title: 'Profissionais',
-                      href: professionals(),
-                      icon: Stethoscope,
-                  },
-              ]
-            : []),
-        ...(canManageJobFunctions
-            ? [
-                  {
-                      title: 'Funções',
-                      href: jobFunctions(),
-                      icon: BriefcaseMedical,
-                  },
-              ]
-            : []),
-        ...(canViewEmergency
-            ? [{ title: 'Urgência', href: emergency(), icon: Siren }]
-            : []),
-        ...(canManageTriageLevels
-            ? [
-                  {
-                      title: 'Classificação de risco',
-                      href: triageLevels(),
-                      icon: Gauge,
-                  },
-              ]
-            : []),
-        ...(canViewBeds
-            ? [{ title: 'Leitos', href: beds(), icon: BedDouble }]
-            : []),
-        ...(canManageAdmissions
-            ? [{ title: 'Internações', href: admissions(), icon: Hospital }]
-            : []),
-        ...(canViewCensus
-            ? [{ title: 'Censo', href: census(), icon: ChartPie }]
-            : []),
-        ...(canUsePharmacy
-            ? [{ title: 'Farmácia', href: pharmacy(), icon: FlaskConical }]
-            : []),
-        ...(canUseExamQueue
-            ? [{ title: 'Fila de exames', href: examQueue(), icon: TestTube }]
-            : []),
-        ...(canUseBilling
-            ? [
-                  { title: 'Contas', href: billingAccounts(), icon: Wallet },
-                  { title: 'Lotes TISS', href: billingLots(), icon: Package },
-                  { title: 'BPA (SUS)', href: susBpa(), icon: FileText },
-                  { title: 'AIH (SUS)', href: susAih(), icon: FileText },
-              ]
-            : []),
-        ...(canViewBillingReports
-            ? [
-                  {
-                      title: 'Relatórios de faturamento',
-                      href: billingReports(),
-                      icon: Receipt,
-                  },
-              ]
-            : []),
-        ...(canUseSurgerySchedule
-            ? [
-                  {
-                      title: 'Agenda cirúrgica',
-                      href: surgerySchedule(),
-                      icon: CalendarClock,
-                  },
-              ]
-            : []),
-        ...(canUseMySurgeries
-            ? [
-                  {
-                      title: 'Minhas cirurgias',
-                      href: mySurgeries(),
-                      icon: Scissors,
-                  },
-              ]
-            : []),
-        ...(canViewExamOverdue
-            ? [
-                  {
-                      title: 'Exames atrasados',
-                      href: examOverdue(),
-                      icon: AlarmClock,
-                  },
-              ]
-            : []),
-        // Same viewers as the overdue exams: unit managers and network admins (SurgeryOverdueController).
-        ...(canViewExamOverdue
-            ? [
-                  {
-                      title: 'Cirurgias paradas',
-                      href: surgeryOverdue(),
-                      icon: AlarmClock,
-                  },
-              ]
-            : []),
-        ...(canUseInventory
-            ? [
-                  { title: 'Estoque', href: stock(), icon: Boxes },
-                  {
-                      title: 'Movimentos de estoque',
-                      href: stockMovements(),
-                      icon: History,
-                  },
-                  {
-                      title: 'Inventários',
-                      href: inventories(),
-                      icon: ClipboardCheck,
-                  },
-              ]
-            : []),
-        ...(canViewStockIndicators
-            ? [
-                  {
-                      title: 'Indicadores de estoque',
-                      href: stockIndicators(),
-                      icon: ChartLine,
-                  },
-              ]
-            : []),
-        ...(canViewClinicalAccess
-            ? [
-                  {
-                      title: 'Acessos ao prontuário',
-                      href: clinicalAccess(),
-                      icon: ShieldCheck,
-                  },
-              ]
-            : []),
-        ...(canViewAihRequests
-            ? [{ title: 'Laudos da AIH', href: aihRequests(), icon: FileText }]
-            : []),
-        ...(canManageInsurers
-            ? [{ title: 'Convênios', href: insurers(), icon: Landmark }]
-            : []),
-        ...(canManageMedications
-            ? [{ title: 'Medicamentos', href: medications(), icon: Pill }]
-            : []),
-        ...(canManageMedications
-            ? [
-                  { title: 'Preços', href: billingPrices(), icon: Receipt },
-                  { title: 'Tabela SIGTAP', href: sigtap(), icon: Receipt },
-              ]
-            : []),
-        ...(canManageExams
-            ? [{ title: 'Exames', href: exams(), icon: TestTubeDiagonal }]
-            : []),
-        ...(canManageSurgeryCatalog
-            ? [
-                  {
-                      title: 'Procedimentos, salas e materiais',
-                      href: surgeryCatalog(),
-                      icon: Scissors,
-                  },
-              ]
-            : []),
-        ...(canManagePeople
-            ? [{ title: 'Pessoas', href: people(), icon: Users }]
-            : []),
-        ...(canImport
-            ? [{ title: 'Importações', href: imports(), icon: FileUp }]
-            : []),
-        ...(canViewPolicies
-            ? [{ title: 'Regras', href: policies(), icon: SlidersHorizontal }]
-            : []),
-    ];
+    // Grouped by the person's journey; a group without allowed items is not shown.
+    const navGroups: NavGroup[] = [
+        {
+            label: 'Início',
+            icon: House,
+            items: [
+                { title: 'Visão geral', href: dashboard(), icon: LayoutGrid },
+            ],
+        },
+        {
+            label: 'Meu trabalho',
+            icon: UserRoundCheck,
+            items: [
+                ...when(canViewMyShifts, [
+                    {
+                        title: 'Meus plantões',
+                        href: myShifts(),
+                        icon: CalendarCheck,
+                    },
+                    { title: 'Vagas', href: vacancies(), icon: Megaphone },
+                ]),
+                ...when(canAttend, [
+                    {
+                        title: 'Meus atendimentos',
+                        href: visits(),
+                        icon: ClipboardPlus,
+                    },
+                ]),
+                ...when(canUseMySurgeries, [
+                    {
+                        title: 'Minhas cirurgias',
+                        href: mySurgeries(),
+                        icon: Scissors,
+                    },
+                ]),
+            ],
+        },
+        {
+            label: 'Escalas',
+            icon: Clock,
+            items: [
+                ...when(canViewShifts, [
+                    { title: 'Escala', href: shifts(), icon: CalendarDays },
+                ]),
+                ...when(canViewRequests, [
+                    { title: 'Solicitações', href: requests(), icon: Repeat },
+                ]),
+                ...when(canViewShifts, [
+                    {
+                        title: 'Relatórios da escala',
+                        href: reports(),
+                        icon: ChartColumn,
+                    },
+                ]),
+            ],
+        },
+        {
+            label: 'Atendimento',
+            icon: HeartPulse,
+            items: [
+                ...when(canViewPatients, [
+                    { title: 'Pacientes', href: patients(), icon: UsersRound },
+                ]),
+                ...when(canBookAppointments, [
+                    { title: 'Fila do dia', href: queue(), icon: ListOrdered },
+                    {
+                        title: 'Agendamentos',
+                        href: appointments(),
+                        icon: CalendarPlus,
+                    },
+                ]),
+                ...when(canManageSchedules, [
+                    {
+                        title: 'Agendas',
+                        href: schedules(),
+                        icon: CalendarClock,
+                    },
+                ]),
+                ...when(canViewEmergency, [
+                    { title: 'Urgência', href: emergency(), icon: Siren },
+                ]),
+                ...when(canUseExamQueue, [
+                    {
+                        title: 'Fila de exames',
+                        href: examQueue(),
+                        icon: TestTube,
+                    },
+                ]),
+                ...when(canViewExamOverdue, [
+                    {
+                        title: 'Exames atrasados',
+                        href: examOverdue(),
+                        icon: AlarmClock,
+                    },
+                ]),
+            ],
+        },
+        {
+            label: 'Internação',
+            icon: Bed,
+            items: [
+                ...when(canAttend, [
+                    { title: 'Internados', href: ward(), icon: BedSingle },
+                ]),
+                ...when(canViewBeds, [
+                    { title: 'Leitos', href: beds(), icon: BedDouble },
+                ]),
+                ...when(canManageAdmissions, [
+                    {
+                        title: 'Internações',
+                        href: admissions(),
+                        icon: Hospital,
+                    },
+                ]),
+                ...when(canViewCensus, [
+                    { title: 'Censo', href: census(), icon: ChartPie },
+                ]),
+                ...when(canViewAihRequests, [
+                    {
+                        title: 'Laudos da AIH',
+                        href: aihRequests(),
+                        icon: ClipboardList,
+                    },
+                ]),
+            ],
+        },
+        {
+            label: 'Cirurgia',
+            icon: Syringe,
+            items: [
+                ...when(canUseSurgerySchedule, [
+                    {
+                        title: 'Agenda cirúrgica',
+                        href: surgerySchedule(),
+                        icon: CalendarRange,
+                    },
+                ]),
+                // Same viewers as the overdue exams: unit managers and network admins (SurgeryOverdueController).
+                ...when(canViewExamOverdue, [
+                    {
+                        title: 'Cirurgias paradas',
+                        href: surgeryOverdue(),
+                        icon: Hourglass,
+                    },
+                ]),
+            ],
+        },
+        {
+            label: 'Farmácia e estoque',
+            icon: Warehouse,
+            items: [
+                ...when(canUsePharmacy, [
+                    { title: 'Farmácia', href: pharmacy(), icon: FlaskConical },
+                ]),
+                ...when(canUseInventory, [
+                    { title: 'Estoque', href: stock(), icon: Boxes },
+                    {
+                        title: 'Movimentos de estoque',
+                        href: stockMovements(),
+                        icon: History,
+                    },
+                    {
+                        title: 'Inventários',
+                        href: inventories(),
+                        icon: ClipboardCheck,
+                    },
+                ]),
+                ...when(canViewStockIndicators, [
+                    {
+                        title: 'Indicadores de estoque',
+                        href: stockIndicators(),
+                        icon: ChartLine,
+                    },
+                ]),
+            ],
+        },
+        {
+            label: 'Faturamento',
+            icon: Banknote,
+            items: [
+                ...when(canUseBilling, [
+                    { title: 'Contas', href: billingAccounts(), icon: Wallet },
+                    { title: 'Lotes TISS', href: billingLots(), icon: Package },
+                    {
+                        title: 'BPA (SUS)',
+                        href: susBpa(),
+                        icon: FileSpreadsheet,
+                    },
+                    { title: 'AIH (SUS)', href: susAih(), icon: FileHeart },
+                ]),
+                ...when(canViewBillingReports, [
+                    {
+                        title: 'Relatórios de faturamento',
+                        href: billingReports(),
+                        icon: Receipt,
+                    },
+                ]),
+            ],
+        },
+        {
+            label: 'Cadastros',
+            icon: Database,
+            items: [
+                { title: 'Unidades', href: units(), icon: Building2 },
+                ...when(canViewProfessionals, [
+                    {
+                        title: 'Profissionais',
+                        href: professionals(),
+                        icon: Stethoscope,
+                    },
+                ]),
+                ...when(canManageJobFunctions, [
+                    {
+                        title: 'Funções',
+                        href: jobFunctions(),
+                        icon: BriefcaseMedical,
+                    },
+                ]),
+                ...when(canManageInsurers, [
+                    { title: 'Convênios', href: insurers(), icon: Landmark },
+                ]),
+                ...when(canManageMedications, [
+                    { title: 'Medicamentos', href: medications(), icon: Pill },
+                    { title: 'Preços', href: billingPrices(), icon: Tags },
+                    { title: 'Tabela SIGTAP', href: sigtap(), icon: BookOpen },
+                ]),
+                ...when(canManageExams, [
+                    {
+                        title: 'Exames',
+                        href: exams(),
+                        icon: TestTubeDiagonal,
+                    },
+                ]),
+                ...when(canManageSurgeryCatalog, [
+                    {
+                        title: 'Procedimentos, salas e materiais',
+                        href: surgeryCatalog(),
+                        icon: Bandage,
+                    },
+                ]),
+                ...when(canManageTriageLevels, [
+                    {
+                        title: 'Classificação de risco',
+                        href: triageLevels(),
+                        icon: Gauge,
+                    },
+                ]),
+            ],
+        },
+        {
+            label: 'Administração',
+            icon: Settings,
+            items: [
+                ...when(canManagePeople, [
+                    { title: 'Pessoas', href: people(), icon: Users },
+                ]),
+                ...when(canMergePatients, [
+                    {
+                        title: 'Unificar cadastros',
+                        href: patientMerges(),
+                        icon: GitMerge,
+                    },
+                ]),
+                ...when(canViewClinicalAccess, [
+                    {
+                        title: 'Acessos ao prontuário',
+                        href: clinicalAccess(),
+                        icon: ShieldCheck,
+                    },
+                ]),
+                ...when(canImport, [
+                    { title: 'Importações', href: imports(), icon: FileUp },
+                ]),
+                ...when(canViewPolicies, [
+                    {
+                        title: 'Regras',
+                        href: policies(),
+                        icon: SlidersHorizontal,
+                    },
+                ]),
+            ],
+        },
+    ].filter((group) => group.items.length > 0);
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -397,6 +459,7 @@ export function AppSidebar() {
                             {canSwitchTenant ? (
                                 <SidebarMenuButton
                                     asChild
+                                    className="max-md:h-11"
                                     tooltip={{
                                         children: `Instituição: ${currentTenant.name}. Trocar`,
                                     }}
@@ -423,7 +486,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={navItems} />
+                <NavMain groups={navGroups} />
             </SidebarContent>
         </Sidebar>
     );
