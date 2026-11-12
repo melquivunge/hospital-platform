@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Portal\PortalAuthController;
 use App\Http\Controllers\Portal\PortalHomeController;
+use App\Http\Controllers\Portal\PortalSignupController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -15,6 +16,11 @@ Route::prefix('portal/{portal}')->middleware('portal')->name('portal.')->group(f
     Route::post('esqueci-a-senha', [PortalAuthController::class, 'forgot'])->middleware('throttle:5,1')->name('forgot.store');
     Route::get('criar-senha/{token}', [PortalAuthController::class, 'showSetup'])->middleware('throttle:20,1')->name('setup');
     Route::post('criar-senha/{token}', [PortalAuthController::class, 'setup'])->middleware('throttle:10,1')->name('setup.store');
+
+    Route::get('primeiro-acesso', [PortalSignupController::class, 'show'])->name('signup');
+    Route::post('primeiro-acesso', [PortalSignupController::class, 'start'])->middleware('throttle:5,1')->name('signup.store');
+    Route::get('primeiro-acesso/codigo', [PortalSignupController::class, 'showCode'])->name('signup.code');
+    Route::post('primeiro-acesso/codigo', [PortalSignupController::class, 'verify'])->middleware('throttle:10,1')->name('signup.verify');
 
     Route::middleware('auth:patient')->group(function () {
         Route::get('/', PortalHomeController::class)->name('home');

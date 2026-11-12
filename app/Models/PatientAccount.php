@@ -19,7 +19,10 @@ use Illuminate\Support\Str;
  * @property string|null $password
  * @property string|null $setup_token_hash
  * @property Carbon|null $setup_token_expires_at
- * @property int $invited_by_user_id
+ * @property int|null $invited_by_user_id
+ * @property string|null $signup_code_hash
+ * @property Carbon|null $signup_code_expires_at
+ * @property int $signup_code_attempts
  * @property Carbon|null $last_login_at
  */
 class PatientAccount extends Authenticatable
@@ -29,13 +32,14 @@ class PatientAccount extends Authenticatable
     /** The invitation and the forgotten-password link last 72 hours (contract, decision 4). */
     public const SETUP_HOURS = 72;
 
-    protected $hidden = ['password', 'remember_token', 'setup_token_hash'];
+    protected $hidden = ['password', 'remember_token', 'setup_token_hash', 'signup_code_hash'];
 
     protected function casts(): array
     {
         return [
             'password' => 'hashed',
             'setup_token_expires_at' => 'datetime',
+            'signup_code_expires_at' => 'datetime',
             'last_login_at' => 'datetime',
         ];
     }
