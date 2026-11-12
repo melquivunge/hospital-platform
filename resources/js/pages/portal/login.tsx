@@ -1,5 +1,6 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import PortalAuthController from '@/actions/App/Http/Controllers/Portal/PortalAuthController';
+import PortalSignupController from '@/actions/App/Http/Controllers/Portal/PortalSignupController';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
@@ -92,8 +93,14 @@ export default function PortalLogin({
                     </Link>
                 </p>
                 <p className="mt-4 text-sm text-muted-foreground">
-                    Primeiro acesso? Peça o convite na recepção da unidade: ele
-                    chega no e-mail do seu cadastro.
+                    Primeiro acesso?{' '}
+                    <Link
+                        href={PortalSignupController.show.url(network.slug)}
+                        className="font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                        Criar meu acesso
+                    </Link>{' '}
+                    com o CPF, ou peça o convite na recepção da unidade.
                 </p>
             </div>
         </>
