@@ -58,11 +58,12 @@ class AuditEvent extends Model
     /**
      * @param  array<string, mixed>  $context
      */
-    public static function record(string $action, ?int $tenantId, ?Model $subject = null, array $context = []): self
+    public static function record(string $action, ?int $tenantId, ?Model $subject = null, array $context = [], bool $byStaff = true): self
     {
         $event = self::create([
             'tenant_id' => $tenantId,
-            'actor_user_id' => Auth::id(),
+            // Step 7a.1a: the patient portal acts without a staff actor, even with a staff session in the same browser.
+            'actor_user_id' => $byStaff ? Auth::guard('web')->id() : null,
             'action' => $action,
             'subject_type' => $subject?->getMorphClass(),
             'subject_id' => $subject?->getKey(),

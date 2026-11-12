@@ -1,5 +1,7 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Form, Head, Link, usePage } from '@inertiajs/react';
 import { CalendarPlus, FileHeart, Pencil } from 'lucide-react';
+import PatientPortalInviteController from '@/actions/App/Http/Controllers/Portal/PatientPortalInviteController';
+import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import type { PatientSummary } from '@/components/patient-display';
 import {
@@ -8,6 +10,7 @@ import {
     StatusBadge,
 } from '@/components/patient-display';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { index as appointments } from '@/routes/appointments';
 import { show as record } from '@/routes/clinical-record';
 import { index as emergency } from '@/routes/emergency';
@@ -41,9 +44,11 @@ export default function PatientShow({
     patient,
     canUpdate,
     unifiedFrom,
+    portal,
 }: {
     patient: Patient;
     canUpdate: boolean;
+    portal: 'none' | 'invited' | 'active';
     unifiedFrom: {
         id: number;
         name: string | null;
@@ -181,6 +186,10 @@ export default function PatientShow({
                     ))}
                 </div>
 
+                {canUpdate && (
+                    <PortalAccess patientId={patient.id} portal={portal} />
+                )}
+
                 {unifiedFrom.length > 0 && (
                     <section className="mt-8">
                         <h2 className="mb-3 font-semibold">
@@ -214,3 +223,68 @@ export default function PatientShow({
 PatientShow.layout = {
     breadcrumbs: [{ title: 'Pacientes', href: index() }],
 };
+
+/** Step 7a.1a: the reception checks the document and sends the portal invitation. */
+function PortalAccess({
+    patientId,
+    portal,
+}: {
+    patientId: number;
+    portal: 'none' | 'invited' | 'active';
+}) {
+    return (
+        <section aria-labelledby="portal-heading" className="mt-8">
+            <h2 id="portal-heading" className="mb-3 font-semibold">
+                Portal do paciente
+            </h2>
+            <div className="grid gap-3 rounded-xl border bg-card px-4 py-4 text-sm">
+                <p>
+                    {portal === 'active'
+                        ? 'Acesso ativo. Se esquecer a senha, o paciente usa “Esqueci minha senha” no portal.'
+                        : portal === 'invited'
+                          ? 'Convite enviado, ainda sem senha criada. Você pode reenviar.'
+                          : 'Sem acesso ao portal.'}
+                </p>
+                {portal !== 'active' && (
+                    <Form
+                        {...PatientPortalInviteController.store.form(patientId)}
+                        options={{ preserveScroll: true }}
+                        className="flex flex-wrap items-center gap-3"
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <label className="flex min-h-11 items-center gap-3">
+                                    <input
+                                        type="checkbox"
+                                        name="document_checked"
+                                        value="1"
+                                        required
+                                        className="size-4 accent-primary"
+                                    />
+                                    Conferi o documento do paciente
+                                </label>
+                                <Button
+                                    type="submit"
+                                    variant="outline"
+                                    disabled={processing}
+                                    className="min-h-11"
+                                >
+                                    {processing && <Spinner />}
+                                    {portal === 'invited'
+                                        ? 'Reenviar convite'
+                                        : 'Enviar convite ao portal'}
+                                </Button>
+                                <InputError
+                                    message={
+                                        errors.portal ?? errors.document_checked
+                                    }
+                                    className="w-full"
+                                />
+                            </>
+                        )}
+                    </Form>
+                )}
+            </div>
+        </section>
+    );
+}
