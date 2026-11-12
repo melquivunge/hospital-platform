@@ -44,21 +44,13 @@ class ShiftRequestController extends Controller
             ->limit(100)
             ->get();
 
-        // Requests still waiting for a unit this member manages (a swap between units waits for both).
-        $toDecide = $managed === [] ? collect() : ShiftRequest::query()
-            ->where('status', RequestStatus::PendingCoordinator)
-            ->when($managed !== null, fn (Builder $query) => $query->where(fn (Builder $turn) => $turn
-                ->where(fn (Builder $origin) => $origin->whereNull('origin_approved_at')->whereHas('shift', fn (Builder $shift) => $shift->whereIn('unit_id', $managed ?? [])))
-                ->orWhere(fn (Builder $counterpart) => $counterpart->whereNull('counterpart_approved_at')->whereHas('counterpart', fn (Builder $shift) => $shift->whereIn('unit_id', $managed ?? [])))))
+        $toDecide = $managed === [] ? collect() : self::awaitingDecision($managed)
             ->with(self::WITH)
             ->oldest('id')
             ->limit(100)
             ->get();
 
-        // Open presence occurrences of the units this member manages (step 8b).
-        $occurrences = $managed === [] ? collect() : AttendanceOccurrence::query()
-            ->where('status', 'open')
-            ->when($managed !== null, fn (Builder $query) => $query->whereHas('shift', fn (Builder $shift) => $shift->whereIn('unit_id', $managed ?? [])))
+        $occurrences = $managed === [] ? collect() : self::openOccurrences($managed)
             ->with(['professional:id,name', 'shift.unit:id,name,timezone'])
             ->oldest('id')
             ->limit(100)
@@ -225,6 +217,35 @@ class ShiftRequestController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Troca solicitada. Aguarde o aceite do colega e a aprovação da coordenação.']);
 
         return to_route('requests.index');
+    }
+
+    /**
+     * Requests still waiting for a unit this member manages (a swap between units waits for both).
+     * Null means every unit of the tenant (network admin).
+     *
+     * @param  list<int>|null  $managed
+     * @return Builder<ShiftRequest>
+     */
+    public static function awaitingDecision(?array $managed): Builder
+    {
+        return ShiftRequest::query()
+            ->where('status', RequestStatus::PendingCoordinator)
+            ->when($managed !== null, fn (Builder $query) => $query->where(fn (Builder $turn) => $turn
+                ->where(fn (Builder $origin) => $origin->whereNull('origin_approved_at')->whereHas('shift', fn (Builder $shift) => $shift->whereIn('unit_id', $managed ?? [])))
+                ->orWhere(fn (Builder $counterpart) => $counterpart->whereNull('counterpart_approved_at')->whereHas('counterpart', fn (Builder $shift) => $shift->whereIn('unit_id', $managed ?? [])))));
+    }
+
+    /**
+     * Open presence occurrences of the units this member manages (step 8b).
+     *
+     * @param  list<int>|null  $managed
+     * @return Builder<AttendanceOccurrence>
+     */
+    public static function openOccurrences(?array $managed): Builder
+    {
+        return AttendanceOccurrence::query()
+            ->where('status', 'open')
+            ->when($managed !== null, fn (Builder $query) => $query->whereHas('shift', fn (Builder $shift) => $shift->whereIn('unit_id', $managed ?? [])));
     }
 
     /**
