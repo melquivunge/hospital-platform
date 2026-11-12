@@ -9,6 +9,7 @@ use App\Models\Unit;
 use App\Policies\ShiftPolicy;
 use App\Policies\UnitPolicy;
 use App\Scheduling\ShiftStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -38,7 +39,10 @@ class DashboardController extends Controller
             'nextShift' => self::nextShift($membership),
             // Null when this member coordinates no unit: the page then shows no scheduling pendencies.
             'pending' => $managed === [] ? null : [
-                'requests' => ShiftRequestController::awaitingDecision($managed)->count(),
+                // Requests of a shift that already started expire when Solicitações opens; not counted here.
+                'requests' => ShiftRequestController::awaitingDecision($managed)
+                    ->whereHas('shift', fn (Builder $shift) => $shift->where('starts_at', '>', now()))
+                    ->count(),
                 'occurrences' => ShiftRequestController::openOccurrences($managed)->count(),
             ],
         ]);
