@@ -25,7 +25,7 @@ export function AppSidebarHeader({
     return (
         <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
             <div className="flex min-w-0 items-center gap-2">
-                <SidebarTrigger className="-ml-1" />
+                <SidebarTrigger className="-ml-2 size-11 md:size-8" />
                 <Breadcrumbs breadcrumbs={breadcrumbs} />
             </div>
             {auth.user && (
