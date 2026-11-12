@@ -22,6 +22,10 @@ abstract class TestCase extends BaseTestCase
         if (! app()->environment('testing') || config('database.connections.pgsql.database') !== 'hospital_test') {
             throw new \RuntimeException('Testes só podem rodar no banco hospital_test com APP_ENV=testing.');
         }
+
+        // The fixtures use fixed dates in November 2026; a fixed clock keeps them in the future
+        // whatever the calendar says (they broke on 12/11/2026). Tests may still travel elsewhere.
+        $this->travelTo('2026-10-29 12:00:00');
     }
 
     /**
