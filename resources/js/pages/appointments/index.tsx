@@ -10,6 +10,7 @@ import {
     NoShowButton,
 } from '@/components/appointment-actions';
 import InputError from '@/components/input-error';
+import { timezoneLabel } from '@/lib/utils';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
@@ -124,7 +125,7 @@ export default function Appointments({
                 <PageHeader
                     eyebrow={unit.name}
                     title="Agendamentos"
-                    description={`Horários no fuso da unidade (${unit.timezone ?? 'não definido'}).`}
+                    description={`Horários no fuso da unidade (${timezoneLabel(unit.timezone)}).`}
                 />
 
                 <div className="mb-6 grid gap-4 sm:grid-cols-3">

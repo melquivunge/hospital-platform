@@ -10,6 +10,7 @@ import {
 import InputError from '@/components/input-error';
 import type { Modality } from '@/components/modality-fields';
 import { ModalityFields, modalityLabels } from '@/components/modality-fields';
+import { timezoneLabel } from '@/lib/utils';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
@@ -78,7 +79,7 @@ export default function Queue({
                 <PageHeader
                     eyebrow={unit.name}
                     title="Fila do dia"
-                    description={`Hoje, ${day}/${month}/${year}, no fuso da unidade (${unit.timezone ?? 'não definido'}).`}
+                    description={`Hoje, ${day}/${month}/${year}, no fuso da unidade (${timezoneLabel(unit.timezone)}).`}
                 />
 
                 <div className="mb-6 grid gap-4 sm:grid-cols-2">

@@ -42,7 +42,7 @@ export default function SusAihIndex({
                 <PageHeader
                     eyebrow={unit?.name}
                     title="AIH (SUS)"
-                    description="Arquivo das internações SUS no layout de importação do SISAIH01. Leva as contas de internação fechadas, com alta até a competência, ainda não apresentadas ou rejeitadas pelo gestor numa competência anterior."
+                    description="AIH é a Autorização de Internação Hospitalar. Arquivo das internações SUS no layout de importação do SISAIH01. Leva as contas de internação fechadas, com alta até a competência, ainda não apresentadas ou rejeitadas pelo gestor numa competência anterior."
                 />
                 {units.length > 1 && (
                     <div className="mb-6 grid w-full max-w-sm gap-2">
@@ -122,6 +122,12 @@ export default function SusAihIndex({
                                 >
                                     Gerar arquivo da AIH
                                 </Button>
+                                {ready === 0 && (
+                                    <span className="text-sm text-muted-foreground">
+                                        Nenhuma conta pronta: o arquivo leva as
+                                        contas de internação fechadas, com alta.
+                                    </span>
+                                )}
                                 <InputError
                                     id="competence-error"
                                     message={errors.competence}

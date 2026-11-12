@@ -3,6 +3,7 @@ import { CalendarClock } from 'lucide-react';
 import type { ReactNode } from 'react';
 import ScheduleController from '@/actions/App/Http/Controllers/ScheduleController';
 import InputError from '@/components/input-error';
+import { timezoneLabel } from '@/lib/utils';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
@@ -73,7 +74,7 @@ export default function Schedules({
                 <PageHeader
                     eyebrow={unit.name}
                     title="Agendas"
-                    description={`Horários de consulta de cada profissional, no fuso da unidade (${unit.timezone ?? 'não definido'}). Para mudar um horário, remova-o e adicione outro.`}
+                    description={`Horários de consulta de cada profissional, no fuso da unidade (${timezoneLabel(unit.timezone)}). Para mudar um horário, remova-o e adicione outro.`}
                 />
 
                 {units.length > 1 && (

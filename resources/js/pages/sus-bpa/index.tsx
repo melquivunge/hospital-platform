@@ -44,7 +44,7 @@ export default function SusBpaIndex({
                 <PageHeader
                     eyebrow={unit?.name}
                     title="BPA (SUS)"
-                    description="Arquivo da produção ambulatorial no layout do BPA Magnético. Leva as contas SUS fechadas ainda não apresentadas e os itens de linhas rejeitadas pelo gestor numa competência anterior."
+                    description="BPA é o Boletim de Produção Ambulatorial. Arquivo da produção ambulatorial no layout do BPA Magnético. Leva as contas SUS fechadas ainda não apresentadas e os itens de linhas rejeitadas pelo gestor numa competência anterior."
                 />
                 {units.length > 1 && (
                     <div className="mb-6 grid w-full max-w-sm gap-2">
