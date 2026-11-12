@@ -9,14 +9,18 @@ return new class extends Migration
 
     /**
      * The two stock guards decide "expired" with the database clock, while the tests run the application on a fixed
-     * clock: fixtures valid on the test date failed once the calendar passed them. app_now() is now(), unless the
-     * session set app.now (only the test suite does, from its fixed clock). The guards' bodies are otherwise unchanged.
+     * clock: fixtures valid on the test date failed once the calendar passed them. app_now() is now(); only on the
+     * test database (hospital_test) it honours app.now, set by the suite from its fixed clock. The guards' bodies are
+     * otherwise unchanged.
      */
     public function up(): void
     {
         DB::unprepared(<<<'SQL'
             CREATE OR REPLACE FUNCTION app_now() RETURNS timestamptz LANGUAGE sql STABLE AS $$
-                SELECT coalesce(nullif(current_setting('app.now', true), '')::timestamptz, now())
+                -- Only the test database honours app.now: elsewhere a session setting must never move the expiry clock.
+                SELECT CASE WHEN current_database() = 'hospital_test'
+                    THEN coalesce(nullif(current_setting('app.now', true), '')::timestamptz, now())
+                    ELSE now() END
             $$;
         SQL);
         $this->rewrite('(now() AT TIME ZONE', '(app_now() AT TIME ZONE');

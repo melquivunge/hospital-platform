@@ -52,6 +52,9 @@ class SendPortalAccessMail
             } elseif ($this->kind === 'signup') {
                 PortalSignupController::sendCode($this->data['cpf'] ?? '', $this->data['birth_date'] ?? '');
             }
+        } catch (\Throwable $exception) {
+            // After the response nobody sees it: report, so a mail outage shows in the logs.
+            report($exception);
         } finally {
             $current->set($previous);
         }

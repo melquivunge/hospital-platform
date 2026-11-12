@@ -125,10 +125,6 @@ class PortalSignupController extends Controller
     }
 
     /**
-     * The account the code went to, or 0 when the data match no adult, complete patient with an e-mail
-     * (or the patient already chose a password: "Esqueci minha senha" covers that).
-     */
-    /**
      * The adult, complete, unmerged patient with an e-mail these data lead to.
      */
     private static function eligiblePatient(string $cpf, string $birthDate): ?Patient

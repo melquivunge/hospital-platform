@@ -38,10 +38,18 @@ export function MonthField({
     invalid?: boolean;
     describedBy?: string;
 }) {
-    const [value, setValue] = useState(defaultValue);
+    const [value, setValue] = useState(
+        /^\d{4}-\d{2}$/.test(defaultValue) && defaultValue <= max
+            ? defaultValue
+            : max,
+    );
     const [year, month] = value.split('-');
     const maxYear = Number(max.slice(0, 4));
     const years = Array.from({ length: 5 }, (_, index) => maxYear - index);
+
+    if (!years.includes(Number(year))) {
+        years.push(Number(year));
+    }
     const set = (nextYear: string, nextMonth: string) => {
         const next = `${nextYear}-${nextMonth}`;
         setValue(next > max ? max : next);
