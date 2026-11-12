@@ -4,7 +4,7 @@ Atualizado em 12/11/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes 
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS multi-cliente. Entregas concluídas e mescladas: V1 (escalas, presença, trocas), 2 a 4c (ambulatório, urgência, internação e leitos, prescrição e farmácia, estoque), 5 e 5b (exames e cirurgia) e 6 (faturamento de convênio, TISS). Em andamento: a entrega 6b (faturamento SUS: BPA e AIH; plano `plans/web-v9-sus.md`, ADR-0011), mesclada até a 6b.6b1 (#143); as tabelas oficiais do SISAIH01 estão em `resources/sus/aih/` (#144, #145). Último CI verde da `main`: `97655a7` (12/11/2026).
+Plataforma hospitalar SaaS multi-cliente. Entregas concluídas e mescladas: V1 (escalas, presença, trocas), 2 a 4c (ambulatório, urgência, internação e leitos, prescrição e farmácia, estoque), 5 e 5b (exames e cirurgia), 6 (faturamento de convênio, TISS) e 6b (faturamento SUS: BPA e AIH; plano `plans/web-v9-sus.md`, ADR-0011) concluída com a revisão integrada 6b.8. Em preparação: a entrega 7 (portal do paciente). Último CI verde da `main`: `97655a7` (12/11/2026).
 
 ## Ponto exato de retomada
 
