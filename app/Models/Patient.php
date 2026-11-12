@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -140,6 +141,16 @@ class Patient extends Model
             $current->forceFill(['undone_at' => now(), 'undone_by_user_id' => Auth::id(), 'undo_reason' => $reason])->save();
             AuditEvent::record('patient.merge_undone', $duplicate->tenant_id, $duplicate, ['merge_id' => $current->id, 'primary_patient_id' => $current->primary_patient_id]);
         });
+    }
+
+    /**
+     * Step 7a.1b: the patient's portal account in this network, if any.
+     *
+     * @return HasOne<PatientAccount, $this>
+     */
+    public function account(): HasOne
+    {
+        return $this->hasOne(PatientAccount::class);
     }
 
     /**

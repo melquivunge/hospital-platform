@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendPortalAccessMail;
 use App\Models\AuditEvent;
 use App\Models\Patient;
 use App\Models\PatientAccount;
@@ -50,15 +51,15 @@ class PortalSignupController extends Controller
         }
 
         $key = 'portal-signup|'.self::network()['slug'].'|'.$cpf;
-        $accountId = 0;
 
+        // Same answer time whatever was typed: the lookup and the code run after the response.
         if (! RateLimiter::tooManyAttempts($key, self::PER_CPF)) {
             RateLimiter::hit($key, 3600);
-            $accountId = self::sendCode($cpf, $data['birth_date']);
+            SendPortalAccessMail::afterAnswer(app(CurrentTenant::class)->require()->id, 'signup', ['cpf' => $cpf, 'birth_date' => $data['birth_date']]);
         }
 
-        // Unknown data keep a pending sign-up too, so the next screen is the same.
-        $request->session()->put('portal.signup', ['account' => $accountId, 'attempts' => 0]);
+        // The (encrypted) session keeps what was typed; the code is checked against the account it leads to.
+        $request->session()->put('portal.signup', ['cpf' => $cpf, 'birth_date' => $data['birth_date'], 'attempts' => 0]);
 
         return to_route('portal.signup.code', ['portal' => self::network()['slug']]);
     }
@@ -94,7 +95,7 @@ class PortalSignupController extends Controller
 
         $code = preg_replace('/\D/', '', $data['code']) ?? '';
         $token = DB::transaction(function () use ($pending, $code) {
-            $account = PatientAccount::query()->whereKey((int) ($pending['account'] ?? 0))->lockForUpdate()->first();
+            $account = PatientAccount::query()->whereKey(self::eligiblePatient((string) ($pending['cpf'] ?? ''), (string) ($pending['birth_date'] ?? ''))?->account()->value('id'))->lockForUpdate()->first();
 
             if ($account === null || $account->signup_code_hash === null || $account->signup_code_expires_at?->isPast() !== false
                 || $account->signup_code_attempts >= self::CODE_ATTEMPTS || ! self::stillEligible($account)) {
@@ -127,12 +128,22 @@ class PortalSignupController extends Controller
      * The account the code went to, or 0 when the data match no adult, complete patient with an e-mail
      * (or the patient already chose a password: "Esqueci minha senha" covers that).
      */
-    private static function sendCode(string $cpf, string $birthDate): int
+    /**
+     * The adult, complete, unmerged patient with an e-mail these data lead to.
+     */
+    private static function eligiblePatient(string $cpf, string $birthDate): ?Patient
     {
-        $patient = Patient::query()->where('cpf', $cpf)->whereDate('birth_date', $birthDate)
+        $patient = $cpf === '' || $birthDate === '' ? null : Patient::query()->where('cpf', $cpf)->whereDate('birth_date', $birthDate)
             ->whereNull('merged_into_id')->where('status', 'complete')->whereNotNull('email')->first();
 
-        if ($patient === null || $patient->birth_date === null || $patient->birth_date->age < PatientPortalInviteController::ADULT_AGE) {
+        return $patient?->birth_date !== null && $patient->birth_date->age >= PatientPortalInviteController::ADULT_AGE ? $patient : null;
+    }
+
+    public static function sendCode(string $cpf, string $birthDate): int
+    {
+        $patient = self::eligiblePatient($cpf, $birthDate);
+
+        if ($patient === null) {
             return 0;
         }
 

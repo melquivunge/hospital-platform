@@ -26,6 +26,18 @@ abstract class TestCase extends BaseTestCase
         // The fixtures use fixed dates in November 2026; a fixed clock keeps them in the future
         // whatever the calendar says (they broke on 12/11/2026). Tests may still travel elsewhere.
         $this->travelTo('2026-10-29 12:00:00');
+
+        // The database's stock guards read app_now(): give them the same (travelling) clock as the application,
+        // or a fixture valid on the test date fails once the calendar passes it.
+        $sent = null;
+        DB::connection()->beforeExecuting(function (string $query) use (&$sent) {
+            $now = now()->toIso8601String();
+
+            if ($now !== $sent && ! str_contains($query, 'app.now')) {
+                $sent = $now;
+                DB::connection()->select("select set_config('app.now', ?, false)", [$now]);
+            }
+        });
     }
 
     /**

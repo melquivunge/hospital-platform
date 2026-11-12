@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendPortalAccessMail;
 use App\Models\AuditEvent;
 use App\Models\PatientAccount;
 use App\Notifications\PortalAccessLink;
@@ -90,12 +91,8 @@ class PortalAuthController extends Controller
     public function forgot(Request $request): RedirectResponse
     {
         $data = $request->validate(['email' => ['required', 'string', 'email', 'max:255']]);
-        $account = self::byEmail($data['email']);
-
-        // Only an account that already chose a password: a pending invitation is renewed by the reception.
-        if ($account !== null && $account->password !== null) {
-            self::sendLink($account, invitation: false);
-        }
+        // Same answer time with or without an account: the lookup runs after the response.
+        SendPortalAccessMail::afterAnswer(app(CurrentTenant::class)->require()->id, 'password', ['email' => $data['email']]);
 
         return back()->with('status', 'Se este e-mail tiver acesso ao portal, enviamos um link para criar uma nova senha.');
     }
@@ -146,7 +143,8 @@ class PortalAuthController extends Controller
         // Never the request's Host: a forged one would send the patient a real e-mail with someone else's link.
         $url = rtrim((string) config('app.url'), '/').route('portal.setup', ['portal' => $tenant->slug, 'token' => $account->issueSetupToken()], false);
         AuditEvent::record($invitation ? 'patient_portal.invited' : 'patient_portal.reset_requested', $account->tenant_id, $account, $invitation ? ['document_checked' => true] : [], byStaff: $invitation);
-        Notification::route('mail', $account->email)->notify(new PortalAccessLink($url, $tenant->name, $invitation));
+        // Sent now: a queued payload would keep the live link.
+        Notification::route('mail', $account->email)->notifyNow(new PortalAccessLink($url, $tenant->name, $invitation));
     }
 
     private static function signIn(Request $request, PatientAccount $account): void
