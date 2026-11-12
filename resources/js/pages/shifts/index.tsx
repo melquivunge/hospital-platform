@@ -14,7 +14,7 @@ import {
 } from '@/components/shift-display';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
+import { cn, timezoneLabel } from '@/lib/utils';
 import { index, show } from '@/routes/shifts';
 import { create } from '@/routes/units/shifts';
 
@@ -167,7 +167,7 @@ export default function ShiftsIndex({
                 <PageHeader
                     eyebrow="Escala"
                     title="Plantões"
-                    description={`Horários no fuso da unidade (${unit.timezone?.replaceAll('_', ' ') ?? 'não informado'}). Rascunhos não são escala confirmada.`}
+                    description={`Horários no fuso da unidade (${timezoneLabel(unit.timezone)}). Rascunhos não são escala confirmada.`}
                     actions={
                         canManage &&
                         unit.complete && (

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { money } from '@/lib/utils';
+import { index as billingAccounts } from '@/routes/billing-accounts';
 import { index } from '@/routes/billing-lots';
 
 type ReadyGroup = {
@@ -82,7 +83,7 @@ export default function BillingLotsIndex({
                 <PageHeader
                     eyebrow={unit?.name}
                     title="Lotes TISS"
-                    description="Contas de convênio fechadas, agrupadas por convênio, competência e tipo de guia, para gerar o lote de envio à operadora."
+                    description="TISS é o padrão da ANS para a troca de dados com as operadoras. Contas de convênio fechadas, agrupadas por convênio, competência e tipo de guia, para gerar o lote de envio à operadora."
                 />
                 {units.length > 1 && (
                     <div className="mb-6 grid w-full max-w-sm gap-2">
@@ -117,9 +118,20 @@ export default function BillingLotsIndex({
                     </h2>
                     <InputError message={lotError} className="mb-3" />
                     {ready.length === 0 ? (
-                        <p className="rounded-xl border bg-card px-5 py-12 text-center text-muted-foreground">
-                            Nenhuma conta de convênio fechada fora de lote.
-                        </p>
+                        <div className="rounded-xl border bg-card px-5 py-12 text-center">
+                            <p className="text-muted-foreground">
+                                Nenhuma conta de convênio fechada fora de lote.
+                            </p>
+                            <Button
+                                asChild
+                                variant="outline"
+                                className="mt-4 min-h-11"
+                            >
+                                <Link href={billingAccounts()}>
+                                    Ver contas para fechar
+                                </Link>
+                            </Button>
+                        </div>
                     ) : (
                         <ul className="divide-y rounded-xl border bg-card">
                             {ready.map((group) => (

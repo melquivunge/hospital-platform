@@ -2,6 +2,7 @@ import { Form, Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
 import ShiftController from '@/actions/App/Http/Controllers/ShiftController';
 import InputError from '@/components/input-error';
+import { timezoneLabel } from '@/lib/utils';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,7 +49,7 @@ export default function ShiftForm({
                 <PageHeader
                     eyebrow={unit.name}
                     title={title}
-                    description={`Informe os horários no fuso da unidade (${unit.timezone?.replaceAll('_', ' ') ?? 'não informado'}). O plantão é salvo como rascunho; publique depois de revisar.`}
+                    description={`Informe os horários no fuso da unidade (${timezoneLabel(unit.timezone)}). O plantão é salvo como rascunho; publique depois de revisar.`}
                 />
 
                 <Form

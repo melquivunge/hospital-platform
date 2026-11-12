@@ -31,7 +31,7 @@ export default function SigtapIndex({
                 <PageHeader
                     eyebrow="Faturamento SUS"
                     title="Tabela SIGTAP"
-                    description="Procedimentos, valores e compatibilidades do SUS por competência. Baixe o ZIP oficial no site da SIGTAP (TabelaUnificada_AAAAMM) e importe aqui a cada mês."
+                    description="SIGTAP é a tabela oficial do SUS (Sistema de Gerenciamento da Tabela de Procedimentos): procedimentos, valores e compatibilidades do SUS por competência. Baixe o ZIP oficial no site da SIGTAP (TabelaUnificada_AAAAMM) e importe aqui a cada mês."
                 />
                 <Form
                     {...SigtapController.store.form()}
