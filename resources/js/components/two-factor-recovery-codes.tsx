@@ -112,7 +112,7 @@ export default function TwoFactorRecoveryCodes({
                                     ref={codesSectionRef}
                                     className="grid gap-1 rounded-lg bg-muted p-4 font-mono text-sm"
                                     role="list"
-                                    aria-label="Recovery codes"
+                                    aria-label="Códigos de recuperação"
                                 >
                                     {recoveryCodesList.length ? (
                                         recoveryCodesList.map((code, index) => (
@@ -127,7 +127,7 @@ export default function TwoFactorRecoveryCodes({
                                     ) : (
                                         <div
                                             className="space-y-2"
-                                            aria-label="Loading recovery codes"
+                                            aria-label="Carregando códigos de recuperação"
                                         >
                                             {Array.from(
                                                 { length: 8 },
