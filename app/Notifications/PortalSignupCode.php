@@ -2,19 +2,15 @@
 
 namespace App\Notifications;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
  * Step 7a.1b: the code that proves the self sign-up comes from whoever reads the e-mail on file.
- * No name and no clinical data.
+ * No name and no clinical data. Not queued: the payload would keep the live code in plain text.
  */
-class PortalSignupCode extends Notification implements ShouldQueue
+class PortalSignupCode extends Notification
 {
-    use Queueable;
-
     public function __construct(public readonly string $code, public readonly string $network) {}
 
     /**

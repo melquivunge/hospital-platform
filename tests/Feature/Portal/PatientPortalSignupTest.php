@@ -3,8 +3,13 @@
 namespace Tests\Feature\Portal;
 
 use App\Models\AuditEvent;
+use App\Models\Membership;
+use App\Models\Patient;
 use App\Models\PatientAccount;
+use App\Notifications\PortalAccessLink;
 use App\Notifications\PortalSignupCode;
+use App\Tenancy\CurrentTenant;
+use App\Tenancy\Role;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Testing\TestResponse;
@@ -115,7 +120,8 @@ class PatientPortalSignupTest extends ClinicalTestCase
         for ($i = 0; $i < 5; $i++) {
             $this->verify($wrong)->assertSessionHasErrors('code');
         }
-        $this->verify($code)->assertSessionHasErrors('code');
+        // The sixth try ends the sign-up with a message on the first screen.
+        $this->verify($code)->assertRedirect(route('portal.signup', ['portal' => $this->slug]))->assertSessionHas('status', 'Tentativas esgotadas. Peça um novo código.');
         $this->assertNull(PatientAccount::withoutTenantScope()->sole()->setup_token_hash);
 
         // A new code, then too late.
@@ -130,12 +136,86 @@ class PatientPortalSignupTest extends ClinicalTestCase
 
     public function test_requests_per_cpf_are_limited_from_any_address(): void
     {
+        // Each after the previous code expired, so each would send one.
         for ($i = 0; $i < 3; $i++) {
             $this->withServerVariables(['REMOTE_ADDR' => "10.1.0.{$i}"])->start();
+            $this->travel(11)->minutes();
         }
         Notification::assertSentOnDemandTimes(PortalSignupCode::class, 3);
 
         $this->withServerVariables(['REMOTE_ADDR' => '10.2.0.1'])->start();
         Notification::assertSentOnDemandTimes(PortalSignupCode::class, 3);
+    }
+
+    public function test_asking_again_keeps_a_code_still_valid(): void
+    {
+        $this->start();
+        $code = $this->sentCode();
+        $this->start();
+        $this->start();
+
+        // No new e-mail: whoever knows the CPF and the birth date cannot replace the patient's code.
+        Notification::assertSentOnDemandTimes(PortalSignupCode::class, 1);
+        $this->verify($code)->assertRedirect();
+        $this->assertNotNull(PatientAccount::withoutTenantScope()->sole()->setup_token_hash);
+    }
+
+    public function test_a_pending_invitation_is_replaced_and_a_new_code_resets_the_attempts(): void
+    {
+        $this->actingAs($this->reception->user, 'web')->post(route('patients.portal-invite', $this->patient), ['document_checked' => '1'])->assertSessionHasNoErrors();
+        $invitationToken = '';
+        Notification::assertSentOnDemand(PortalAccessLink::class, function (PortalAccessLink $notification) use (&$invitationToken) {
+            $invitationToken = basename($notification->url);
+
+            return true;
+        });
+        auth()->guard('web')->logout();
+        Notification::fake();
+
+        $this->start();
+        $first = $this->sentCode();
+        $this->verify($first === '000000' ? '111111' : '000000')->assertSessionHasErrors('code');
+        Notification::fake();
+        $this->travel(2)->hours();
+        $this->start();
+        $second = $this->sentCode();
+        $this->assertSame(0, PatientAccount::withoutTenantScope()->sole()->signup_code_attempts);
+        $this->verify($first)->assertSessionHasErrors('code');
+
+        $this->verify($second)->assertRedirect();
+        // The same account, now with a new single-use link; the invitation's link no longer works.
+        $this->assertSame(1, PatientAccount::withoutTenantScope()->count());
+        $this->get(route('portal.setup', ['portal' => $this->slug, 'token' => $invitationToken]))->assertInertia(fn (Assert $page) => $page->where('valid', false));
+    }
+
+    public function test_an_e_mail_used_by_another_patients_account_or_another_network_sends_nothing(): void
+    {
+        // Another patient here already has a portal account with this e-mail.
+        $this->actingAs($this->reception->user, 'web')->post(route('patients.store'), ['registered_unit_id' => $this->unit->id, 'name' => 'Outra Pessoa', 'birth_date' => '1970-01-01', 'sex' => 'male'])->assertSessionHasNoErrors();
+        $other = Patient::withoutTenantScope()->latest('id')->firstOrFail();
+        $other->forceFill(['cpf' => '11144477735', 'email' => 'joana@example.com'])->save();
+        $this->post(route('patients.portal-invite', $other), ['document_checked' => '1'])->assertSessionHasNoErrors();
+        auth()->guard('web')->logout();
+        Notification::fake();
+
+        $this->start();
+        Notification::assertNothingSent();
+
+        // The same CPF and birth date mean nothing on another network's portal.
+        app(CurrentTenant::class)->set(null);
+        $elsewhere = Membership::factory()->withRole(Role::NetworkAdmin)->create()->tenant()->firstOrFail();
+        $this->post(route('portal.signup.store', ['portal' => $elsewhere->slug]), ['cpf' => '529.982.247-25', 'birth_date' => '1990-01-02'])
+            ->assertRedirect(route('portal.signup.code', ['portal' => $elsewhere->slug]));
+        Notification::assertNothingSent();
+    }
+
+    public function test_the_code_stops_working_when_the_record_changes(): void
+    {
+        $this->start();
+        $code = $this->sentCode();
+        $this->patient->forceFill(['email' => 'outro@example.com'])->save();
+
+        $this->verify($code)->assertSessionHasErrors('code');
+        $this->assertNull(PatientAccount::withoutTenantScope()->sole()->setup_token_hash);
     }
 }

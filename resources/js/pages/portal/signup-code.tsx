@@ -18,7 +18,7 @@ export default function PortalSignupCode({
                 <h1 className="text-2xl font-semibold tracking-tight">
                     Digite o código
                 </h1>
-                <p role="status" className="mt-2 text-sm text-muted-foreground">
+                <p className="mt-2 text-sm text-muted-foreground">
                     Se os dados conferirem com um cadastro que tenha e-mail,
                     enviamos um código de 6 dígitos para o e-mail do cadastro.
                     Ele vale por 10 minutos.
@@ -38,7 +38,6 @@ export default function PortalSignupCode({
                                     name="code"
                                     inputMode="numeric"
                                     autoComplete="one-time-code"
-                                    maxLength={6}
                                     required
                                     autoFocus
                                     aria-invalid={!!errors.code}

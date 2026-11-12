@@ -9,8 +9,10 @@ import { Spinner } from '@/components/ui/spinner';
 
 export default function PortalSignup({
     network,
+    status,
 }: {
     network: { name: string; slug: string };
+    status?: string;
 }) {
     return (
         <>
@@ -24,6 +26,15 @@ export default function PortalSignup({
                     {network.name}. Se os dados conferirem, enviamos um código
                     para o e-mail do cadastro.
                 </p>
+
+                {status && (
+                    <p
+                        role="status"
+                        className="mt-6 rounded-md border bg-card px-4 py-3 text-sm"
+                    >
+                        {status}
+                    </p>
+                )}
 
                 <Form
                     {...PortalSignupController.start.form(network.slug)}
@@ -63,9 +74,17 @@ export default function PortalSignup({
                                     required
                                     autoComplete="bday"
                                     aria-invalid={!!errors.birth_date}
+                                    aria-describedby={
+                                        errors.birth_date
+                                            ? 'birth-date-error'
+                                            : undefined
+                                    }
                                     className="h-11"
                                 />
-                                <InputError message={errors.birth_date} />
+                                <InputError
+                                    id="birth-date-error"
+                                    message={errors.birth_date}
+                                />
                             </div>
                             <Button
                                 type="submit"

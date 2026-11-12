@@ -25,6 +25,7 @@ return new class extends Migration
 
     public function down(): void
     {
+        // invited_by_user_id stays nullable: self sign-up rows have no inviter, so NOT NULL could not come back.
         DB::statement('ALTER TABLE patient_accounts DROP CONSTRAINT patient_accounts_signup_code_check');
         Schema::table('patient_accounts', function (Blueprint $table) {
             $table->dropColumn(['signup_code_hash', 'signup_code_expires_at', 'signup_code_attempts']);

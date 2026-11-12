@@ -32,9 +32,9 @@ class PortalSignupController extends Controller
     /** Sign-up requests per CPF in an hour, from any address. */
     private const PER_CPF = 3;
 
-    public function show(): Response
+    public function show(Request $request): Response
     {
-        return Inertia::render('portal/signup', ['network' => self::network()]);
+        return Inertia::render('portal/signup', ['network' => self::network(), 'status' => $request->session()->get('status')]);
     }
 
     public function start(Request $request): RedirectResponse
@@ -89,7 +89,7 @@ class PortalSignupController extends Controller
         if ($pending['attempts'] > self::CODE_ATTEMPTS) {
             $request->session()->forget('portal.signup');
 
-            throw ValidationException::withMessages(['code' => 'Tentativas esgotadas. Peça um novo código.']);
+            return to_route('portal.signup', ['portal' => self::network()['slug']])->with('status', 'Tentativas esgotadas. Peça um novo código.');
         }
 
         $code = preg_replace('/\D/', '', $data['code']) ?? '';
@@ -97,7 +97,7 @@ class PortalSignupController extends Controller
             $account = PatientAccount::query()->whereKey((int) ($pending['account'] ?? 0))->lockForUpdate()->first();
 
             if ($account === null || $account->signup_code_hash === null || $account->signup_code_expires_at?->isPast() !== false
-                || $account->signup_code_attempts >= self::CODE_ATTEMPTS) {
+                || $account->signup_code_attempts >= self::CODE_ATTEMPTS || ! self::stillEligible($account)) {
                 return null;
             }
 
@@ -146,6 +146,12 @@ class PortalSignupController extends Controller
                     return null;
                 }
 
+                // A code still valid is kept: asking again (or someone who knows the CPF and the birth date)
+                // never replaces the one the patient may be typing. The screen already says to check the e-mail.
+                if ($account?->signup_code_expires_at?->isFuture() === true) {
+                    return ['account' => $account, 'sent' => false];
+                }
+
                 $account ??= new PatientAccount;
                 $account->forceFill(['tenant_id' => $patient->tenant_id, 'patient_id' => $patient->id, 'email' => $patient->email])->save();
                 $account->forceFill([
@@ -154,7 +160,7 @@ class PortalSignupController extends Controller
                     'signup_code_attempts' => 0,
                 ])->save();
 
-                return $account;
+                return ['account' => $account, 'sent' => true];
             });
         } catch (UniqueConstraintViolationException) {
             // The e-mail is another patient's account here: the reception sorts it out.
@@ -165,10 +171,25 @@ class PortalSignupController extends Controller
             return 0;
         }
 
-        AuditEvent::record('patient_portal.signup_code_sent', $account->tenant_id, $account, byStaff: false);
-        Notification::route('mail', $account->email)->notify(new PortalSignupCode($code, self::network()['name']));
+        if ($account['sent']) {
+            AuditEvent::record('patient_portal.signup_code_sent', $account['account']->tenant_id, $account['account'], byStaff: false);
+            // Sent now, never through the queue: the queued payload would keep the live code in plain text.
+            Notification::route('mail', $account['account']->email)->notifyNow(new PortalSignupCode($code, self::network()['name']));
+        }
 
-        return $account->id;
+        return $account['account']->id;
+    }
+
+    /**
+     * The patient may have been merged, edited or lost the e-mail since the code went out.
+     */
+    private static function stillEligible(PatientAccount $account): bool
+    {
+        $patient = Patient::query()->find($account->patient_id);
+
+        return $patient !== null && $patient->merged_into_id === null && $patient->status === 'complete'
+            && $patient->email !== null && mb_strtolower($patient->email) === mb_strtolower($account->email)
+            && $patient->birth_date !== null && $patient->birth_date->age >= PatientPortalInviteController::ADULT_AGE;
     }
 
     private static function codeHash(PatientAccount $account, string $code): string
