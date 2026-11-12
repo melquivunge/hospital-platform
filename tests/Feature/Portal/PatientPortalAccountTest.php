@@ -183,4 +183,67 @@ class PatientPortalAccountTest extends ClinicalTestCase
         $this->post(route('portal.login.store', ['portal' => $this->slug]), ['email' => 'joana.prado@example.com', 'password' => 'Senha-forte-123']);
         $this->get(route('portal.home', ['portal' => $this->slug]))->assertInertia(fn (Assert $page) => $page->where('patient.name', 'Joana Prado Lima'));
     }
+
+    public function test_the_e_mail_link_never_uses_the_request_host(): void
+    {
+        $this->activate();
+        Notification::fake();
+
+        $this->withHeader('Host', 'malicioso.example')->post(route('portal.forgot.store', ['portal' => $this->slug]), ['email' => 'joana.prado@example.com']);
+
+        Notification::assertSentOnDemand(PortalAccessLink::class, fn (PortalAccessLink $notification) => str_starts_with($notification->url, rtrim((string) config('app.url'), '/').'/portal/'.$this->slug.'/criar-senha/'));
+    }
+
+    public function test_a_staff_request_after_a_portal_request_uses_the_staff_guard(): void
+    {
+        $this->activate();
+        $this->post(route('portal.login.store', ['portal' => $this->slug]), ['email' => 'joana.prado@example.com', 'password' => 'Senha-forte-123']);
+        $this->get(route('portal.home', ['portal' => $this->slug]))->assertOk();
+
+        // No guard named: the default must be the staff one again.
+        $this->actingAs($this->reception->user)->get(route('patients.show', $this->patient))->assertOk();
+        $this->assertSame('web', config('auth.defaults.guard'));
+    }
+
+    public function test_a_new_invitation_replaces_the_old_link_and_a_new_password_ends_other_sessions(): void
+    {
+        $first = $this->invite();
+        Notification::fake();
+        $second = $this->invite();
+        $this->assertNotSame($first, $second);
+        $this->get(route('portal.setup', ['portal' => $this->slug, 'token' => $first]))->assertInertia(fn (Assert $page) => $page->where('valid', false));
+
+        $this->post(route('portal.setup.store', ['portal' => $this->slug, 'token' => $second]), ['password' => 'Senha-forte-123', 'password_confirmation' => 'Senha-forte-123']);
+        $this->assertAuthenticated('patient');
+        $session = session()->all();
+
+        // The patient asks for a new password elsewhere and sets it.
+        $account = PatientAccount::withoutTenantScope()->sole();
+        app(CurrentTenant::class)->set($account->tenant()->firstOrFail());
+        $token = $account->issueSetupToken();
+        auth()->guard('patient')->logout();
+        $this->flushSession();
+        $this->post(route('portal.setup.store', ['portal' => $this->slug, 'token' => $token]), ['password' => 'Senha-nova-456', 'password_confirmation' => 'Senha-nova-456']);
+        auth()->guard('patient')->logout();
+
+        // The old session (old password's fingerprint) no longer opens the portal.
+        $this->withSession($session)->get(route('portal.home', ['portal' => $this->slug]))->assertRedirect(route('portal.login', ['portal' => $this->slug]));
+        // The reception acts as itself; the patient's own steps have no staff actor.
+        $this->assertSame([$this->reception->user_id], AuditEvent::where('action', 'patient_portal.invited')->pluck('actor_user_id')->unique()->values()->all());
+        $this->assertSame([null], AuditEvent::where('action', 'patient_portal.password_set')->pluck('actor_user_id')->unique()->values()->all());
+        $this->assertTrue(AuditEvent::where('action', 'patient_portal.invited')->get()->every(fn (AuditEvent $event) => $event->context === ['document_checked' => true]));
+    }
+
+    public function test_the_account_limit_holds_across_addresses(): void
+    {
+        $this->activate();
+        $login = route('portal.login.store', ['portal' => $this->slug]);
+
+        for ($i = 0; $i < 20; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => '10.0.'.intdiv($i, 4).'.'.($i % 4 + 1)])->post($login, ['email' => 'joana.prado@example.com', 'password' => 'errada']);
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '10.9.9.9'])->post($login, ['email' => 'joana.prado@example.com', 'password' => 'Senha-forte-123'])->assertSessionHasErrors('email');
+        $this->assertGuest('patient');
+    }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Controllers\Portal\PortalAuthController;
 use App\Models\PatientAccount;
 use App\Models\Tenant;
 use App\Tenancy\CurrentTenant;
@@ -35,10 +36,12 @@ class ResolvePortalTenant
         $account = $guard->user();
         $lastSeen = $request->session()->get('portal.last_seen');
         $idle = is_int($lastSeen) && now()->getTimestamp() - $lastSeen > self::IDLE_MINUTES * 60;
+        // A password set elsewhere (forgotten-password link) ends this session.
+        $stale = $account !== null && $request->session()->get('portal.password') !== PortalAuthController::passwordFingerprint($account);
 
-        if ($account !== null && ($account->tenant_id !== $tenant->id || $idle)) {
+        if ($account !== null && ($account->tenant_id !== $tenant->id || $idle || $stale)) {
             $guard->logout();
-            $request->session()->forget('portal.last_seen');
+            $request->session()->forget(['portal.last_seen', 'portal.password']);
             $request->session()->regenerateToken();
 
             return redirect()->route('portal.login', ['portal' => $tenant->slug])

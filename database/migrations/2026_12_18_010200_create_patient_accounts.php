@@ -1,5 +1,6 @@
 <?php
 
+use App\Clinical\ClinicalSchema;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,8 @@ return new class extends Migration
         // One account per e-mail in a network, whatever the case.
         DB::statement('CREATE UNIQUE INDEX patient_accounts_tenant_email_unique ON patient_accounts (tenant_id, lower(email))');
         DB::statement('ALTER TABLE patient_accounts ADD CONSTRAINT patient_accounts_token_check CHECK ((setup_token_hash IS NULL) = (setup_token_expires_at IS NULL))');
+        // E-mails and password hashes of patients: the database isolates each network too (ADR-0012).
+        ClinicalSchema::protect('patient_accounts');
     }
 
     public function down(): void

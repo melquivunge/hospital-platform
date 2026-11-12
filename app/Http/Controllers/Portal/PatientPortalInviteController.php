@@ -27,6 +27,7 @@ class PatientPortalInviteController extends Controller
         $request->validate(['document_checked' => ['accepted']], ['document_checked.accepted' => 'Confira o documento do paciente antes de convidar.']);
 
         $problem = match (true) {
+            $patient->merged_into_id !== null => 'Este cadastro foi unificado. Convide pelo cadastro principal.',
             $patient->status !== 'complete' => 'Complete o cadastro (documento, data de nascimento e sexo) antes de convidar.',
             $patient->email === null => 'Cadastre o e-mail do paciente antes de convidar.',
             $patient->birth_date !== null && $patient->birth_date->age < self::ADULT_AGE => 'Paciente menor de idade: o acesso será pelo responsável legal.',
