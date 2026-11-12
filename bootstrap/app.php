@@ -3,8 +3,10 @@
 use App\Http\Middleware\EnsureAccountIsActive;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\ResolvePortalTenant;
 use App\Http\Middleware\ResolveTenant;
 use App\Http\Middleware\ThrottleRequestsPerRoute;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -29,7 +31,13 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
-        $middleware->alias(['tenant' => ResolveTenant::class, 'throttle' => ThrottleRequestsPerRoute::class]);
+        $middleware->alias(['tenant' => ResolveTenant::class, 'portal' => ResolvePortalTenant::class, 'throttle' => ThrottleRequestsPerRoute::class]);
+        // Step 7a.1a: the portal's network must be set before the patient guard reads its account.
+        $middleware->prependToPriorityList(AuthenticatesRequests::class, ResolvePortalTenant::class);
+        // A guest of the portal goes to the portal's sign-in, never to the staff one.
+        $middleware->redirectGuestsTo(fn (Request $request) => $request->is('portal/*') && is_string($request->route('portal'))
+            ? route('portal.login', ['portal' => $request->route('portal')])
+            : route('login'));
         // Tenant context must exist before route model binding resolves tenant-scoped models.
         $middleware->prependToPriorityList(SubstituteBindings::class, ResolveTenant::class);
 

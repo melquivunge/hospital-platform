@@ -9,6 +9,7 @@ use App\Clinical\PatientIdentity;
 use App\Http\Requests\Clinical\PatientRequest;
 use App\Models\AuditEvent;
 use App\Models\Patient;
+use App\Models\PatientAccount;
 use App\Models\PatientMerge;
 use App\Models\Unit;
 use App\Policies\PatientPolicy;
@@ -145,6 +146,10 @@ class PatientController extends Controller
                     'cpf' => PatientIdentity::maskCpf($merge->duplicate?->cpf),
                 ]),
             'canUpdate' => Gate::allows('update', $patient),
+            // Step 7a.1a: whether the patient reaches the portal (never the link itself).
+            'portal' => (fn (?PatientAccount $account) => $account === null ? 'none' : ($account->password === null ? 'invited' : 'active'))(
+                PatientAccount::query()->where('patient_id', $patient->id)->first()
+            ),
         ]);
     }
 

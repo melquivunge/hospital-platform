@@ -31,6 +31,7 @@ use App\Policies\UnitPolicy;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -63,6 +64,15 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        // Step 7a.1a (ADR-0012): the patient portal gets none of the staff's props; there the patient
+        // guard is the default one, and no staff permission is ever computed for a patient account.
+        if ($request->is('portal/*')) {
+            // Shared props live in a singleton: drop any staff ones left by an earlier request of this process.
+            Inertia::flushShared();
+
+            return [...parent::share($request), 'name' => config('app.name')];
+        }
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),

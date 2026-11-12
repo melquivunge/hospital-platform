@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\PatientAccount;
 use App\Tenancy\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Logout;
@@ -27,6 +28,18 @@ class AppServiceProvider extends ServiceProvider
     {
         // Scoped: reset between requests and queue jobs, so a tenant context never leaks to the next one.
         $this->app->scoped(CurrentTenant::class);
+
+        // Step 7a.1a (ADR-0012): the patient portal's guard. Registered here, not in config/auth.php, and not
+        // while PHPStan reads the app: Larastan would type every staff $request->user() as User|PatientAccount,
+        // and the staff code never runs under this guard (ResolvePortalTenant restores "web"). The portal
+        // always names this guard.
+        // ponytail: static-analysis carve-out; drop it if Larastan gains a per-route guard type.
+        if (! defined('__PHPSTAN_RUNNING__')) {
+            config([
+                'auth.guards.patient' => ['driver' => 'session', 'provider' => 'patient_accounts'],
+                'auth.providers.patient_accounts' => ['driver' => 'eloquent', 'model' => PatientAccount::class],
+            ]);
+        }
     }
 
     /**
