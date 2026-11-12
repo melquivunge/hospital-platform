@@ -69,6 +69,13 @@ function addMonths(date: string, months: number) {
     return value.toISOString().slice(0, 10);
 }
 
+/** Today in the unit's time zone (YYYY-MM-DD), so "Hoje" matches the hospital's calendar. */
+function todayIn(timezone: string | null) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone ?? undefined,
+    }).format(new Date());
+}
+
 function daysBetween(from: string, to: string) {
     const days: string[] = [];
 
@@ -109,6 +116,7 @@ export default function ShiftsIndex({
     canManage: boolean;
 }) {
     const [showVacancies, setShowVacancies] = useState(true);
+    const today = todayIn(unit?.timezone ?? null);
     const shifts = showVacancies
         ? allShifts
         : allShifts.filter((shift) => shift.professional !== null);
@@ -207,7 +215,7 @@ export default function ShiftsIndex({
 
                     <nav
                         aria-label="Período"
-                        className="flex flex-wrap items-center gap-2"
+                        className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2 sm:w-auto"
                     >
                         <Button
                             variant="outline"
@@ -220,7 +228,7 @@ export default function ShiftsIndex({
                             </span>
                         </Button>
                         <p
-                            className="px-2 text-sm font-medium tabular-nums first-letter:uppercase"
+                            className="px-2 text-center text-sm font-medium tabular-nums first-letter:uppercase"
                             aria-live="polite"
                             aria-atomic="true"
                         >
@@ -256,6 +264,7 @@ export default function ShiftsIndex({
                         days={daysBetween(weekFrom, addDays(weekFrom, 6))}
                         markers={markers}
                         current={view === 'day' ? from : null}
+                        today={today}
                         onOpenDay={(date) => go({ view: 'day', date })}
                     />
                 )}
@@ -270,9 +279,19 @@ export default function ShiftsIndex({
                 )}
 
                 {view === 'day' && (
-                    <DaySection day={from} shifts={shifts} showAll />
+                    <DaySection
+                        day={from}
+                        shifts={shifts}
+                        today={today}
+                        showAll
+                    />
                 )}
-                {view === 'week' && (
+                {view === 'week' && shifts.length === 0 && (
+                    <p className="rounded-lg border bg-card px-5 py-4 text-sm text-muted-foreground">
+                        Nenhum plantão nesta semana.
+                    </p>
+                )}
+                {view === 'week' && shifts.length > 0 && (
                     <div className="grid gap-4">
                         {daysBetween(from, to).map((day) => (
                             <DaySection
@@ -281,6 +300,7 @@ export default function ShiftsIndex({
                                 shifts={shifts.filter((shift) =>
                                     coversDay(shift, day),
                                 )}
+                                today={today}
                                 showAll
                             />
                         ))}
@@ -302,10 +322,12 @@ export default function ShiftsIndex({
 function DaySection({
     day,
     shifts,
+    today,
     showAll = false,
 }: {
     day: string;
     shifts: ShiftSummary[];
+    today?: string;
     /** Label shifts that started on an earlier day ("Desde …"). */
     showAll?: boolean;
 }) {
@@ -325,6 +347,11 @@ function DaySection({
                 <span className="inline-block first-letter:uppercase">
                     {formatDay(day)}
                 </span>
+                {day === today && (
+                    <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
+                        Hoje
+                    </span>
+                )}
             </h2>
             {shifts.length === 0 ? (
                 <p className="px-5 py-4 text-sm text-muted-foreground">
@@ -378,11 +405,13 @@ function DayStrip({
     days,
     markers,
     current,
+    today,
     onOpenDay,
 }: {
     days: string[];
     markers: string[];
     current: string | null;
+    today: string;
     onOpenDay: (date: string) => void;
 }) {
     return (
@@ -393,6 +422,7 @@ function DayStrip({
             {days.map((day, position) => {
                 const busy = markers.includes(day);
                 const selected = day === current;
+                const isToday = day === today;
 
                 return (
                     <li key={day}>
@@ -400,12 +430,15 @@ function DayStrip({
                             type="button"
                             onClick={() => onOpenDay(day)}
                             aria-current={selected ? 'date' : undefined}
-                            aria-label={`${formatDay(day)}${busy ? ', com plantão' : ''}`}
+                            aria-label={`${isToday ? 'Hoje, ' : ''}${formatDay(day)}${busy ? ', com plantão' : ''}`}
                             className={cn(
                                 'flex min-h-14 w-full flex-col items-center justify-center gap-0.5 rounded-md text-xs focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
                                 selected
                                     ? 'bg-primary text-primary-foreground'
                                     : 'hover:bg-muted',
+                                isToday &&
+                                    !selected &&
+                                    'font-semibold text-primary ring-1 ring-primary',
                             )}
                         >
                             <span aria-hidden="true">
