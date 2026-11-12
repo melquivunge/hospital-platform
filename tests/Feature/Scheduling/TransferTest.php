@@ -109,6 +109,31 @@ class TransferTest extends TestCase
             ->assertSessionHasNoErrors();
     }
 
+    public function test_the_overview_shows_the_next_shift_and_what_waits_for_the_coordinator(): void
+    {
+        $this->travelTo('2026-11-01 12:00:00');
+        $this->actingAs($this->coordinator->user)->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page->where('pending', ['requests' => 0, 'occurrences' => 0])->where('nextShift', null));
+
+        $this->requestToBruno();
+        $this->actingAs($this->brunoAccess->user)->post(route('requests.respond', $this->request()), ['accept' => true])->assertSessionHasNoErrors();
+
+        $this->actingAs($this->coordinator->user)->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page->where('pending.requests', 1));
+        // The professional coordinates nothing: no pendencies, only their own next shift.
+        $this->actingAs($this->anaAccess->user)->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pending', null)
+                ->where('nextShift.id', $this->shift->id)
+                ->where('nextShift.date', '2026-11-12')
+                ->where('nextShift.unit', $this->unit->name));
+
+        // A shift that ended is no longer the next one.
+        $this->travelTo($this->shift->ends_at->addMinute());
+        $this->actingAs($this->anaAccess->user)->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page->where('nextShift', null));
+    }
+
     public function test_transfer_needs_acceptance_and_approval_before_the_shift_changes_hands(): void
     {
         $this->actingAs($this->anaAccess->user)->get(route('shifts.transfer.create', $this->shift))
