@@ -3,6 +3,7 @@ import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/surgery-overdue';
+import { index as breadcrumbParent } from '@/routes/surgery-overdue';
 
 type Row = {
     id: number;
@@ -132,3 +133,7 @@ export default function SurgeryOverdue({
         </>
     );
 }
+
+SurgeryOverdue.layout = {
+    breadcrumbs: [{ title: 'Cirurgias paradas', href: breadcrumbParent() }],
+};

@@ -5,6 +5,7 @@ import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SigtapProcedureField } from '@/components/sigtap-procedure-field';
@@ -567,6 +568,7 @@ function CloseBar({
     complements: number[];
 }) {
     const others = complements.filter((id) => id !== account.id);
+    const [confirming, setConfirming] = useState(false);
 
     return (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-5 py-4">
@@ -605,22 +607,47 @@ function CloseBar({
                     {...BillingAccountController.close.form(account.id)}
                     errorBag="close"
                     options={{ preserveScroll: true }}
-                    onBefore={() =>
-                        window.confirm(
-                            'Fechar a conta? Depois de fechada, ela não muda.',
-                        )
-                    }
+                    onSuccess={() => setConfirming(false)}
                     className="grid justify-items-end gap-1"
                 >
                     {({ processing, errors }) => (
                         <>
-                            <Button
-                                type="submit"
-                                disabled={processing || !canClose}
-                                className="min-h-11"
-                            >
-                                Fechar conta
-                            </Button>
+                            {confirming ? (
+                                <div className="flex flex-wrap items-center justify-end gap-3">
+                                    <p className="text-sm">
+                                        Fechar a conta de{' '}
+                                        <strong className="tabular-nums">
+                                            {money(account.totalCents)}
+                                        </strong>
+                                        ? Depois de fechada, ela não muda.
+                                    </p>
+                                    <Button
+                                        type="submit"
+                                        disabled={processing}
+                                        className="min-h-11"
+                                    >
+                                        {processing && <Spinner />}
+                                        Confirmar fechamento
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() => setConfirming(false)}
+                                        className="min-h-11"
+                                    >
+                                        Cancelar
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    type="button"
+                                    disabled={!canClose}
+                                    onClick={() => setConfirming(true)}
+                                    className="min-h-11"
+                                >
+                                    Fechar conta…
+                                </Button>
+                            )}
                             {!canClose && (
                                 <span className="text-xs text-muted-foreground">
                                     Fecha depois do encerramento ou da alta.

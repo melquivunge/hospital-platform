@@ -4,6 +4,7 @@ import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/pharmacy';
+import { index as breadcrumbParent } from '@/routes/pharmacy';
 
 /**
  * The pharmacy queue (step 4b.3a, ADR-0005): the valid prescriptions of the unit, those with items to review
@@ -138,3 +139,7 @@ export default function PharmacyIndex({
         </>
     );
 }
+
+PharmacyIndex.layout = {
+    breadcrumbs: [{ title: 'Farmácia', href: breadcrumbParent() }],
+};

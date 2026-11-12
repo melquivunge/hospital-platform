@@ -293,3 +293,7 @@ export default function ExamOrders({
         </>
     );
 }
+
+ExamOrders.layout = {
+    breadcrumbs: [{ title: 'Exames do paciente' }],
+};

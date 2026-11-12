@@ -346,3 +346,7 @@ export default function SurgeryOrders({
         </>
     );
 }
+
+SurgeryOrders.layout = {
+    breadcrumbs: [{ title: 'Cirurgias do paciente' }],
+};

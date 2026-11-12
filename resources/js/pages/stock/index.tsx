@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { create as newImport } from '@/routes/imports';
 import { index } from '@/routes/stock';
+import { index as breadcrumbParent } from '@/routes/stock';
 
 type Lot = {
     id: number;
@@ -566,3 +567,7 @@ function MinimumForm({
         </section>
     );
 }
+
+StockIndex.layout = {
+    breadcrumbs: [{ title: 'Estoque', href: breadcrumbParent() }],
+};

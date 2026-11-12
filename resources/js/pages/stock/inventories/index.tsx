@@ -7,6 +7,7 @@ import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { show } from '@/routes/stock/inventories';
+import { index as breadcrumbParent } from '@/routes/stock/inventories';
 
 type OpenUnit = {
     id: number;
@@ -178,3 +179,7 @@ function OpenForm({ units }: { units: OpenUnit[] }) {
         </section>
     );
 }
+
+InventoriesIndex.layout = {
+    breadcrumbs: [{ title: 'Inventários', href: breadcrumbParent() }],
+};

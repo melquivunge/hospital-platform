@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/stock/inventories';
+import { index as breadcrumbParent } from '@/routes/stock/inventories';
 
 type Line = {
     id: number;
@@ -413,3 +414,10 @@ function DecideForms({ inventoryId }: { inventoryId: number }) {
         </section>
     );
 }
+
+InventoryShow.layout = {
+    breadcrumbs: [
+        { title: 'Inventários', href: breadcrumbParent() },
+        { title: 'Contagem' },
+    ],
+};

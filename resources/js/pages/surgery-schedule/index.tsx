@@ -5,6 +5,7 @@ import { selectClassName } from '@/components/role-fields';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/surgery-schedule';
+import { index as breadcrumbParent } from '@/routes/surgery-schedule';
 
 type Summary = {
     id: number;
@@ -210,3 +211,7 @@ export default function SurgerySchedule({
         </>
     );
 }
+
+SurgerySchedule.layout = {
+    breadcrumbs: [{ title: 'Agenda cirúrgica', href: breadcrumbParent() }],
+};

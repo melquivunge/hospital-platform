@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { money } from '@/lib/utils';
 import { index } from '@/routes/billing-prices';
+import { index as breadcrumbParent } from '@/routes/billing-prices';
 
 type Item = {
     id: number;
@@ -788,3 +789,7 @@ function InsurerContractItem({
         </li>
     );
 }
+
+BillingPricesIndex.layout = {
+    breadcrumbs: [{ title: 'Preços', href: breadcrumbParent() }],
+};

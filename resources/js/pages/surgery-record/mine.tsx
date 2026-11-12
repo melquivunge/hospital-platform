@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import SurgeryRecordController from '@/actions/App/Http/Controllers/SurgeryRecordController';
 import { Page, PageHeader } from '@/components/page';
+import { mine as breadcrumbParent } from '@/routes/surgery-record';
 
 /**
  * "Minhas cirurgias" (step 5b.3b): the open surgeries where the user is on the team. Opening one reads the record
@@ -84,3 +85,7 @@ export default function MySurgeries({
         </>
     );
 }
+
+MySurgeries.layout = {
+    breadcrumbs: [{ title: 'Minhas cirurgias', href: breadcrumbParent() }],
+};
