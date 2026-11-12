@@ -71,9 +71,14 @@ function addMonths(date: string, months: number) {
 
 /** Today in the unit's time zone (YYYY-MM-DD), so "Hoje" matches the hospital's calendar. */
 function todayIn(timezone: string | null) {
-    return new Intl.DateTimeFormat('en-CA', {
-        timeZone: timezone ?? undefined,
-    }).format(new Date());
+    try {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: timezone ?? undefined,
+        }).format(new Date());
+    } catch {
+        // An unknown zone must not break the schedule: fall back to the device's day.
+        return new Intl.DateTimeFormat('en-CA').format(new Date());
+    }
 }
 
 function daysBetween(from: string, to: string) {

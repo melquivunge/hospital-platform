@@ -30,8 +30,9 @@ export function NavMain({ groups }: { groups: NavGroup[] }) {
                 );
 
                 return (
+                    // Keyed on holdsCurrent so the group of the page just reached opens, however it was reached.
                     <Collapsible
-                        key={group.label}
+                        key={`${group.label}-${holdsCurrent}`}
                         defaultOpen={
                             index === 0 ||
                             holdsCurrent ||
@@ -41,7 +42,7 @@ export function NavMain({ groups }: { groups: NavGroup[] }) {
                     >
                         <SidebarGroup className="px-2 py-1">
                             <SidebarGroupLabel asChild>
-                                <CollapsibleTrigger className="min-h-11 w-full cursor-pointer justify-between hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:min-h-8">
+                                <CollapsibleTrigger className="min-h-11 w-full cursor-pointer justify-between group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:min-h-8">
                                     <span className="flex items-center gap-2">
                                         <group.icon
                                             aria-hidden="true"
