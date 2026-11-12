@@ -1,7 +1,7 @@
 # ADR-0012: Portal do paciente em área separada, com contas de paciente próprias
 
 Data: 12/11/2026
-Estado: proposta (arquitetura escolhida pelo usuário em 12/11/2026; aceite final com o contrato)
+Estado: aceita (12/11/2026)
 
 ## Contexto
 

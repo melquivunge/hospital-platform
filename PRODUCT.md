@@ -842,7 +842,7 @@ Todas as propostas aceitas: 6b = BPA e AIH (APAC fora); CID pelo médico, fatura
 
 ## Contrato da entrega 7 — portal do paciente
 
-Método: ECC Product Capability e brainstorming. Data: 12/11/2026. Estado: **decisões do usuário de 12/11/2026 registradas abaixo; contrato, [ADR-0012](docs/adr/0012-patient-portal-access.md) e plano `plans/web-v10-portal.md` aguardam aprovação. Implementação não autorizada.** A entrega 7 foi dividida pelo usuário: **7a** portal base, **7b** jornada no hospital, **7c** indicadores da rede (contrato próprio depois).
+Método: ECC Product Capability e brainstorming. Data: 12/11/2026. Estado: **decisões do usuário de 12/11/2026 registradas abaixo; contrato, [ADR-0012](docs/adr/0012-patient-portal-access.md) e plano `plans/web-v10-portal.md` aprovados pelo usuário em 12/11/2026; implementação autorizada.** A entrega 7 foi dividida pelo usuário: **7a** portal base, **7b** jornada no hospital, **7c** indicadores da rede (contrato próprio depois).
 
 ### Capacidade
 
@@ -892,6 +892,6 @@ Remarcar ou cancelar consulta pelo portal; teleconsulta; pagamento; mensagens co
 ### Encaminhamento ECC
 
 - **Esclarecimento de produto:** concluído (decisões acima).
-- **Arquitetura:** [ADR-0012](docs/adr/0012-patient-portal-access.md), proposta.
-- **Plano em etapas:** `plans/web-v10-portal.md` (7a.1 a 7b.4), proposto.
+- **Arquitetura:** [ADR-0012](docs/adr/0012-patient-portal-access.md), aceita.
+- **Plano em etapas:** `plans/web-v10-portal.md` (7a.1 a 7.5), aceito.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.

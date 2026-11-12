@@ -13,4 +13,4 @@
 | [0009](0009-surgical-center-access-and-materials.md) | Acesso do centro cirúrgico ao prontuário e materiais no livro de estoque | Aceita | 24/10/2026 |
 | [0010](0010-billing-access-and-item-origin.md) | Acesso do faturamento e origem dos itens da conta | Aceita | 25/10/2026 |
 | [0011](0011-sus-diagnosis-and-sigtap.md) | Diagnóstico CID-10 estruturado e faturamento SUS pela SIGTAP | Aceita | 27/10/2026 |
-| [0012](0012-patient-portal-access.md) | Portal do paciente em área separada, com contas de paciente próprias | Proposta | 12/11/2026 |
+| [0012](0012-patient-portal-access.md) | Portal do paciente em área separada, com contas de paciente próprias | Aceita | 12/11/2026 |

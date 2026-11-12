@@ -1,6 +1,6 @@
 # Plano — entrega 7: portal do paciente (7a portal base, 7b jornada no hospital)
 
-Estado: proposto em 12/11/2026; aguarda aprovação do usuário. Implementação não autorizada.
+Estado: aceito pelo usuário em 12/11/2026; implementação autorizada.
 
 Contrato: ../PRODUCT.md, seção "Contrato da entrega 7". Arquitetura: ../docs/adr/0012-patient-portal-access.md. Regras de trabalho: ../AGENTS.md. A 7c (indicadores da rede) terá contrato e plano próprios.
 

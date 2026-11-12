@@ -8,7 +8,7 @@ Plataforma hospitalar SaaS multi-cliente. Entregas concluídas e mescladas: V1 (
 
 ## Ponto exato de retomada
 
-1. **Entrega 7a/7b** (portal do paciente): contrato no `PRODUCT.md` ("Contrato da entrega 7"), [ADR-0012](adr/0012-patient-portal-access.md) e plano `plans/web-v10-portal.md` escritos em 12/11/2026 com as decisões do usuário; **aguardam aprovação** antes da 7a.1. A 7c (indicadores da rede) fica para depois, com contrato próprio.
+1. **Entrega 7a/7b** (portal do paciente): contrato no `PRODUCT.md` ("Contrato da entrega 7"), [ADR-0012](adr/0012-patient-portal-access.md) e plano `plans/web-v10-portal.md` aprovados pelo usuário em 12/11/2026; próxima: 7a.1 (contas de paciente e login). A 7c (indicadores da rede) fica para depois, com contrato próprio.
 2. **Revisão de UX de 12/11/2026** (impeccable + ui-ux-pro-max, nota 23/40) aplicada em #156 e #158–#161: menu agrupado por jornada com ícones, painel por papel, trilhas, confirmações no lugar, telas vazias com ação, siglas e fuso por extenso, acessibilidade (pular para o conteúdo, landmark, 44 px). Não feito: o campo de mês segue o idioma do navegador.
 3. **Testes com relógio fixo** (#157): `tests/TestCase.php` viaja para 2026-10-29 12:00. Atenção: dois gatilhos de estoque no banco (`stock_dispensing_guards`, `surgery_material_movements`) usam o `now()` real; lotes de teste com validade em nov–dez/2026 podem voltar a falhar quando essas datas passarem — usar validade ≥ 2027 nesses testes.
 
