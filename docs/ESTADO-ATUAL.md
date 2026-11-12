@@ -1,14 +1,16 @@
 # Estado atual do projeto
 
-Atualizado em 28/10/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes de começar uma nova sessão. Decisões por etapa, PRs e o que cada etapa fez: [HISTORICO.md](HISTORICO.md).
+Atualizado em 12/11/2026. Leia este arquivo e o [AGENTS.md](../AGENTS.md) antes de começar uma nova sessão. Decisões por etapa, PRs e o que cada etapa fez: [HISTORICO.md](HISTORICO.md).
 
 ## Em uma frase
 
-Plataforma hospitalar SaaS multi-cliente. Entregas concluídas e mescladas: V1 (escalas, presença, trocas), 2 a 4c (ambulatório, urgência, internação e leitos, prescrição e farmácia, estoque), 5 e 5b (exames e cirurgia) e 6 (faturamento de convênio, TISS). Em andamento: a entrega 6b (faturamento SUS: BPA e AIH; plano `plans/web-v9-sus.md`, ADR-0011), mesclada até a 6b.6b1 (#143); as tabelas oficiais do SISAIH01 estão em `resources/sus/aih/` (#144, #145). Último CI verde da `main`: `a77ab03`.
+Plataforma hospitalar SaaS multi-cliente. Entregas concluídas e mescladas: V1 (escalas, presença, trocas), 2 a 4c (ambulatório, urgência, internação e leitos, prescrição e farmácia, estoque), 5 e 5b (exames e cirurgia), 6 (faturamento de convênio, TISS) e 6b (faturamento SUS: BPA e AIH; plano `plans/web-v9-sus.md`, ADR-0011) concluída com a revisão integrada 6b.8. Em preparação: a entrega 7 (portal do paciente). Último CI verde da `main`: `97655a7` (12/11/2026).
 
 ## Ponto exato de retomada
 
-1. **Entrega 7** (portal do paciente e indicadores), sem contrato ainda: começar pelo contrato do produto. A entrega 6b (SUS) está completa, com a revisão integrada 6b.8 (`SusJourneyTest`) e a segunda pessoa na reabertura da conta aprovada e rejeitada depois; decisões e o que não foi verificado em `plans/web-v9-sus.md`.
+1. **Entrega 7a/7b** (portal do paciente): contrato no `PRODUCT.md` ("Contrato da entrega 7"), [ADR-0012](adr/0012-patient-portal-access.md) e plano `plans/web-v10-portal.md` aprovados pelo usuário em 12/11/2026; próxima: 7a.1 (contas de paciente e login). A 7c (indicadores da rede) fica para depois, com contrato próprio.
+2. **Revisão de UX de 12/11/2026** (impeccable + ui-ux-pro-max, nota 23/40) aplicada em #156 e #158–#161: menu agrupado por jornada com ícones, painel por papel, trilhas, confirmações no lugar, telas vazias com ação, siglas e fuso por extenso, acessibilidade (pular para o conteúdo, landmark, 44 px). Não feito: o campo de mês segue o idioma do navegador.
+3. **Testes com relógio fixo** (#157): `tests/TestCase.php` viaja para 2026-10-29 12:00. Atenção: dois gatilhos de estoque no banco (`stock_dispensing_guards`, `surgery_material_movements`) usam o `now()` real; lotes de teste com validade em nov–dez/2026 podem voltar a falhar quando essas datas passarem — usar validade ≥ 2027 nesses testes.
 
 - **GitHub:** repositório público desde 28/10/2026, então o CI roda; se voltar a ser privado, o Actions fica bloqueado pela cobrança e a proteção da `main` exige plano Pro.
 - **Bloqueios externos:** fornecedor ICP-Brasil (só há o assinador de teste), importação real nos programas do DATASUS (só Windows), hospedagem.

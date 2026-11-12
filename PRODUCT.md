@@ -839,3 +839,59 @@ Todas as propostas aceitas: 6b = BPA e AIH (APAC fora); CID pelo médico, fatura
 - **Arquitetura:** [ADR-0011](docs/adr/0011-sus-diagnosis-and-sigtap.md) (CID estruturado e o que o faturamento lê; SIGTAP por competência; revisa a ADR-0010), aceita.
 - **Plano em etapas:** `plans/web-v9-sus.md` (6b.1 a 6b.8), aceito.
 - **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
+
+## Contrato da entrega 7 — portal do paciente
+
+Método: ECC Product Capability e brainstorming. Data: 12/11/2026. Estado: **decisões do usuário de 12/11/2026 registradas abaixo; contrato, [ADR-0012](docs/adr/0012-patient-portal-access.md) e plano `plans/web-v10-portal.md` aprovados pelo usuário em 12/11/2026; implementação autorizada.** A entrega 7 foi dividida pelo usuário: **7a** portal base, **7b** jornada no hospital, **7c** indicadores da rede (contrato próprio depois).
+
+### Capacidade
+
+O paciente, e o responsável legal pelos menores ou tutelados, acessa com identidade verificada os próprios resultados de exame, consultas futuras, documentos liberados e dados do cadastro, e acompanha ao vivo a passagem pelo hospital, da chegada à saída: em que etapa está, a posição na fila e o tempo estimado, com notificações. Resultado esperado: o paciente deixa de depender da recepção para saber "quanto falta", "o resultado saiu?" e "qual é a minha próxima consulta", sem que nenhum dado de outro paciente ou registro interno da equipe fique ao alcance.
+
+### Restrições e invariantes (fixas)
+
+- O paciente só vê o que é dele e dos menores vinculados; tentar o id de outro paciente responde 404.
+- Nunca aparecem no portal: evolução, prescrição, descrição cirúrgica, CID, justificativas, laudo da AIH, faturamento.
+- Conta de paciente nunca alcança rota da equipe, e a equipe não usa o portal com a conta de equipe (ADR-0012).
+- Toda leitura do portal entra na trilha de acesso ao prontuário, só com ids; auditoria nunca leva conteúdo clínico.
+- Cada rede é controladora dos próprios dados: o acesso é por rede.
+- Convite, código e QR expiram; tentativas são limitadas; a resposta não revela se um CPF é paciente.
+
+### Atores e superfícies
+
+| Ator | Superfície | Limite |
+|---|---|---|
+| Paciente | Portal: resultados, consultas, documentos, meus dados, jornada, notificações | Só os próprios dados, na rede da conta |
+| Responsável legal | O próprio portal e a aba "Filhos menores" | Só os vinculados pela recepção, até os 18 anos |
+| Recepção | Enviar convite, conferir e encerrar vínculo de responsável, gerar QR na chegada, resolver pedido de correção | Unidades em que atende |
+| Profissional que atende | Liberar e revogar documento ao paciente | Só no próprio atendimento |
+| Paciente sem conta | Jornada da visita pelo QR | Só aquela visita, até 12 h depois da alta |
+
+### Decisões do usuário (12/11/2026)
+
+1. **Ordem:** portal primeiro (7a e 7b); indicadores depois (7c).
+2. **Conteúdo da 7a:** resultados de exame assinados (com PDF), próximas consultas, documentos liberados pelo profissional e os próprios dados com pedido de correção.
+3. **Jornada (7b), pedido do usuário:** o paciente acompanha a fila, a posição e o tempo de espera e recebe notificações "da entrada no hospital até a saída", em quatro filas: consulta agendada, urgência, exames e internação.
+4. **Acesso:** as três formas — convite da recepção (documento conferido no balcão, link de 72 h de uso único no e-mail do cadastro), autocadastro (CPF + data de nascimento + código enviado só ao e-mail já cadastrado, mascarado na tela) e QR na chegada (só a jornada da visita) — valendo também para pacientes já cadastrados.
+5. **Responsável legal:** uma conta, com uma aba "Filhos menores" que mostra todas as informações de cada menor vinculado; vínculo conferido pela recepção; aos 18 anos o vínculo termina e o paciente recebe o próprio convite.
+6. **Notificações:** no portal ao vivo, por e-mail, push no celular e SMS/WhatsApp. Push depende de biblioteca nova (aprovação a pedir na etapa); SMS/WhatsApp dependem de fornecedor pago (BLOCKED_EXTERNAL: interface pronta, sem envio real).
+7. **Arquitetura:** área separada `/portal` com contas de paciente próprias (ADR-0012).
+
+### Regras de posição e tempo (7b)
+
+- **Consulta:** etapas chegou → aguardando → em atendimento → encerrado. Posição entre os que chegaram para o mesmo profissional; tempo estimado = pessoas à frente × duração média dos atendimentos encerrados dele no dia (sem histórico no dia, o intervalo da agenda). Não há evento de "chamado": "você é o próximo" é a posição 1.
+- **Urgência:** chegou → classificação (cor) → aguardando → em atendimento → alta. Posição entre quem tem gravidade igual ou maior; o tempo-alvo da cor é o teto mostrado, com o aviso de que a ordem segue a gravidade e pode mudar.
+- **Exames:** pedido → realizado → em análise → resultado liberado (com aviso); sem posição.
+- **Internação:** internado, setor e leito → alta; sem posição.
+- A tela consulta o servidor a cada 20 s e mostra "atualizado há X min" quando perde a conexão.
+
+### Não objetivos
+
+Remarcar ou cancelar consulta pelo portal; teleconsulta; pagamento; mensagens com a equipe; acesso de familiar que não seja responsável legal; envio real de SMS/WhatsApp; aplicativo nativo; indicadores da rede (7c).
+
+### Encaminhamento ECC
+
+- **Esclarecimento de produto:** concluído (decisões acima).
+- **Arquitetura:** [ADR-0012](docs/adr/0012-patient-portal-access.md), aceita.
+- **Plano em etapas:** `plans/web-v10-portal.md` (7a.1 a 7.5), aceito.
+- **Implementação:** só depois do contrato, da ADR e do plano aprovados pelo usuário.
