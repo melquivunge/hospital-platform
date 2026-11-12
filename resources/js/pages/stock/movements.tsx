@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { csv, index } from '@/routes/stock/movements';
+import { index as breadcrumbParent } from '@/routes/stock/movements';
 
 type Filters = {
     from: string;
@@ -333,3 +334,7 @@ export default function StockMovements({
         </>
     );
 }
+
+StockMovements.layout = {
+    breadcrumbs: [{ title: 'Movimentos de estoque', href: breadcrumbParent() }],
+};

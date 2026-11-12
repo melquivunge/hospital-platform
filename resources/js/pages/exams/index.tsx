@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/exams';
+import { index as breadcrumbParent } from '@/routes/exams';
 
 type Analyte = {
     id?: number;
@@ -539,3 +540,7 @@ function ExamForm({
         </Form>
     );
 }
+
+ExamsIndex.layout = {
+    breadcrumbs: [{ title: 'Exames', href: breadcrumbParent() }],
+};

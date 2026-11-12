@@ -4,6 +4,7 @@ import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/exam-queue';
+import { index as breadcrumbParent } from '@/routes/exam-queue';
 
 type QueueOrder = {
     id: number;
@@ -184,3 +185,7 @@ export default function ExamQueue({
         </>
     );
 }
+
+ExamQueue.layout = {
+    breadcrumbs: [{ title: 'Fila de exames', href: breadcrumbParent() }],
+};

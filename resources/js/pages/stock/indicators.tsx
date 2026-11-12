@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index as stock } from '@/routes/stock';
 import { index } from '@/routes/stock/indicators';
+import { index as breadcrumbParent } from '@/routes/stock/indicators';
 
 type UnitFigures = {
     id: number;
@@ -291,3 +292,9 @@ export default function StockIndicators({
         </>
     );
 }
+
+StockIndicators.layout = {
+    breadcrumbs: [
+        { title: 'Indicadores de estoque', href: breadcrumbParent() },
+    ],
+};

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/surgery-schedule';
+import { index as breadcrumbParent } from '@/routes/surgery-schedule';
 
 type Option = { id: number; name: string };
 
@@ -730,3 +731,10 @@ function SurgeryMaterials({
         </section>
     );
 }
+
+SurgeryScheduleShow.layout = {
+    breadcrumbs: [
+        { title: 'Agenda cirúrgica', href: breadcrumbParent() },
+        { title: 'Cirurgia' },
+    ],
+};

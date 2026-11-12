@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import type { PropsWithChildren } from 'react';
 import Heading from '@/components/heading';
+import { Page } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/hooks/use-current-url';
@@ -38,7 +39,7 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
 
     return (
-        <div className="px-4 py-6">
+        <Page>
             <Heading
                 title="Configurações"
                 description="Sua conta, segurança e aparência."
@@ -56,9 +57,14 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
                                 size="sm"
                                 variant="ghost"
                                 asChild
-                                className={cn('w-full justify-start', {
-                                    'bg-muted': isCurrentOrParentUrl(item.href),
-                                })}
+                                className={cn(
+                                    'min-h-11 w-full justify-start md:min-h-9',
+                                    {
+                                        'bg-muted': isCurrentOrParentUrl(
+                                            item.href,
+                                        ),
+                                    },
+                                )}
                             >
                                 <Link href={item.href}>
                                     {item.icon && (
@@ -79,6 +85,6 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
                     </section>
                 </div>
             </div>
-        </div>
+        </Page>
     );
 }

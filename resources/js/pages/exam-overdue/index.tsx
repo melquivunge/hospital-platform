@@ -3,6 +3,7 @@ import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/exam-overdue';
+import { index as breadcrumbParent } from '@/routes/exam-overdue';
 
 /**
  * Orders without collection for 7 days (step 5.3b, ADR-0008), for the unit manager: when, priority, where, who
@@ -152,3 +153,7 @@ export default function ExamOverdue({
         </>
     );
 }
+
+ExamOverdue.layout = {
+    breadcrumbs: [{ title: 'Exames atrasados', href: breadcrumbParent() }],
+};

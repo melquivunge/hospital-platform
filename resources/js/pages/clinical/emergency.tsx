@@ -95,3 +95,7 @@ export default function Emergency({
         </>
     );
 }
+
+Emergency.layout = {
+    breadcrumbs: [{ title: 'Acesso de emergência' }],
+};

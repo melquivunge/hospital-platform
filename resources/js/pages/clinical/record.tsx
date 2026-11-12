@@ -75,3 +75,7 @@ export default function ClinicalRecord({
         </>
     );
 }
+
+ClinicalRecord.layout = {
+    breadcrumbs: [{ title: 'Prontuário' }],
+};

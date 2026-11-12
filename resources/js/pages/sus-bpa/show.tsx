@@ -5,6 +5,7 @@ import BillingAccountController from '@/actions/App/Http/Controllers/BillingAcco
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/sus-bpa';
@@ -67,6 +68,7 @@ export default function SusBpaShow({
 
 function LineReturn({ fileId, line }: { fileId: number; line: Line }) {
     const [rejecting, setRejecting] = useState(false);
+    const [approving, setApproving] = useState(false);
 
     return (
         <li className="grid gap-3 px-5 py-4 text-sm">
@@ -104,7 +106,10 @@ function LineReturn({ fileId, line }: { fileId: number; line: Line }) {
                     {...BpaFileController.recordReturn.form(fileId)}
                     errorBag={`return${line.id}`}
                     options={{ preserveScroll: true }}
-                    onSuccess={() => setRejecting(false)}
+                    onSuccess={() => {
+                        setRejecting(false);
+                        setApproving(false);
+                    }}
                     className="flex flex-wrap items-end gap-3"
                 >
                     {({ processing, errors }) => (
@@ -152,15 +157,38 @@ function LineReturn({ fileId, line }: { fileId: number; line: Line }) {
                                         Cancelar
                                     </Button>
                                 </>
-                            ) : (
+                            ) : approving ? (
                                 <>
+                                    <p className="min-w-0 flex-1">
+                                        Confirmar que o gestor aprovou esta
+                                        linha?
+                                    </p>
                                     <Button
                                         type="submit"
-                                        variant="outline"
                                         disabled={processing}
                                         className="min-h-11"
                                     >
-                                        Aprovada
+                                        {processing && <Spinner />}
+                                        Confirmar aprovação
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() => setApproving(false)}
+                                        className="min-h-11"
+                                    >
+                                        Cancelar
+                                    </Button>
+                                </>
+                            ) : (
+                                <>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setApproving(true)}
+                                        className="min-h-11"
+                                    >
+                                        Registrar aprovação
                                     </Button>
                                     <Button
                                         type="button"
@@ -168,7 +196,7 @@ function LineReturn({ fileId, line }: { fileId: number; line: Line }) {
                                         onClick={() => setRejecting(true)}
                                         className="min-h-11"
                                     >
-                                        Rejeitada…
+                                        Registrar rejeição…
                                     </Button>
                                 </>
                             )}

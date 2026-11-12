@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/pharmacy';
+import { index as breadcrumbParent } from '@/routes/pharmacy';
 
 /**
  * One prescription for the pharmacist (step 4b.3a, ADR-0005): only the prescription, the allergies and the
@@ -491,3 +492,10 @@ function ReturnForm({ item }: { item: PharmacyItem }) {
         </Form>
     );
 }
+
+PharmacyShow.layout = {
+    breadcrumbs: [
+        { title: 'Farmácia', href: breadcrumbParent() },
+        { title: 'Dispensação' },
+    ],
+};

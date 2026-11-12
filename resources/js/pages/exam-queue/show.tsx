@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/exam-queue';
+import { index as breadcrumbParent } from '@/routes/exam-queue';
 
 type ExecutionItem = {
     id: number;
@@ -415,3 +416,10 @@ function ResultForm({ item }: { item: ExecutionItem }) {
         </Form>
     );
 }
+
+ExamExecution.layout = {
+    breadcrumbs: [
+        { title: 'Fila de exames', href: breadcrumbParent() },
+        { title: 'Execução do exame' },
+    ],
+};

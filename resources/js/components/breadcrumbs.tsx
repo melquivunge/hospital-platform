@@ -26,13 +26,13 @@ export function Breadcrumbs({
                             return (
                                 <Fragment key={index}>
                                     <BreadcrumbItem>
-                                        {isLast ? (
+                                        {isLast || item.href === undefined ? (
                                             <BreadcrumbPage>
                                                 {item.title}
                                             </BreadcrumbPage>
                                         ) : (
                                             <BreadcrumbLink asChild>
-                                                <Link href={item.href}>
+                                                <Link href={item.href!}>
                                                     {item.title}
                                                 </Link>
                                             </BreadcrumbLink>

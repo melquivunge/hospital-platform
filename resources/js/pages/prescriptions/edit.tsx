@@ -476,3 +476,7 @@ function Sign({
         </section>
     );
 }
+
+PrescriptionEdit.layout = {
+    breadcrumbs: [{ title: 'Prescrição' }],
+};

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/surgery-catalog';
+import { index as breadcrumbParent } from '@/routes/surgery-catalog';
 
 type Procedure = {
     id: number;
@@ -599,3 +600,9 @@ function ActiveToggle({ active, label }: { active: boolean; label: string }) {
         </label>
     );
 }
+
+SurgeryCatalogIndex.layout = {
+    breadcrumbs: [
+        { title: 'Procedimentos, salas e materiais', href: breadcrumbParent() },
+    ],
+};
