@@ -3,7 +3,7 @@ import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export type Journey = {
-    kind: 'appointment' | 'emergency';
+    kind: 'appointment' | 'emergency' | 'exam' | 'admission';
     unit: string;
     steps: string[];
     current: number;
@@ -11,6 +11,7 @@ export type Journey = {
     position: number | null;
     waitMinutes: number | null;
     level: string | null;
+    detail: string | null;
     who?: string | null;
 };
 
@@ -70,19 +71,34 @@ function Wait({ journey }: { journey: Journey }) {
     );
 }
 
+const kinds: Record<Journey['kind'], string> = {
+    appointment: 'Consulta',
+    emergency: 'Pronto-socorro',
+    exam: 'Exame',
+    admission: 'Internação',
+};
+
 export function JourneyCard({ journey }: { journey: Journey }) {
     return (
-        <section className="mt-6">
+        <section className="mt-6 border-t pt-6 first-of-type:border-t-0 first-of-type:pt-0">
             <p className="text-sm text-muted-foreground">
                 {journey.who && (
                     <span className="font-medium text-foreground">
                         {journey.who} ·{' '}
                     </span>
                 )}
-                {journey.kind === 'emergency' ? 'Pronto-socorro' : 'Consulta'} ·{' '}
-                {journey.unit}
+                {kinds[journey.kind]} · {journey.unit}
             </p>
+            {journey.detail && (
+                <p className="mt-1 text-base font-medium">{journey.detail}</p>
+            )}
             <Wait journey={journey} />
+            {journey.kind === 'exam' && journey.ended && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                    O resultado está em Resultados, na página inicial. Leve-o ao
+                    seu médico para entender o que ele significa.
+                </p>
+            )}
             <ol className="mt-4 grid gap-3" aria-label="Etapas da visita">
                 {journey.steps.map((step, index) => {
                     const done = index < journey.current;

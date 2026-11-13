@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admission;
 use App\Models\Appointment;
 use App\Models\EmergencyEpisode;
+use App\Models\ExamOrder;
+use App\Models\ExamOrderItem;
 use App\Models\Patient;
 use App\Models\PatientAccount;
 use App\Models\VisitPass;
@@ -14,8 +17,8 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Step 7b.2: the signed-in portal's live journey — the same screen as the QR, for every arrival of the patient and of
- * the minors linked now, until 12 hours after it ends.
+ * Step 7b.2: the signed-in portal's live journey — the same screen as the QR, for the four queues (appointment,
+ * emergency, exams, admission) of the patient and of the minors linked now, until 12 hours after each ends.
  */
 class PortalVisitsController extends Controller
 {
@@ -43,6 +46,10 @@ class PortalVisitsController extends Controller
                 ->map(fn (Appointment $appointment) => [$appointment->patient_id, PortalJourney::appointment($appointment)]),
             ...self::episodes(array_keys($whose))->get()
                 ->map(fn (EmergencyEpisode $episode) => [$episode->patient_id, PortalJourney::episode($episode)]),
+            ...self::admissions(array_keys($whose))->get()
+                ->map(fn (Admission $admission) => [$admission->patient_id, PortalJourney::admission($admission)]),
+            ...self::exams(array_keys($whose))->get()
+                ->map(fn (ExamOrderItem $item) => [(int) $item->getAttribute('patient_id'), PortalJourney::exam($item, (int) $item->getAttribute('unit_id'))]),
         ];
 
         $visits = [];
@@ -63,7 +70,9 @@ class PortalVisitsController extends Controller
         $ids = array_keys(self::whose($account));
 
         return self::appointments($ids)->whereIn('status', ['arrived', 'in_progress'])->count()
-            + self::episodes($ids)->whereIn('status', EmergencyEpisode::OPEN)->count();
+            + self::episodes($ids)->whereIn('status', EmergencyEpisode::OPEN)->count()
+            + self::admissions($ids)->whereIn('status', Admission::ACTIVE)->count()
+            + self::exams($ids)->whereDoesntHave('results')->count();
     }
 
     /**
@@ -85,6 +94,33 @@ class PortalVisitsController extends Controller
         return EmergencyEpisode::query()->whereIn('patient_id', $ids)
             ->where(fn (Builder $query) => $query->whereIn('status', EmergencyEpisode::OPEN)->orWhere('ended_at', '>=', now()->subHours(VisitPass::HOURS_AFTER_END)))
             ->orderBy('arrived_at');
+    }
+
+    /**
+     * @param  list<int>  $ids
+     * @return Builder<Admission>
+     */
+    private static function admissions(array $ids): Builder
+    {
+        return Admission::query()->whereIn('patient_id', $ids)
+            ->where(fn (Builder $query) => $query->whereIn('status', Admission::ACTIVE)->orWhere('discharged_at', '>=', now()->subHours(VisitPass::HOURS_AFTER_END)))
+            ->orderBy('requested_at');
+    }
+
+    /**
+     * The exams of the open orders of the last days: an order never collected leaves after OVERDUE_DAYS, like the
+     * manager's list of overdue orders.
+     *
+     * @param  list<int>  $ids
+     * @return Builder<ExamOrderItem>
+     */
+    private static function exams(array $ids): Builder
+    {
+        return ExamOrderItem::query()->join('exam_orders', 'exam_orders.id', '=', 'exam_order_items.exam_order_id')
+            ->whereIn('exam_orders.patient_id', $ids)->where('exam_orders.status', 'requested')
+            ->where('exam_orders.created_at', '>=', now()->subDays(ExamOrder::OVERDUE_DAYS))
+            ->orderBy('exam_order_items.id')
+            ->select(['exam_order_items.*', 'exam_orders.patient_id', 'exam_orders.unit_id']);
     }
 
     /**
