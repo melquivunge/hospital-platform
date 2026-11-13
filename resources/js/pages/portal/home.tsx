@@ -7,6 +7,7 @@ import type {
 } from '@/components/portal-record';
 import PortalChildController from '@/actions/App/Http/Controllers/Portal/PortalChildController';
 import PortalMyDataController from '@/actions/App/Http/Controllers/Portal/PortalMyDataController';
+import PortalVisitsController from '@/actions/App/Http/Controllers/Portal/PortalVisitsController';
 import PortalTwoFactorController from '@/actions/App/Http/Controllers/Portal/PortalTwoFactorController';
 
 export default function PortalHome({
@@ -16,6 +17,7 @@ export default function PortalHome({
     results,
     appointments,
     documents,
+    visits,
 }: {
     network: { name: string; slug: string };
     patient: { name: string };
@@ -23,6 +25,7 @@ export default function PortalHome({
     results: PortalResult[];
     appointments: PortalAppointment[];
     documents: PortalDocument[];
+    visits: number;
 }) {
     return (
         <>
@@ -30,6 +33,17 @@ export default function PortalHome({
             <h1 className="text-2xl font-semibold tracking-tight">
                 Olá, {patient.name.split(' ')[0]}
             </h1>
+            {visits > 0 && (
+                <Link
+                    href={PortalVisitsController.url(network.slug)}
+                    className="mt-6 flex min-h-11 items-center justify-between rounded-md border border-primary bg-primary/10 px-4 font-medium"
+                >
+                    {visits === 1
+                        ? 'Você tem uma visita em andamento'
+                        : `${visits} visitas em andamento`}
+                    <span className="text-primary">Acompanhar</span>
+                </Link>
+            )}
             <PortalRecord
                 slug={network.slug}
                 results={results}

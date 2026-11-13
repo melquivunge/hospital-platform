@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
-use App\Models\Unit;
 use App\Models\VisitPass;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -23,11 +22,7 @@ class PortalVisitController extends Controller
 
         $response = Inertia::render('portal/visit', [
             'network' => PortalHomeController::network(),
-            'visit' => $valid ? [
-                'unit' => Unit::query()->whereKey($pass->unit_id)->value('name'),
-                'steps' => $journey['steps'],
-                'current' => $journey['current'],
-            ] : null,
+            'visit' => $valid ? PortalJourney::present($journey) : null,
         ])->toResponse($request);
         // The address holds the token: never cached, never sent on as Referer.
         $response->headers->add(['Cache-Control' => 'private, no-store', 'Referrer-Policy' => 'no-referrer']);

@@ -64,6 +64,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 7". Arquitetura: ../docs/a
 ### 7b.2 Jornada ao vivo
 - Etapas, posição e tempo estimado das quatro filas pelas regras do contrato; atualização a cada 20 s (`usePoll`); estado "atualizado há X min".
 - Mesma tela no portal (conta) e no QR (visita).
+- **Feito (consulta e urgência):** posição e tempo estimado pelas regras do contrato (consulta: chegados do mesmo profissional no dia, média dos atendimentos encerrados dele no dia ou o intervalo da agenda; urgência: gravidade igual ou maior, tempo-alvo da cor como teto, com aviso), atualização a cada 20 s com "atualizado há X min", página "Visitas em andamento" no portal logado (próprio paciente e menores vinculados, até 12 h depois do fim) e atalho na página inicial. Leitura da jornada não vai para `clinical_reads` (só etapa e fila, sem conteúdo clínico, como no QR). **Falta:** filas de exames e de internação (sem posição).
 
 ### 7b.3 Notificações no portal e por e-mail
 - Eventos: "você é o próximo", início do atendimento, resultado liberado, consulta marcada, alta. Guardados como as notificações da equipe, com outro destinatário; e-mail para resultado, consulta e alta.

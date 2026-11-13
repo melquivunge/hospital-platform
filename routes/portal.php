@@ -9,6 +9,7 @@ use App\Http\Controllers\Portal\PortalResultPdfController;
 use App\Http\Controllers\Portal\PortalSignupController;
 use App\Http\Controllers\Portal\PortalTwoFactorController;
 use App\Http\Controllers\Portal\PortalVisitController;
+use App\Http\Controllers\Portal\PortalVisitsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -35,6 +36,7 @@ Route::prefix('portal/{portal}')->middleware('portal')->name('portal.')->group(f
 
     Route::middleware('auth:patient')->group(function () {
         Route::get('/', PortalHomeController::class)->name('home');
+        Route::get('visitas', PortalVisitsController::class)->name('visits');
         Route::get('meus-dados', [PortalMyDataController::class, 'show'])->name('my-data');
         Route::post('meus-dados', [PortalMyDataController::class, 'store'])->middleware('throttle:5,1')->name('my-data.store');
         Route::get('documentos/{document}', PortalDocumentController::class)->whereNumber('document')->middleware('throttle:30,1')->name('document');
