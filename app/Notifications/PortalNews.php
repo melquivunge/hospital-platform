@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -9,8 +11,11 @@ use Illuminate\Notifications\Notification;
  * Step 7b.3: "there is news in the portal" for a result, an appointment or a discharge. Subject and body say nothing
  * about which (contract: no clinical data in e-mail); the portal, behind the password, says it.
  */
-class PortalNews extends Notification
+class PortalNews extends Notification implements ShouldQueue
 {
+    // Queued: a mail server failure is retried by the queue and never stops the delivery of the other notices.
+    use Queueable;
+
     public function __construct(
         public readonly string $url,
         public readonly string $network,

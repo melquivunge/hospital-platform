@@ -25,7 +25,8 @@ class PortalNotificationController extends Controller
         $notices = PatientNotification::query()->where('account_id', $account->id)->orderByDesc('created_at')->orderByDesc('id')->limit(self::LIMIT)->get()
             ->map(fn (PatientNotification $notice) => ['id' => $notice->id, 'title' => $notice->title, 'createdAt' => $notice->created_at->toIso8601String(), 'unread' => $notice->read_at === null])
             ->values();
-        PatientNotification::query()->where('account_id', $account->id)->whereNull('read_at')->update(['read_at' => now()]);
+        // Only what was shown is marked read.
+        PatientNotification::query()->whereKey($notices->pluck('id'))->whereNull('read_at')->update(['read_at' => now()]);
 
         return Inertia::render('portal/notifications', [...PortalHomeController::shell($account), 'notices' => $notices, 'unread' => 0]);
     }

@@ -36,8 +36,8 @@ final class PortalNotifier
 
         $current = app(CurrentTenant::class);
         $previous = $current->get();
-        $current->set($tenant);
         try {
+            $current->set($tenant);
             foreach (self::notices($event) as [$patientId, $kind, $ref, $title, $mail]) {
                 self::send($event, $tenant, $patientId, $kind, $ref, $title, $mail);
             }
@@ -56,13 +56,16 @@ final class PortalNotifier
         switch ($event->action) {
             case 'appointment.created':
                 // A walk-in is booked at the desk with the patient there.
-                return ($context['walk_in'] ?? false) ? [] : [[(int) ($context['patient_id'] ?? 0), 'appointment', null, 'Uma consulta foi marcada', true]];
+                return ($context['walk_in'] ?? false) ? [] : [[(int) ($context['patient_id'] ?? 0), 'appointment', null, isset($context['rescheduled_from']) ? 'Uma consulta foi remarcada' : 'Uma consulta foi marcada', true]];
             case 'visit.opened':
                 $visit = Visit::query()->find((int) $event->subject_id);
                 if ($visit === null) {
                     return [];
                 }
-                $next = $visit->appointment_id !== null ? self::nextAppointment($visit) : self::nextEpisode($visit);
+                // "Next" reads the queue now: only while the call is fresh (a backlog or a late re-read would point at
+                // whoever happens to wait at delivery time).
+                $fresh = CarbonImmutable::parse($event->occurred_at)->greaterThan(now()->subMinutes(2));
+                $next = ! $fresh ? null : ($visit->appointment_id !== null ? self::nextAppointment($visit, CarbonImmutable::parse($event->occurred_at)) : self::nextEpisode($visit));
 
                 $started = [$visit->patient_id, 'started', null, 'Seu atendimento começou', false];
 
@@ -74,8 +77,8 @@ final class PortalNotifier
             case 'admission.discharged':
                 $admission = Admission::query()->find((int) $event->subject_id);
 
-                // A death is never told by a notice: the team speaks to the family.
-                return $admission !== null && $admission->discharge_type !== 'death' ? [[$admission->patient_id, 'discharge', null, 'Sua alta da internação foi registrada', true]] : [];
+                // Only a discharge home is told; a death, an evasion or a transfer is the team's to tell.
+                return $admission !== null && in_array($admission->discharge_type, ['improved', 'at_request'], true) ? [[$admission->patient_id, 'discharge', null, 'Sua alta da internação foi registrada', true]] : [];
             default: // exam_result.released
                 // The first release only; a critical result waits for the team's call (pending product decision).
                 return ($context['version'] ?? 1) === 1 && ! ($context['critical'] ?? false)
@@ -88,10 +91,10 @@ final class PortalNotifier
      *
      * @return array{int, string, string, string, bool}|null
      */
-    private static function nextAppointment(Visit $visit): ?array
+    private static function nextAppointment(Visit $visit, CarbonImmutable $at): ?array
     {
         $timezone = Unit::query()->whereKey($visit->unit_id)->value('timezone');
-        $day = CarbonImmutable::now(is_string($timezone) ? $timezone : 'UTC')->startOfDay();
+        $day = $at->setTimezone(is_string($timezone) ? $timezone : 'UTC')->startOfDay();
         $next = Appointment::query()->where('unit_id', $visit->unit_id)->where('professional_id', $visit->professional_id)->where('status', 'arrived')
             ->where('starts_at', '>=', $day->utc())->where('starts_at', '<', $day->addDay()->utc())->orderBy('starts_at')->orderBy('id')->first();
 
@@ -112,7 +115,8 @@ final class PortalNotifier
     private static function send(\stdClass $event, Tenant $tenant, int $patientId, string $kind, ?string $ref, string $title, bool $mail): void
     {
         $patient = Patient::query()->find($patientId);
-        if ($patient === null) {
+        // Nothing more goes to the account of a patient who died: the team speaks to the family.
+        if ($patient === null || Admission::query()->where('patient_id', $patient->id)->where('discharge_type', 'death')->exists()) {
             return;
         }
         // The patient's own accounts (also one made for a record merged into this one) and, for a minor, the guardians.

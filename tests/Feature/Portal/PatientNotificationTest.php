@@ -84,6 +84,10 @@ class PatientNotificationTest extends ClinicalTestCase
         $this->actingAs($this->doctorAccount->user, 'web')->post(route('visits.open', Appointment::withoutTenantScope()->where('patient_id', $this->patient->id)->sole()))->assertSessionHasNoErrors();
         $this->assertSame(['appointment', 'started'], $this->kinds($this->account));
         $this->assertSame(['appointment', 'next'], $this->kinds($caio));
+        // Delivering again adds nothing: no second notice, no second e-mail.
+        $this->deliver();
+        $this->assertSame(['appointment', 'next'], $this->kinds($caio));
+        Notification::assertSentOnDemandTimes(PortalNews::class, 2);
     }
 
     public function test_the_guardian_hears_of_the_minor_and_a_discharge_is_told(): void
@@ -97,6 +101,7 @@ class PatientNotificationTest extends ClinicalTestCase
         $this->post(route('visits.close', Visit::withoutTenantScope()->sole()), ['cid_principal' => 'J06.9', 'outcome' => 'discharged'])->assertSessionHasNoErrors();
 
         $this->assertSame(['started', 'discharge'], $this->kinds($this->account));
+        Notification::assertSentOnDemandTimes(PortalNews::class, 1);
         $this->assertSame(
             ['Menor sob sua responsabilidade: Seu atendimento começou', 'Menor sob sua responsabilidade: Sua alta do pronto-socorro foi registrada'],
             PatientNotification::withoutTenantScope()->orderBy('id')->pluck('title')->all(),
