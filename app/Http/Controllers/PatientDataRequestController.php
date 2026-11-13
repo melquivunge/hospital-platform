@@ -25,11 +25,12 @@ class PatientDataRequestController extends Controller
         Gate::authorize('viewAny', Patient::class);
 
         return Inertia::render('patients/data-requests', [
-            'requests' => PatientDataRequest::query()->whereNull('resolved_at')->with('patient:id,name,social_name')->orderBy('id')->limit(self::LIMIT)->get()
+            'requests' => PatientDataRequest::query()->whereNull('resolved_at')->with('patient:id,name,social_name,merged_into_id')->orderBy('id')->limit(self::LIMIT)->get()
                 ->map(fn (PatientDataRequest $request) => [
                     'id' => $request->id,
-                    'patientId' => $request->patient_id,
-                    'patient' => $request->patient->social_name ?? $request->patient?->name,
+                    // A record merged after the request opens the kept one.
+                    'patientId' => $request->patient === null ? $request->patient_id : ($request->patient->merged_into_id ?? $request->patient_id),
+                    'patient' => $request->patient === null ? null : ($request->patient->social_name ?? $request->patient->name),
                     'message' => $request->message,
                     'createdAt' => $request->created_at->toIso8601String(),
                 ])->values(),
