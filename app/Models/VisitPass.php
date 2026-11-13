@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Http\Controllers\Portal\PortalJourney;
 use App\Tenancy\BelongsToTenant;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
@@ -44,44 +45,15 @@ class VisitPass extends Model
     }
 
     /**
-     * Where the arrival is now, in the patient's words, and when it ended (null while it goes on).
+     * Where the arrival is now (steps 7b.1 and 7b.2).
      *
-     * @return array{steps: list<string>, current: int, endedAt: CarbonInterface|null}
+     * @return array{kind: string, unit: string, steps: list<string>, current: int, endedAt: CarbonInterface|null, position: int|null, waitMinutes: int|null, level: string|null}
      */
     public function journey(): array
     {
-        if ($this->appointment_id !== null) {
-            $appointment = Appointment::query()->findOrFail($this->appointment_id);
-            $current = match ($appointment->status) {
-                'in_progress' => 2,
-                'completed', 'cancelled', 'no_show' => 3,
-                default => 1,
-            };
-
-            // A completed appointment ends when its visit closes (the appointment's own closed_at is for cancel and no-show).
-            $ended = $appointment->status === 'completed'
-                ? Visit::query()->where('appointment_id', $appointment->id)->max('closed_at')
-                : $appointment->closed_at;
-
-            return ['steps' => ['Chegou', 'Aguardando', 'Em atendimento', 'Encerrado'], 'current' => $current, 'endedAt' => $ended === null ? null : Carbon::parse($ended)];
-        }
-
-        $episode = EmergencyEpisode::query()->findOrFail($this->emergency_episode_id);
-        $current = match (true) {
-            $episode->ended_at !== null || $episode->status === 'admission_requested' => 4,
-            $episode->status === 'in_care' => 3,
-            $episode->triaged_at !== null => 2,
-            default => 0,
-        };
-
-        // The last step says how it ended: discharge, an admission request, or an end without care.
-        $last = match ($episode->status) {
-            'admission_requested' => 'Internação solicitada',
-            'evaded' => 'Encerrado',
-            default => 'Alta',
-        };
-
-        return ['steps' => ['Chegou', 'Classificação', 'Aguardando', 'Em atendimento', $last], 'current' => $current, 'endedAt' => $episode->ended_at];
+        return $this->appointment_id !== null
+            ? PortalJourney::appointment(Appointment::query()->findOrFail($this->appointment_id))
+            : PortalJourney::episode(EmergencyEpisode::query()->findOrFail($this->emergency_episode_id));
     }
 
     public static function expiredAt(?CarbonInterface $ended): bool
