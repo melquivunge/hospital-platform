@@ -41,6 +41,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 7". Arquitetura: ../docs/a
 ### 7a.2 Responsável legal
 - Vínculo conta do responsável ↔ paciente menor ou tutelado, conferido e encerrado pela recepção (`patient_account_links`, histórico só de inserção).
 - Aba "Filhos menores" com o mesmo conteúdo de cada vinculado; aos 18 anos o vínculo deixa de valer (verificado na leitura) e a recepção vê o convite pendente do paciente.
+- **Feito:** seção "Responsáveis no portal" no cadastro do menor (e-mail do acesso ativo do responsável + documento da guarda conferido; encerrar com confirmação); `patient_account_links` só de inserção com RLS; aba "Filhos menores" no início do portal e página de cada vinculado (404 para quem não está vinculado; sessão da equipe não entra); aos 18 anos o vínculo deixa de valer na leitura e o cadastro volta a mostrar o convite do próprio paciente. Pendente de decisão: tutelado adulto (hoje só menores).
 
 ### 7a.3 Resultados, consultas e meus dados
 - Resultados de exame assinados e não retificados, com valores, referências e PDF; crítico com a orientação "procure seu médico".

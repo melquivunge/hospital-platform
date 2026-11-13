@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Portal;
 use App\Http\Controllers\Controller;
 use App\Models\Patient;
 use App\Models\PatientAccount;
+use App\Models\PatientAccountLink;
 use App\Tenancy\CurrentTenant;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -21,7 +22,12 @@ class PortalHomeController extends Controller
         $account = Auth::guard('patient')->user();
         abort_if($account === null, 403);
 
-        return Inertia::render('portal/home', self::shell($account));
+        return Inertia::render('portal/home', [
+            ...self::shell($account),
+            // Step 7a.2: the "Filhos menores" tab, only the minors linked now.
+            'children' => Patient::query()->whereIn('id', PatientAccountLink::minorsOf($account))->orderBy('name')->get()
+                ->map(fn (Patient $child) => ['id' => $child->id, 'name' => $child->social_name ?? $child->name])->values(),
+        ]);
     }
 
     /**

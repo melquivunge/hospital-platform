@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Portal\PortalAuthController;
+use App\Http\Controllers\Portal\PortalChildController;
 use App\Http\Controllers\Portal\PortalHomeController;
 use App\Http\Controllers\Portal\PortalSignupController;
 use App\Http\Controllers\Portal\PortalTwoFactorController;
@@ -28,6 +29,7 @@ Route::prefix('portal/{portal}')->middleware('portal')->name('portal.')->group(f
 
     Route::middleware('auth:patient')->group(function () {
         Route::get('/', PortalHomeController::class)->name('home');
+        Route::get('filhos/{patient}', PortalChildController::class)->whereNumber('patient')->name('child');
         Route::get('seguranca', [PortalTwoFactorController::class, 'show'])->name('security');
         Route::middleware('throttle:6,1')->group(function () {
             Route::post('seguranca/duas-etapas', [PortalTwoFactorController::class, 'enable'])->name('two-factor.enable');

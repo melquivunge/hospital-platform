@@ -10,6 +10,7 @@ use App\Http\Requests\Clinical\PatientRequest;
 use App\Models\AuditEvent;
 use App\Models\Patient;
 use App\Models\PatientAccount;
+use App\Models\PatientAccountLink;
 use App\Models\PatientMerge;
 use App\Models\Unit;
 use App\Policies\PatientPolicy;
@@ -150,6 +151,10 @@ class PatientController extends Controller
             'portal' => (fn (?PatientAccount $account) => $account === null ? 'none' : ($account->password === null ? 'invited' : 'active'))(
                 PatientAccount::query()->where('patient_id', $patient->id)->first()
             ),
+            // Step 7a.2: a minor's guardians in the portal (null for an adult).
+            'portalGuardians' => PatientAccountLink::isMinor($patient)
+                ? PatientAccount::query()->whereIn('id', PatientAccountLink::guardiansOf($patient))->orderBy('email')->get(['id', 'email'])->map(fn (PatientAccount $account) => ['id' => $account->id, 'email' => $account->email])->values()
+                : null,
         ]);
     }
 

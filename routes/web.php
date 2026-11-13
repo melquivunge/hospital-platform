@@ -38,6 +38,7 @@ use App\Http\Controllers\PatientMergeController;
 use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\PolicyController;
+use App\Http\Controllers\Portal\PatientPortalGuardianController;
 use App\Http\Controllers\Portal\PatientPortalInviteController;
 use App\Http\Controllers\PrescriptionController;
 use App\Http\Controllers\PrescriptionSignatureController;
@@ -255,6 +256,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::post('patient-merges', [PatientMergeController::class, 'store'])->middleware('throttle:30,1')->name('patient-merges.store');
     Route::post('patient-merges/{merge}/undo', [PatientMergeController::class, 'undo'])->middleware('throttle:30,1')->name('patient-merges.undo');
     Route::post('patients/{patient}/portal-invite', [PatientPortalInviteController::class, 'store'])->middleware('throttle:10,1')->name('patients.portal-invite');
+    Route::post('patients/{patient}/portal-guardians', [PatientPortalGuardianController::class, 'store'])->middleware('throttle:10,1')->name('patients.portal-guardians.store');
+    Route::delete('patients/{patient}/portal-guardians/{account}', [PatientPortalGuardianController::class, 'destroy'])->name('patients.portal-guardians.destroy');
     Route::post('patients/search', [PatientController::class, 'search'])->middleware('throttle:30,1')->name('patients.search');
     Route::get('patients/search', fn () => to_route('patients.index'));
     Route::resource('patients', PatientController::class)->except('destroy')->middlewareFor(['store', 'update'], 'throttle:30,1');
