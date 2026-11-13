@@ -2,8 +2,13 @@
 
 namespace App\Http\Controllers\Portal;
 
+use App\Models\Admission;
 use App\Models\Appointment;
+use App\Models\Bed;
 use App\Models\EmergencyEpisode;
+use App\Models\ExamOrderItem;
+use App\Models\ExamResult;
+use App\Models\Sector;
 use App\Models\TriageLevel;
 use App\Models\Unit;
 use App\Models\Visit;
@@ -16,7 +21,7 @@ use Illuminate\Support\Carbon;
  * Steps 7b.1 and 7b.2 (contract, "Regras de posição e tempo"): where one arrival is now, in the patient's words, with
  * the position in the queue and the expected wait. The same answer for the QR and for the signed-in portal.
  *
- * @phpstan-type Journey array{kind: string, unit: string, steps: list<string>, current: int, endedAt: CarbonInterface|null, position: int|null, waitMinutes: int|null, level: string|null}
+ * @phpstan-type Journey array{kind: string, unit: string, steps: list<string>, current: int, endedAt: CarbonInterface|null, position: int|null, waitMinutes: int|null, level: string|null, detail: string|null}
  */
 final class PortalJourney
 {
@@ -64,6 +69,7 @@ final class PortalJourney
             'position' => $position,
             'waitMinutes' => $wait,
             'level' => null,
+            'detail' => null,
         ];
     }
 
@@ -102,14 +108,86 @@ final class PortalJourney
 
         return [
             'kind' => 'emergency',
-            'unit' => (string) Unit::query()->whereKey($episode->unit_id)->value('name'),
+            'unit' => self::unitName($episode->unit_id),
             'steps' => ['Chegou', 'Classificação', 'Aguardando', 'Em atendimento', $last],
             'current' => $current,
             'endedAt' => $episode->ended_at,
             'position' => $position,
             'waitMinutes' => $wait,
             'level' => $level?->name,
+            'detail' => null,
         ];
+    }
+
+    /**
+     * Inpatient stay (contract: admitted, sector and bed → discharge; no position).
+     *
+     * @return Journey
+     */
+    public static function admission(Admission $admission): array
+    {
+        $bed = $admission->bed_id === null ? null : Bed::query()->with('sector:id,name')->find($admission->bed_id);
+        $detail = $bed === null
+            ? Sector::query()->whereKey($admission->requested_sector_id)->value('name')
+            : "{$bed->sector?->name} · quarto {$bed->room}, leito {$bed->code}";
+
+        return [
+            'kind' => 'admission',
+            'unit' => self::unitName($admission->unit_id),
+            'steps' => ['Aguardando leito', 'Internado', match ($admission->discharge_type) {
+                'transfer_out' => 'Transferido',
+                'death', 'evasion' => 'Encerrado',
+                default => 'Alta',
+            }],
+            'current' => match ($admission->status) {
+                'requested' => 0,
+                'discharged' => 2,
+                default => 1,
+            },
+            'endedAt' => $admission->discharged_at,
+            'position' => null,
+            'waitMinutes' => null,
+            'level' => null,
+            'detail' => is_string($detail) ? $detail : null,
+        ];
+    }
+
+    /**
+     * One exam of an order (contract: ordered → done → in analysis → result released; no position). Ends when its
+     * first result is released.
+     *
+     * @return Journey
+     */
+    public static function exam(ExamOrderItem $item, int $unitId, bool $named = true): array
+    {
+        // The first release (a rectification does not restart the clock); loaded with the list when it can be.
+        $released = $item->getAttribute('results_min_released_at') ?? ExamResult::query()->where('exam_order_item_id', $item->id)->min('released_at');
+
+        return [
+            'kind' => 'exam',
+            'unit' => self::unitName($unitId),
+            'steps' => ['Pedido', $item->exam_type === 'imaging' ? 'Realizado' : 'Coletado', 'Em análise', 'Resultado liberado'],
+            'current' => match (true) {
+                $released !== null => 3,
+                $item->collected_at !== null => 2,
+                default => 0,
+            },
+            'endedAt' => $released === null ? null : Carbon::parse($released),
+            'position' => null,
+            'waitMinutes' => null,
+            'level' => null,
+            // A guardian sees which kind of exam, not which exam, until the result is released (it is in the record then).
+            'detail' => $named || $released !== null ? $item->exam_name : match ($item->exam_type) {
+                'imaging' => 'Exame de imagem',
+                default => 'Exame de laboratório',
+            },
+        ];
+    }
+
+    private static function unitName(int $id): string
+    {
+        // Once per request: every card of the page and every 20 s refresh names the same few units.
+        return once(fn () => (string) Unit::query()->whereKey($id)->value('name'));
     }
 
     /**

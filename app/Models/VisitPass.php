@@ -47,7 +47,7 @@ class VisitPass extends Model
     /**
      * Where the arrival is now (steps 7b.1 and 7b.2).
      *
-     * @return array{kind: string, unit: string, steps: list<string>, current: int, endedAt: CarbonInterface|null, position: int|null, waitMinutes: int|null, level: string|null}
+     * @return array{kind: string, unit: string, steps: list<string>, current: int, endedAt: CarbonInterface|null, position: int|null, waitMinutes: int|null, level: string|null, detail: string|null}
      */
     public function journey(): array
     {
