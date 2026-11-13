@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Tenancy\BelongsToTenant;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
@@ -45,7 +46,7 @@ class VisitPass extends Model
     /**
      * Where the arrival is now, in the patient's words, and when it ended (null while it goes on).
      *
-     * @return array{steps: list<string>, current: int, endedAt: Carbon|null}
+     * @return array{steps: list<string>, current: int, endedAt: CarbonInterface|null}
      */
     public function journey(): array
     {
@@ -57,7 +58,12 @@ class VisitPass extends Model
                 default => 1,
             };
 
-            return ['steps' => ['Chegou', 'Aguardando', 'Em atendimento', 'Encerrado'], 'current' => $current, 'endedAt' => $appointment->closed_at];
+            // A completed appointment ends when its visit closes (the appointment's own closed_at is for cancel and no-show).
+            $ended = $appointment->status === 'completed'
+                ? Visit::query()->where('appointment_id', $appointment->id)->max('closed_at')
+                : $appointment->closed_at;
+
+            return ['steps' => ['Chegou', 'Aguardando', 'Em atendimento', 'Encerrado'], 'current' => $current, 'endedAt' => $ended === null ? null : Carbon::parse($ended)];
         }
 
         $episode = EmergencyEpisode::query()->findOrFail($this->emergency_episode_id);
@@ -68,13 +74,18 @@ class VisitPass extends Model
             default => 0,
         };
 
-        return ['steps' => ['Chegou', 'Classificação', 'Aguardando', 'Em atendimento', 'Alta'], 'current' => $current, 'endedAt' => $episode->ended_at];
+        // The last step says how it ended: discharge, an admission request, or an end without care.
+        $last = match ($episode->status) {
+            'admission_requested' => 'Internação solicitada',
+            'evaded' => 'Encerrado',
+            default => 'Alta',
+        };
+
+        return ['steps' => ['Chegou', 'Classificação', 'Aguardando', 'Em atendimento', $last], 'current' => $current, 'endedAt' => $episode->ended_at];
     }
 
-    public function expired(): bool
+    public static function expiredAt(?CarbonInterface $ended): bool
     {
-        $ended = $this->journey()['endedAt'];
-
-        return $ended !== null && $ended->copy()->addHours(self::HOURS_AFTER_END)->isPast();
+        return $ended !== null && $ended->toImmutable()->addHours(self::HOURS_AFTER_END)->isPast();
     }
 }

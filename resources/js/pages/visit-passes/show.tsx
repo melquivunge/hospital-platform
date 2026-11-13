@@ -41,7 +41,7 @@ export default function VisitPassShow({
                             <p className="break-all text-muted-foreground">
                                 {url}
                             </p>
-                            <div className="flex flex-wrap gap-3">
+                            <div className="flex flex-wrap gap-3 print:hidden">
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -60,7 +60,10 @@ export default function VisitPassShow({
                         </p>
                     )}
                     {!pass.revoked && (
-                        <Form {...VisitPassController.revoke.form(pass.id)}>
+                        <Form
+                            {...VisitPassController.revoke.form(pass.id)}
+                            className="print:hidden"
+                        >
                             {({ processing }) => (
                                 <Button
                                     type="submit"

@@ -6,6 +6,8 @@ use App\Models\Appointment;
 use App\Models\AuditEvent;
 use App\Models\EmergencyEpisode;
 use App\Models\Membership;
+use App\Models\PatientAccount;
+use App\Models\Visit;
 use App\Models\VisitPass;
 use App\Tenancy\Role;
 use Illuminate\Testing\TestResponse;
@@ -49,7 +51,7 @@ class VisitPassTest extends ClinicalTestCase
 
     public function test_an_arrived_appointment_gets_a_qr_with_its_journey_only(): void
     {
-        $appointment = $this->arrived($this->doctor, $this->unit);
+        $appointment = $this->arrived($this->doctor, $this->unit, modality: ['modality' => 'private']);
         $token = $this->issue('visit-passes.appointment', ['appointment' => $appointment->id]);
         $pass = VisitPass::withoutTenantScope()->sole();
         $this->assertNotSame($token, $pass->token_hash);
@@ -65,6 +67,16 @@ class VisitPassTest extends ClinicalTestCase
             ->where('visit.steps', ['Chegou', 'Aguardando', 'Em atendimento', 'Encerrado'])
             ->missing('visit.patient'));
         $this->journey('outro-token')->assertInertia(fn (Assert $page) => $page->where('visit', null));
+        $this->journey($token)->assertHeader('Referrer-Policy', 'no-referrer');
+
+        // Seen and discharged: the visit closes, the QR still works for 12 hours, then not.
+        $this->actingAs($this->doctorAccount->user, 'web')->post(route('visits.open', $appointment))->assertSessionHasNoErrors();
+        $this->journey($token)->assertInertia(fn (Assert $page) => $page->where('visit.current', 2));
+        $visit = Visit::withoutTenantScope()->sole();
+        $this->actingAs($this->doctorAccount->user, 'web')->post(route('visits.close', $visit))->assertSessionHasNoErrors();
+        $this->journey($token)->assertInertia(fn (Assert $page) => $page->where('visit.current', 3));
+        $this->travel(13)->hours();
+        $this->journey($token)->assertInertia(fn (Assert $page) => $page->where('visit', null));
     }
 
     public function test_no_qr_before_the_arrival_or_outside_the_receptions_units(): void
@@ -94,9 +106,24 @@ class VisitPassTest extends ClinicalTestCase
         // The patient leaves: still visible for 12 hours, then gone.
         $episode->refresh()->forceFill(['status' => 'discharged', 'ended_at' => now(), 'ended_by_user_id' => $this->doctorAccount->user_id])->save();
         $this->travel(11)->hours();
-        $this->journey($token)->assertInertia(fn (Assert $page) => $page->where('visit.current', 4));
+        $this->journey($token)->assertInertia(fn (Assert $page) => $page->where('visit.current', 4)->where('visit.steps.4', 'Alta'));
         $this->travel(2)->hours();
         $this->journey($token)->assertInertia(fn (Assert $page) => $page->where('visit', null));
+    }
+
+    public function test_an_old_portal_session_on_the_phone_does_not_block_the_qr(): void
+    {
+        $this->actingAs($this->reception->user, 'web')->post(route('emergency.arrive', $this->unit), ['patient_id' => $this->patient->id, 'modality' => 'private'])->assertSessionHasNoErrors();
+        $token = $this->issue('visit-passes.episode', ['episode' => EmergencyEpisode::withoutTenantScope()->sole()->id]);
+        $this->patient->forceFill(['email' => 'joana@example.com'])->save();
+        $account = new PatientAccount;
+        $account->forceFill(['tenant_id' => $this->patient->tenant_id, 'patient_id' => $this->patient->id, 'email' => 'joana@example.com', 'password' => 'Senha-forte-123'])->save();
+
+        auth()->guard('web')->logout();
+        // A portal session idle for hours: it ends, and the QR still opens.
+        $this->actingAs($account, 'patient')->withSession(['portal.last_seen' => now()->subHours(3)->getTimestamp()]);
+        $this->get(route('portal.visit', ['portal' => $this->slug, 'token' => $token]))->assertOk()->assertInertia(fn (Assert $page) => $page->where('visit.current', 0));
+        $this->assertGuest('patient');
     }
 
     public function test_a_new_qr_or_a_revocation_ends_the_old_one(): void
