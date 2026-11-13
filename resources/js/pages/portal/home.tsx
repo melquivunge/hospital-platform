@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 import PortalRecord from '@/components/portal-record';
 import type {
     PortalAppointment,
+    PortalDocument,
     PortalResult,
 } from '@/components/portal-record';
 import PortalChildController from '@/actions/App/Http/Controllers/Portal/PortalChildController';
@@ -14,12 +15,14 @@ export default function PortalHome({
     children,
     results,
     appointments,
+    documents,
 }: {
     network: { name: string; slug: string };
     patient: { name: string };
     children: { id: number; name: string }[];
     results: PortalResult[];
     appointments: PortalAppointment[];
+    documents: PortalDocument[];
 }) {
     return (
         <>
@@ -31,6 +34,7 @@ export default function PortalHome({
                 slug={network.slug}
                 results={results}
                 appointments={appointments}
+                documents={documents}
             />
             {children.length > 0 && (
                 <section aria-labelledby="children-title" className="mt-8">

@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Portal;
 
 use App\Clinical\ClinicalAccess;
 use App\Models\Appointment;
+use App\Models\ClinicalDocument;
+use App\Models\ClinicalDocumentRelease;
 use App\Models\ExamResult;
 use App\Models\ExamResultValue;
 use App\Models\Patient;
 use App\Models\PatientAccount;
 use App\Models\PatientAccountLink;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * Step 7a.3 (ADR-0012): what the portal shows of one patient's record — signed results (the current version of
@@ -42,7 +45,7 @@ final class PortalRecord
     }
 
     /**
-     * @return array{results: list<array<string, mixed>>, appointments: list<array<string, mixed>>}
+     * @return array{results: list<array<string, mixed>>, appointments: list<array<string, mixed>>, documents: list<array<string, mixed>>}
      */
     public static function content(PatientAccount $account, int $keptId): array
     {
@@ -60,6 +63,8 @@ final class PortalRecord
             ->join('units', 'units.id', '=', 'appointments.unit_id')->join('professionals', 'professionals.id', '=', 'appointments.professional_id')
             ->orderBy('appointments.starts_at')->limit(self::APPOINTMENTS)
             ->get(['appointments.id', 'appointments.starts_at', 'units.name as unit', 'units.timezone', 'professionals.name as professional']);
+
+        $documents = self::releasedDocuments($ids);
 
         // Recorded once the content is in hand: the trail shows what was really shown.
         ClinicalAccess::recordPortalRead($account, $keptId);
@@ -86,6 +91,12 @@ final class PortalRecord
                     'flag' => $value->flag,
                 ])->values()->all(),
             ])->all()),
+            // Step 7a.4: only what a professional released, not revoked and not withdrawn.
+            'documents' => array_values($documents->map(fn (ClinicalDocument $document) => [
+                'id' => $document->id,
+                'name' => $document->original_name,
+                'attachedAt' => $document->created_at->toIso8601String(),
+            ])->all()),
             'appointments' => array_values($appointments->map(fn (Appointment $appointment) => [
                 'id' => $appointment->id,
                 'startsAt' => $appointment->starts_at->toIso8601String(),
@@ -106,5 +117,16 @@ final class PortalRecord
         }
 
         return str_replace('.', ',', str_contains($value, '.') ? rtrim(rtrim($value, '0'), '.') : $value);
+    }
+
+    /**
+     * @param  list<int>  $patientIds
+     * @return Collection<int, ClinicalDocument>
+     */
+    public static function releasedDocuments(array $patientIds)
+    {
+        $candidates = array_values(ClinicalDocument::query()->whereIn('patient_id', $patientIds)->whereNull('withdrawn_at')->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+        return ClinicalDocument::query()->whereKey(ClinicalDocumentRelease::released($candidates))->latest('created_at')->latest('id')->get();
     }
 }

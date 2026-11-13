@@ -6,6 +6,7 @@ use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
 use App\Models\AuditEvent;
 use App\Models\ClinicalDocument;
+use App\Models\ClinicalDocumentRelease;
 use App\Models\ExamOrder;
 use App\Models\Patient;
 use App\Models\Professional;
@@ -170,6 +171,41 @@ class ClinicalDocumentController extends Controller
     }
 
     /**
+     * Step 7a.4: the professional who attached the document releases it to the patient's portal, or revokes that.
+     */
+    public function release(Request $request, ClinicalDocument $document): RedirectResponse
+    {
+        return self::releaseAct($request, $document, 'released');
+    }
+
+    public function revoke(Request $request, ClinicalDocument $document): RedirectResponse
+    {
+        return self::releaseAct($request, $document, 'revoked');
+    }
+
+    private static function releaseAct(Request $request, ClinicalDocument $document, string $event): RedirectResponse
+    {
+        self::professional($request);
+        abort_unless($document->uploaded_by_user_id === $request->user()->id, 403);
+
+        DB::transaction(function () use ($document, $request, $event) {
+            $locked = ClinicalDocument::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            $released = ClinicalDocumentRelease::released([$locked->id]) !== [];
+
+            if ($locked->withdrawn_at !== null || $released === ($event === 'released')) {
+                throw ValidationException::withMessages(['release' => $event === 'released' ? 'Este documento não pode ser liberado.' : 'Este documento não está liberado.']);
+            }
+
+            $act = new ClinicalDocumentRelease;
+            $act->forceFill(['tenant_id' => $locked->tenant_id, 'clinical_document_id' => $locked->id, 'event' => $event, 'user_id' => $request->user()->id])->save();
+            AuditEvent::record($event === 'released' ? 'clinical_document.released_to_patient' : 'clinical_document.release_revoked', $locked->tenant_id, $locked);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => $event === 'released' ? 'Documento liberado ao paciente no portal.' : 'O paciente deixa de ver este documento no portal.']);
+
+        return back();
+    }
+
+    /**
      * The documents of a record, newest first. Callers must have checked ClinicalAccess.
      *
      * @param  list<int>  $patientIds
@@ -179,7 +215,10 @@ class ClinicalDocumentController extends Controller
     {
         $when = fn (?CarbonInterface $at) => $at?->setTimezone($timezone)->format('d/m/Y H:i');
 
-        return array_values(ClinicalDocument::query()->whereIn('patient_id', $patientIds)->with('professional:id,name')->latest('created_at')->latest('id')->get()
+        $documents = ClinicalDocument::query()->whereIn('patient_id', $patientIds)->with('professional:id,name')->latest('created_at')->latest('id')->get();
+        $released = ClinicalDocumentRelease::released(array_values($documents->modelKeys()));
+
+        return array_values($documents
             ->map(fn (ClinicalDocument $document) => [
                 'id' => $document->id,
                 'name' => $document->original_name,
@@ -190,6 +229,9 @@ class ClinicalDocumentController extends Controller
                 'withdrawnAt' => $when($document->withdrawn_at),
                 'withdrawReason' => $document->withdraw_reason,
                 'canWithdraw' => $document->withdrawn_at === null && $document->uploaded_by_user_id === $userId,
+                // Step 7a.4: whether the patient sees it in the portal, and whether this user may change that.
+                'released' => $document->withdrawn_at === null && in_array($document->id, $released, true),
+                'canRelease' => $document->withdrawn_at === null && $document->uploaded_by_user_id === $userId,
             ])->all());
     }
 

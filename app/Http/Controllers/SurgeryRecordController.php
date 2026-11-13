@@ -150,7 +150,7 @@ class SurgeryRecordController extends Controller
             'record' => $open ? VisitController::signedRecord($ids, $timezone) : [],
             'prescriptions' => $open ? ExamQueueController::readOnlyPrescriptions($request->user(), $surgery, $timezone) : null,
             // Read-only here: withdrawing belongs to who attends.
-            'documents' => $open ? array_map(fn (array $document) => [...$document, 'canWithdraw' => false], ClinicalDocumentController::listing($ids, $timezone, $request->user()->id)) : [],
+            'documents' => $open ? array_map(fn (array $document) => [...$document, 'canWithdraw' => false, 'canRelease' => false], ClinicalDocumentController::listing($ids, $timezone, $request->user()->id)) : [],
             'examResults' => $open ? ExamResultController::listing($ids, $timezone, $request->user()) : [],
             'surgeryDescriptions' => $open ? SurgeryDescriptionController::listing($ids, $timezone) : [],
         ]);

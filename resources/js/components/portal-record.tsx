@@ -1,4 +1,10 @@
-import { AlertTriangle, CalendarClock, FileText } from 'lucide-react';
+import {
+    AlertTriangle,
+    CalendarClock,
+    FileText,
+    Paperclip,
+} from 'lucide-react';
+import PortalDocumentController from '@/actions/App/Http/Controllers/Portal/PortalDocumentController';
 import PortalResultPdfController from '@/actions/App/Http/Controllers/Portal/PortalResultPdfController';
 
 export type PortalResult = {
@@ -16,6 +22,12 @@ export type PortalResult = {
         reference: string | null;
         flag: 'low' | 'high' | null;
     }[];
+};
+
+export type PortalDocument = {
+    id: number;
+    name: string;
+    attachedAt: string;
 };
 
 export type PortalAppointment = {
@@ -44,10 +56,12 @@ export default function PortalRecord({
     slug,
     results,
     appointments,
+    documents,
 }: {
     slug: string;
     results: PortalResult[];
     appointments: PortalAppointment[];
+    documents: PortalDocument[];
 }) {
     return (
         <div className="mt-8 grid gap-10">
@@ -182,6 +196,45 @@ export default function PortalRecord({
                                         Baixar o PDF do resultado
                                     </a>
                                 )}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+
+            <section aria-labelledby="documents-title">
+                <h2
+                    id="documents-title"
+                    className="flex items-center gap-2 text-lg font-medium"
+                >
+                    <Paperclip
+                        className="size-5 text-primary"
+                        aria-hidden="true"
+                    />
+                    Documentos
+                </h2>
+                {documents.length === 0 ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                        Nenhum documento liberado pela equipe.
+                    </p>
+                ) : (
+                    <ul className="mt-3 grid gap-2">
+                        {documents.map((document) => (
+                            <li key={document.id}>
+                                <a
+                                    href={PortalDocumentController.url([
+                                        slug,
+                                        document.id,
+                                    ])}
+                                    className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 rounded-md border bg-card px-4 py-2 text-sm hover:bg-accent"
+                                >
+                                    <span className="font-medium break-all text-primary">
+                                        {document.name}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                        {formatDate(document.attachedAt)}
+                                    </span>
+                                </a>
                             </li>
                         ))}
                     </ul>

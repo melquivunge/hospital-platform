@@ -3,6 +3,7 @@ import PortalHomeController from '@/actions/App/Http/Controllers/Portal/PortalHo
 import PortalRecord from '@/components/portal-record';
 import type {
     PortalAppointment,
+    PortalDocument,
     PortalResult,
 } from '@/components/portal-record';
 
@@ -14,11 +15,13 @@ export default function PortalChild({
     child,
     results,
     appointments,
+    documents,
 }: {
     network: { name: string; slug: string };
     child: { id: number; name: string };
     results: PortalResult[];
     appointments: PortalAppointment[];
+    documents: PortalDocument[];
 }) {
     return (
         <>
@@ -39,6 +42,7 @@ export default function PortalChild({
                 slug={network.slug}
                 results={results}
                 appointments={appointments}
+                documents={documents}
             />
         </>
     );
