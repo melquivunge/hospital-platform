@@ -39,7 +39,7 @@ export default function PortalChallenge({
                     resetOnError
                     className="mt-8 grid gap-5"
                 >
-                    {({ processing, errors }) => (
+                    {({ processing, errors, clearErrors }) => (
                         <>
                             <div className="grid gap-2">
                                 <Label htmlFor={field}>
@@ -76,25 +76,26 @@ export default function PortalChallenge({
                                 {processing && <Spinner />}
                                 Entrar
                             </Button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    clearErrors();
+                                    setRecovery(!recovery);
+                                }}
+                                className="min-h-11 justify-self-start text-left text-sm font-medium text-primary underline-offset-4 hover:underline"
+                            >
+                                {recovery
+                                    ? 'Usar o código do aplicativo'
+                                    : 'Sem acesso ao aplicativo? Usar um código de recuperação'}
+                            </button>
                         </>
                     )}
                 </Form>
 
-                <p className="mt-6 text-sm">
-                    <button
-                        type="button"
-                        onClick={() => setRecovery(!recovery)}
-                        className="min-h-11 font-medium text-primary underline-offset-4 hover:underline"
-                    >
-                        {recovery
-                            ? 'Usar o código do aplicativo'
-                            : 'Sem acesso ao aplicativo? Usar um código de recuperação'}
-                    </button>
-                </p>
                 <p className="mt-2 text-sm">
                     <Link
                         href={PortalAuthController.showLogin.url(network.slug)}
-                        className="font-medium text-primary underline-offset-4 hover:underline"
+                        className="inline-flex min-h-11 items-center font-medium text-primary underline-offset-4 hover:underline"
                     >
                         Voltar para o início
                     </Link>

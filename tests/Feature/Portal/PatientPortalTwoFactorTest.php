@@ -61,8 +61,8 @@ class PatientPortalTwoFactorTest extends ClinicalTestCase
     private function totp(): string
     {
         $engine = new Google2FA;
-        // ponytail: the app accepts one step either side of now, so at most three codes per test.
-        $this->step = $this->step === 0 ? (int) $engine->getTimestamp() - 1 : $this->step + 1;
+        // ponytail: the app accepts one step either side of now; starting at now keeps two codes valid even if the clock ticks.
+        $this->step = $this->step === 0 ? (int) $engine->getTimestamp() : $this->step + 1;
 
         return $engine->oathTotp(Fortify::currentEncrypter()->decrypt((string) $this->account()->two_factor_secret), $this->step);
     }
@@ -194,6 +194,34 @@ class PatientPortalTwoFactorTest extends ClinicalTestCase
             ['patient_portal.two_factor_enabled', 'patient_portal.recovery_codes_regenerated', 'patient_portal.two_factor_disabled'],
             AuditEvent::where('action', 'like', 'patient_portal.%two_factor%')->orWhere('action', 'like', 'patient_portal.recovery%')->orderBy('id')->pluck('action')->all(),
         );
+    }
+
+    public function test_a_code_typed_with_a_space_works(): void
+    {
+        $this->post($this->url('portal.two-factor.enable'), ['password' => self::PASSWORD]);
+        $code = $this->totp();
+        $this->post($this->url('portal.two-factor.confirm'), ['code' => substr($code, 0, 3).' '.substr($code, 3)])->assertSessionHasNoErrors();
+        $this->assertTrue($this->account()->hasEnabledTwoFactorAuthentication());
+    }
+
+    public function test_a_new_password_ends_a_pending_sign_in(): void
+    {
+        $this->turnOn();
+        $this->signInWithPassword();
+        $this->account()->forceFill(['password' => 'Outra-senha-456'])->save();
+
+        $this->post($this->url('portal.challenge.store'), ['code' => $this->totp()])->assertRedirect($this->url('portal.login'));
+        $this->assertGuest('patient');
+    }
+
+    public function test_wrong_passwords_on_this_page_are_limited_per_account(): void
+    {
+        for ($i = 0; $i < 5; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => "10.3.0.{$i}"])->post($this->url('portal.two-factor.enable'), ['password' => 'errada'])->assertSessionHasErrors(['password' => 'Senha incorreta.']);
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '10.4.0.1'])->post($this->url('portal.two-factor.enable'), ['password' => self::PASSWORD])->assertSessionHasErrors(['password' => 'Muitas tentativas. Tente de novo em 15 minuto(s).']);
+        $this->assertNull($this->account()->two_factor_secret);
     }
 
     public function test_the_security_page_is_for_the_signed_in_patient_only(): void

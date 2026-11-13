@@ -1,5 +1,6 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { ShieldCheck } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import PortalHomeController from '@/actions/App/Http/Controllers/Portal/PortalHomeController';
 import PortalTwoFactorController from '@/actions/App/Http/Controllers/Portal/PortalTwoFactorController';
 import InputError from '@/components/input-error';
@@ -79,6 +80,14 @@ export default function PortalSecurity({
     status,
 }: Props) {
     const slug = network.slug;
+    const codesTitle = useRef<HTMLHeadingElement>(null);
+
+    // The codes appear after a redirect: take the reader to them.
+    useEffect(() => {
+        if (recoveryCodes) {
+            codesTitle.current?.focus();
+        }
+    }, [recoveryCodes]);
 
     return (
         <>
@@ -86,30 +95,34 @@ export default function PortalSecurity({
             <p className="text-sm">
                 <Link
                     href={PortalHomeController.url(slug)}
-                    className="font-medium text-primary underline-offset-4 hover:underline"
+                    className="inline-flex min-h-11 items-center font-medium text-primary underline-offset-4 hover:underline"
                 >
                     Voltar para o início
                 </Link>
             </p>
-            <h1 className="mt-4 text-2xl font-semibold tracking-tight">
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">
                 Segurança da conta
             </h1>
 
-            {status && (
-                <p
-                    role="status"
-                    className="mt-6 rounded-md border bg-card px-4 py-3 text-sm"
-                >
-                    {status}
-                </p>
-            )}
+            <div role="status" aria-live="polite">
+                {status && (
+                    <p className="mt-6 rounded-md border bg-card px-4 py-3 text-sm">
+                        {status}
+                    </p>
+                )}
+            </div>
 
             {recoveryCodes && (
                 <section
                     aria-labelledby="codes-title"
                     className="mt-6 rounded-md border bg-card p-4"
                 >
-                    <h2 id="codes-title" className="font-medium">
+                    <h2
+                        id="codes-title"
+                        ref={codesTitle}
+                        tabIndex={-1}
+                        className="font-medium focus:outline-none"
+                    >
                         Códigos de recuperação
                     </h2>
                     <p className="mt-1 text-sm text-muted-foreground">
