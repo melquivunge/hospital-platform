@@ -108,7 +108,7 @@ final class PortalJourney
 
         return [
             'kind' => 'emergency',
-            'unit' => (string) Unit::query()->whereKey($episode->unit_id)->value('name'),
+            'unit' => self::unitName($episode->unit_id),
             'steps' => ['Chegou', 'Classificação', 'Aguardando', 'Em atendimento', $last],
             'current' => $current,
             'endedAt' => $episode->ended_at,
@@ -133,7 +133,7 @@ final class PortalJourney
 
         return [
             'kind' => 'admission',
-            'unit' => (string) Unit::query()->whereKey($admission->unit_id)->value('name'),
+            'unit' => self::unitName($admission->unit_id),
             'steps' => ['Aguardando leito', 'Internado', match ($admission->discharge_type) {
                 'transfer_out' => 'Transferido',
                 'death', 'evasion' => 'Encerrado',
@@ -158,13 +158,14 @@ final class PortalJourney
      *
      * @return Journey
      */
-    public static function exam(ExamOrderItem $item, int $unitId): array
+    public static function exam(ExamOrderItem $item, int $unitId, bool $named = true): array
     {
-        $released = ExamResult::query()->where('exam_order_item_id', $item->id)->min('released_at');
+        // The first release (a rectification does not restart the clock); loaded with the list when it can be.
+        $released = $item->getAttribute('results_min_released_at') ?? ExamResult::query()->where('exam_order_item_id', $item->id)->min('released_at');
 
         return [
             'kind' => 'exam',
-            'unit' => (string) Unit::query()->whereKey($unitId)->value('name'),
+            'unit' => self::unitName($unitId),
             'steps' => ['Pedido', $item->exam_type === 'imaging' ? 'Realizado' : 'Coletado', 'Em análise', 'Resultado liberado'],
             'current' => match (true) {
                 $released !== null => 3,
@@ -175,8 +176,18 @@ final class PortalJourney
             'position' => null,
             'waitMinutes' => null,
             'level' => null,
-            'detail' => $item->exam_name,
+            // A guardian sees which kind of exam, not which exam, until the result is released (it is in the record then).
+            'detail' => $named || $released !== null ? $item->exam_name : match ($item->exam_type) {
+                'imaging' => 'Exame de imagem',
+                default => 'Exame de laboratório',
+            },
         ];
+    }
+
+    private static function unitName(int $id): string
+    {
+        // Once per request: every card of the page and every 20 s refresh names the same few units.
+        return once(fn () => (string) Unit::query()->whereKey($id)->value('name'));
     }
 
     /**

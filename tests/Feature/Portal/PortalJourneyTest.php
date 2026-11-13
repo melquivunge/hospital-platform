@@ -3,6 +3,7 @@
 namespace Tests\Feature\Portal;
 
 use App\Http\Controllers\Portal\PortalAuthController;
+use App\Http\Controllers\Portal\PortalJourney;
 use App\Models\Admission;
 use App\Models\Appointment;
 use App\Models\Bed;
@@ -18,7 +19,9 @@ use App\Models\Visit;
 use App\Models\VisitPass;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Role;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Feature\Clinical\ClinicalTestCase;
 
@@ -160,6 +163,13 @@ class PortalJourneyTest extends ClinicalTestCase
         $visits()->assertInertia(fn (Assert $page) => $page->has('visits', 3)
             ->where('visits.1.kind', 'admission')->where('visits.1.current', 0)->where('visits.1.detail', $ward->name)->where('visits.1.position', null)
             ->where('visits.2.kind', 'exam')->where('visits.2.current', 0)->where('visits.2.detail', 'Hemograma'));
+        // The page view goes to the access trail; the 20 s refresh does not.
+        $reads = fn () => DB::table('clinical_reads')->where('reason', 'portal')->where('patient_account_id', $account->id)->count();
+        $before = $reads();
+        $visits();
+        $this->assertSame($before + 1, $reads());
+        $this->get(route('portal.visits', ['portal' => $this->slug]), ['X-Inertia' => 'true', 'X-Inertia-Version' => (string) Inertia::getVersion(), 'X-Inertia-Partial-Component' => 'portal/visits', 'X-Inertia-Partial-Data' => 'visits'])->assertOk();
+        $this->assertSame($before + 1, $reads());
 
         // The bed is allocated, the blood collected and the result released.
         $admission = Admission::withoutTenantScope()->sole();
@@ -167,10 +177,24 @@ class PortalJourneyTest extends ClinicalTestCase
         $item = ExamOrderItem::withoutGlobalScopes()->sole();
         $this->actingAs($lab->user, 'web')->post(route('exam-queue.collect', $item))->assertSessionHasNoErrors();
         $visits()->assertInertia(fn (Assert $page) => $page->where('visits.1.current', 1)->where('visits.1.detail', "{$ward->name} · quarto 10, leito 10-A")->where('visits.2.current', 2));
+        // Collected, the exam stays past the 7 days an uncollected order is shown.
+        $this->travel(8)->days();
+        $this->withSession(['portal.last_seen' => now()->getTimestamp()]);
+        $visits()->assertInertia(fn (Assert $page) => $page->where('visits', fn ($list) => collect($list)->contains(fn ($visit) => $visit['kind'] === 'exam' && $visit['current'] === 2)));
         $this->actingAs($lab->user, 'web')->post(route('exam-results.release', $item), ['version' => 1, 'password' => 'password', 'values' => [$hb->id => '13,5']])->assertSessionHasNoErrors();
-        $visits()->assertInertia(fn (Assert $page) => $page->where('visits.2.current', 3)->where('visits.2.ended', true));
+        $visits()->assertInertia(fn (Assert $page) => $page->where('visits', fn ($list) => collect($list)->contains(fn ($visit) => $visit['kind'] === 'exam' && $visit['current'] === 3 && $visit['ended'])));
         // Only the stay goes on: the emergency episode ended with the bed, the exam with its result.
         $this->get(route('portal.home', ['portal' => $this->slug]))->assertInertia(fn (Assert $page) => $page->where('visits', 1));
+    }
+
+    public function test_a_guardian_sees_the_kind_of_exam_until_the_result_is_released(): void
+    {
+        app(CurrentTenant::class)->set($this->patient->tenant);
+        $item = (new ExamOrderItem)->forceFill(['id' => 0, 'exam_name' => 'Anti-HIV', 'exam_type' => 'laboratory', 'results_min_released_at' => null]);
+        $this->assertSame('Exame de laboratório', PortalJourney::exam($item, $this->unit->id, named: false)['detail']);
+        $this->assertSame('Anti-HIV', PortalJourney::exam($item, $this->unit->id)['detail']);
+        $item->forceFill(['results_min_released_at' => now()->toDateTimeString()]);
+        $this->assertSame('Anti-HIV', PortalJourney::exam($item, $this->unit->id, named: false)['detail']);
     }
 
     private function account(): PatientAccount

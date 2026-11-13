@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Portal;
 
+use App\Clinical\ClinicalAccess;
 use App\Http\Controllers\Controller;
 use App\Models\Admission;
 use App\Models\Appointment;
@@ -12,6 +13,7 @@ use App\Models\Patient;
 use App\Models\PatientAccount;
 use App\Models\VisitPass;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -22,7 +24,7 @@ use Inertia\Response;
  */
 class PortalVisitsController extends Controller
 {
-    public function __invoke(): Response
+    public function __invoke(Request $request): Response
     {
         /** @var PatientAccount|null $account */
         $account = Auth::guard('patient')->user();
@@ -30,14 +32,14 @@ class PortalVisitsController extends Controller
 
         return Inertia::render('portal/visits', [
             ...PortalHomeController::shell($account),
-            'visits' => self::visits($account),
+            'visits' => self::visits($account, record: ! $request->hasHeader('X-Inertia-Partial-Data')),
         ]);
     }
 
     /**
      * @return list<array<string, mixed>>
      */
-    public static function visits(PatientAccount $account): array
+    public static function visits(PatientAccount $account, bool $record = false): array
     {
         $whose = self::whose($account);
 
@@ -49,13 +51,25 @@ class PortalVisitsController extends Controller
             ...self::admissions(array_keys($whose))->get()
                 ->map(fn (Admission $admission) => [$admission->patient_id, PortalJourney::admission($admission)]),
             ...self::exams(array_keys($whose))->get()
-                ->map(fn (ExamOrderItem $item) => [(int) $item->getAttribute('patient_id'), PortalJourney::exam($item, (int) $item->getAttribute('unit_id'))]),
+                ->map(fn (ExamOrderItem $item) => [(int) $item->getAttribute('patient_id'), PortalJourney::exam($item, (int) $item->getAttribute('unit_id'), named: $whose[(int) $item->getAttribute('patient_id')][1] === null)]),
         ];
 
-        $visits = [];
+        $visits = $read = [];
         foreach ($journeys as [$patientId, $journey]) {
-            if (! VisitPass::expiredAt($journey['endedAt'])) {
-                $visits[] = ['who' => $whose[$patientId]] + PortalJourney::present($journey);
+            if (VisitPass::expiredAt($journey['endedAt'])) {
+                continue;
+            }
+            [$kept, $who] = $whose[$patientId];
+            if (in_array($journey['kind'], ['exam', 'admission'], true)) {
+                $read[$kept] = true;
+            }
+            $visits[] = ['who' => $who] + PortalJourney::present($journey);
+        }
+
+        // Exams and the bed are the record: the page view goes to the access trail, the 20 s refresh does not.
+        if ($record) {
+            foreach (array_keys($read) as $kept) {
+                ClinicalAccess::recordPortalRead($account, $kept);
             }
         }
 
@@ -108,8 +122,7 @@ class PortalVisitsController extends Controller
     }
 
     /**
-     * The exams of the open orders of the last days: an order never collected leaves after OVERDUE_DAYS, like the
-     * manager's list of overdue orders.
+     * The exams of the open orders (an exam never collected leaves after OVERDUE_DAYS, like the manager's overdue list).
      *
      * @param  list<int>  $ids
      * @return Builder<ExamOrderItem>
@@ -118,7 +131,9 @@ class PortalVisitsController extends Controller
     {
         return ExamOrderItem::query()->join('exam_orders', 'exam_orders.id', '=', 'exam_order_items.exam_order_id')
             ->whereIn('exam_orders.patient_id', $ids)->where('exam_orders.status', 'requested')
-            ->where('exam_orders.created_at', '>=', now()->subDays(ExamOrder::OVERDUE_DAYS))
+            // An exam never collected leaves after OVERDUE_DAYS; once collected, it stays until 12 h after the result.
+            ->where(fn (Builder $query) => $query->where('exam_orders.created_at', '>=', now()->subDays(ExamOrder::OVERDUE_DAYS))->orWhereNotNull('exam_order_items.collected_at'))
+            ->withMin('results', 'released_at')
             ->orderBy('exam_order_items.id')
             ->select(['exam_order_items.*', 'exam_orders.patient_id', 'exam_orders.unit_id']);
     }
@@ -126,7 +141,7 @@ class PortalVisitsController extends Controller
     /**
      * Each record the account reads, with the ones merged into it, labelled by whose it is (null: the patient's own).
      *
-     * @return array<int, string|null>
+     * @return array<int, array{int, string|null}>
      */
     private static function whose(PatientAccount $account): array
     {
@@ -135,7 +150,7 @@ class PortalVisitsController extends Controller
         foreach (PortalRecord::readable($account) as $kept) {
             $name = $kept === $own ? null : Patient::query()->whereKey($kept)->get(['name', 'social_name'])->map(fn (Patient $p) => $p->social_name ?? $p->name)->first();
             foreach (PortalRecord::recordIds($kept) as $id) {
-                $whose[$id] = $name;
+                $whose[$id] = [$kept, $name];
             }
         }
 
