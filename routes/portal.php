@@ -3,6 +3,7 @@
 use App\Http\Controllers\Portal\PortalAuthController;
 use App\Http\Controllers\Portal\PortalHomeController;
 use App\Http\Controllers\Portal\PortalSignupController;
+use App\Http\Controllers\Portal\PortalTwoFactorController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -22,8 +23,18 @@ Route::prefix('portal/{portal}')->middleware('portal')->name('portal.')->group(f
     Route::get('primeiro-acesso/codigo', [PortalSignupController::class, 'showCode'])->name('signup.code');
     Route::post('primeiro-acesso/codigo', [PortalSignupController::class, 'verify'])->middleware('throttle:10,1')->name('signup.verify');
 
+    Route::get('entrar/codigo', [PortalTwoFactorController::class, 'showChallenge'])->name('challenge');
+    Route::post('entrar/codigo', [PortalTwoFactorController::class, 'challenge'])->middleware('throttle:10,1')->name('challenge.store');
+
     Route::middleware('auth:patient')->group(function () {
         Route::get('/', PortalHomeController::class)->name('home');
+        Route::get('seguranca', [PortalTwoFactorController::class, 'show'])->name('security');
+        Route::middleware('throttle:6,1')->group(function () {
+            Route::post('seguranca/duas-etapas', [PortalTwoFactorController::class, 'enable'])->name('two-factor.enable');
+            Route::post('seguranca/duas-etapas/confirmar', [PortalTwoFactorController::class, 'confirm'])->name('two-factor.confirm');
+            Route::post('seguranca/codigos-de-recuperacao', [PortalTwoFactorController::class, 'regenerate'])->name('two-factor.recovery-codes');
+            Route::delete('seguranca/duas-etapas', [PortalTwoFactorController::class, 'disable'])->name('two-factor.disable');
+        });
         Route::post('sair', [PortalAuthController::class, 'logout'])->name('logout');
     });
 });

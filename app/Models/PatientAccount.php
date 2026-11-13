@@ -3,10 +3,14 @@
 namespace App\Models;
 
 use App\Tenancy\BelongsToTenant;
+use App\Tenancy\CurrentTenant;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
+use Laravel\Fortify\Fortify;
+use Laravel\Fortify\TwoFactorAuthenticatable;
 
 /**
  * Step 7a.1a (ADR-0012): a patient's portal account in one network. Never a staff user: it has no
@@ -24,15 +28,19 @@ use Illuminate\Support\Str;
  * @property Carbon|null $signup_code_expires_at
  * @property int $signup_code_attempts
  * @property Carbon|null $last_login_at
+ * @property string|null $two_factor_secret
+ * @property string|null $two_factor_recovery_codes
+ * @property Carbon|null $two_factor_confirmed_at
  */
 class PatientAccount extends Authenticatable
 {
     use BelongsToTenant;
+    use TwoFactorAuthenticatable;
 
     /** The invitation and the forgotten-password link last 72 hours (contract, decision 4). */
     public const SETUP_HOURS = 72;
 
-    protected $hidden = ['password', 'remember_token', 'setup_token_hash', 'signup_code_hash'];
+    protected $hidden = ['password', 'remember_token', 'setup_token_hash', 'signup_code_hash', 'two_factor_secret', 'two_factor_recovery_codes'];
 
     protected function casts(): array
     {
@@ -41,6 +49,7 @@ class PatientAccount extends Authenticatable
             'setup_token_expires_at' => 'datetime',
             'signup_code_expires_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'two_factor_confirmed_at' => 'datetime',
         ];
     }
 
@@ -86,5 +95,17 @@ class PatientAccount extends Authenticatable
         $patient = $this->patient()->firstOrFail();
 
         return $patient->merged_into_id ?? $patient->id;
+    }
+
+    /**
+     * Step 7a.1c: the authenticator app shows the network's name, not the platform's.
+     */
+    public function twoFactorQrCodeUrl(): string
+    {
+        return app(TwoFactorAuthenticationProvider::class)->qrCodeUrl(
+            app(CurrentTenant::class)->require()->name,
+            $this->email,
+            Fortify::currentEncrypter()->decrypt((string) $this->two_factor_secret),
+        );
     }
 }

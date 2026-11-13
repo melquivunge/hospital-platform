@@ -67,11 +67,24 @@ class PortalAuthController extends Controller
 
         RateLimiter::clear($key);
         RateLimiter::clear($accountKey);
+
+        if ($account->hasEnabledTwoFactorAuthentication()) {
+            return PortalTwoFactorController::startChallenge($request, $account);
+        }
+
+        self::completeSignIn($request, $account);
+
+        return to_route('portal.home', ['portal' => self::slug()]);
+    }
+
+    /**
+     * The password (and, when on, the second factor) is right: the session belongs to the account from here.
+     */
+    public static function completeSignIn(Request $request, PatientAccount $account): void
+    {
         self::signIn($request, $account);
         $account->forceFill(['last_login_at' => now()])->save();
         AuditEvent::record('patient_portal.login', $account->tenant_id, $account, byStaff: false);
-
-        return to_route('portal.home', ['portal' => self::slug()]);
     }
 
     public function logout(Request $request): RedirectResponse
@@ -129,6 +142,12 @@ class PortalAuthController extends Controller
         }
 
         AuditEvent::record('patient_portal.password_set', $account->tenant_id, $account, byStaff: false);
+
+        // The e-mail link proves the e-mail, not the second factor.
+        if ($account->hasEnabledTwoFactorAuthentication()) {
+            return PortalTwoFactorController::startChallenge($request, $account);
+        }
+
         self::signIn($request, $account);
 
         return to_route('portal.home', ['portal' => self::slug()]);
