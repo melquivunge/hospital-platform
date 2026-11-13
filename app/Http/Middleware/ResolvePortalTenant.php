@@ -44,8 +44,13 @@ class ResolvePortalTenant
             $request->session()->forget(['portal.last_seen', 'portal.password']);
             $request->session()->regenerateToken();
 
-            return redirect()->route('portal.login', ['portal' => $tenant->slug])
-                ->with('status', 'Sua sessão terminou por falta de uso. Entre de novo.');
+            // Only pages that need the account send back to the sign-in; a public one (the visit QR) opens as a guest.
+            if (in_array('auth:patient', $request->route()?->gatherMiddleware() ?? [], true)) {
+                return redirect()->route('portal.login', ['portal' => $tenant->slug])
+                    ->with('status', 'Sua sessão terminou por falta de uso. Entre de novo.');
+            }
+
+            $account = null;
         }
 
         if ($account !== null) {

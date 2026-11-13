@@ -68,6 +68,7 @@ use App\Http\Controllers\TriageLevelController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\VacancyController;
 use App\Http\Controllers\VisitController;
+use App\Http\Controllers\VisitPassController;
 use App\Http\Controllers\WardController;
 use Illuminate\Support\Facades\Route;
 
@@ -253,6 +254,11 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::put('clinical-notes/{note}', [VisitController::class, 'updateNote'])->middleware('throttle:60,1')->name('clinical-notes.update');
     Route::post('clinical-notes/{note}/sign', [VisitController::class, 'signNote'])->middleware('throttle:60,1')->name('clinical-notes.sign');
     Route::get('appointments/queue', [AppointmentController::class, 'queue'])->name('appointments.queue');
+    // Step 7b.1: the arrival's QR, shown once; a new one revokes the one before.
+    Route::post('appointments/{appointment}/visit-pass', [VisitPassController::class, 'storeForAppointment'])->middleware('throttle:30,1')->name('visit-passes.appointment');
+    Route::post('emergency-episodes/{episode}/visit-pass', [VisitPassController::class, 'storeForEpisode'])->middleware('throttle:30,1')->name('visit-passes.episode');
+    Route::get('visit-passes/{pass}', [VisitPassController::class, 'show'])->name('visit-passes.show');
+    Route::post('visit-passes/{pass}/revoke', [VisitPassController::class, 'revoke'])->middleware('throttle:30,1')->name('visit-passes.revoke');
     Route::post('appointments/{appointment}/arrive', [AppointmentController::class, 'arrive'])->middleware('throttle:60,1')->name('appointments.arrive');
     Route::post('appointments/{appointment}/no-show', [AppointmentController::class, 'noShow'])->middleware('throttle:60,1')->name('appointments.no-show');
     Route::get('patient-merges', [PatientMergeController::class, 'index'])->name('patient-merges.index');

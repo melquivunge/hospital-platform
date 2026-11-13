@@ -1,4 +1,6 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
+import VisitPassController from '@/actions/App/Http/Controllers/VisitPassController';
+import VisitPassButton from '@/components/visit-pass-button';
 import { Siren, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import EmergencyController from '@/actions/App/Http/Controllers/EmergencyController';
@@ -512,6 +514,14 @@ function EpisodeCard({
                             )}
                         </Form>
                     </details>
+                )}
+                {canArrive && (
+                    <VisitPassButton
+                        action={VisitPassController.storeForEpisode.form(
+                            episode.id,
+                        )}
+                        label={`${name}, chegada às ${episode.arrivedAt}`}
+                    />
                 )}
             </div>
         </li>

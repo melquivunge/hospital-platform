@@ -59,6 +59,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 7". Arquitetura: ../docs/a
 ### 7b.1 QR da visita
 - Na confirmação da chegada (consulta ou urgência) a recepção gera o QR; token aleatório, ligado à visita, válido até 12 h depois da alta, revogável.
 - Abre só a jornada da visita, sem conta e sem resultados.
+- **Feito:** botão "QR da visita" na fila do dia (consulta chegou ou em atendimento) e no painel da urgência; token aleatório guardado só como hash, mostrado uma vez (imprimir), novo QR revoga o anterior, revogação manual, auditado; página pública `/portal/{rede}/visita/{token}` com a unidade e as etapas (sem nome, sem resultados), a mesma resposta para QR desconhecido, revogado ou vencido; vale até 12 h depois do fim; token fora do log do nginx. Posição e tempo estimado ficam na 7b.2.
 
 ### 7b.2 Jornada ao vivo
 - Etapas, posição e tempo estimado das quatro filas pelas regras do contrato; atualização a cada 20 s (`usePoll`); estado "atualizado há X min".
