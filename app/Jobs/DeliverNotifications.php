@@ -41,6 +41,8 @@ class DeliverNotifications implements ShouldQueue
         'stock.daily_alert', 'stock.inventory_submitted', 'stock.discard',
         'exam.overdue_orders', 'exam_result.released', 'exam_result.critical_unacknowledged',
         'surgery.overdue', 'surgery.completed', 'surgery.description_addendum',
+        // Step 7b.3: the portal's inbox only (PortalNotifier).
+        'appointment.created', 'visit.opened', 'emergency.ended', 'admission.discharged',
     ];
 
     /** Step 4.6: what bed management of both units hears at each step of a transfer (no patient data). */
@@ -100,6 +102,7 @@ class DeliverNotifications implements ShouldQueue
 
     private function deliver(\stdClass $event): void
     {
+        PortalNotifier::deliver($event);
         foreach ($this->notifications($event) as $notification) {
             [$userIds, $title, $url] = $notification;
             foreach (array_unique($userIds) as $userId) {

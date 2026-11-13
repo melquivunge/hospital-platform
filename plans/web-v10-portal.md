@@ -68,6 +68,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 7". Arquitetura: ../docs/a
 
 ### 7b.3 Notificações no portal e por e-mail
 - Eventos: "você é o próximo", início do atendimento, resultado liberado, consulta marcada, alta. Guardados como as notificações da equipe, com outro destinatário; e-mail para resultado, consulta e alta.
+- **Feito:** tabela `patient_notifications` (RLS) preenchida pelo mesmo `DeliverNotifications` (classe `PortalNotifier`), para a conta do paciente e, se menor, as dos responsáveis ("Menor sob sua responsabilidade: …"); consulta marcada (não encaixe), atendimento começou, "você é o próximo" (o primeiro que ainda espera depois de cada chamada, uma vez por chegada), alta do pronto-socorro e da internação (óbito nunca vira aviso), resultado liberado (só a primeira versão; resultado crítico não avisa, aguardando decisão de produto). E-mail sem conteúdo ("Novidade no portal") para consulta, resultado e alta. Sino com contagem no cabeçalho e página "Avisos" (abrir marca como lidos).
 
 ### 7b.4 Push no celular e canais externos
 - Push do navegador (portal adicionado à tela inicial): exige biblioteca nova e chaves VAPID — **pedir aprovação do usuário antes de instalar**.

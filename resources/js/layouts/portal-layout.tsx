@@ -1,12 +1,14 @@
-import { Form, usePage } from '@inertiajs/react';
-import { Activity, LogOut } from 'lucide-react';
+import { Form, Link, usePage } from '@inertiajs/react';
+import { Activity, Bell, LogOut } from 'lucide-react';
 import type { ReactNode } from 'react';
 import PortalAuthController from '@/actions/App/Http/Controllers/Portal/PortalAuthController';
+import PortalNotificationController from '@/actions/App/Http/Controllers/Portal/PortalNotificationController';
 import { Button } from '@/components/ui/button';
 
 type PortalProps = {
     network?: { name: string; slug: string };
     patient?: { name: string };
+    unread?: number;
 };
 
 /**
@@ -14,7 +16,7 @@ type PortalProps = {
  * account; the network's name says whose portal this is.
  */
 export default function PortalLayout({ children }: { children: ReactNode }) {
-    const { network, patient } = usePage<PortalProps>().props;
+    const { network, patient, unread = 0 } = usePage<PortalProps>().props;
 
     return (
         <div className="min-h-svh bg-background text-foreground">
@@ -37,18 +39,43 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
                         <span className="sr-only"> — portal do paciente</span>
                     </p>
                     {patient && network && (
-                        <Form
-                            {...PortalAuthController.logout.form(network.slug)}
-                        >
-                            <Button
-                                type="submit"
-                                variant="ghost"
-                                className="min-h-11"
+                        <div className="flex items-center gap-1">
+                            <Link
+                                href={PortalNotificationController.url(
+                                    network.slug,
+                                )}
+                                className="relative inline-flex size-11 items-center justify-center rounded-md hover:bg-accent"
+                                aria-label={
+                                    unread > 0
+                                        ? `Avisos, ${unread} novo${unread > 1 ? 's' : ''}`
+                                        : 'Avisos'
+                                }
                             >
-                                <LogOut aria-hidden="true" />
-                                Sair
-                            </Button>
-                        </Form>
+                                <Bell className="size-5" aria-hidden="true" />
+                                {unread > 0 && (
+                                    <span
+                                        className="absolute top-1.5 right-1.5 min-w-4 rounded-full bg-primary px-1 text-center text-[11px] leading-4 font-semibold text-primary-foreground"
+                                        aria-hidden="true"
+                                    >
+                                        {unread > 9 ? '9+' : unread}
+                                    </span>
+                                )}
+                            </Link>
+                            <Form
+                                {...PortalAuthController.logout.form(
+                                    network.slug,
+                                )}
+                            >
+                                <Button
+                                    type="submit"
+                                    variant="ghost"
+                                    className="min-h-11"
+                                >
+                                    <LogOut aria-hidden="true" />
+                                    Sair
+                                </Button>
+                            </Form>
+                        </div>
                     )}
                 </div>
             </header>

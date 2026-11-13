@@ -37,13 +37,14 @@ class PortalHomeController extends Controller
     /**
      * What every signed-in portal page shows around its content: the network and how to address the patient.
      *
-     * @return array{network: array{name: string, slug: string}, patient: array{name: string}}
+     * @return array{network: array{name: string, slug: string}, patient: array{name: string}, unread: int}
      */
     public static function shell(PatientAccount $account): array
     {
         $patient = Patient::query()->findOrFail($account->effectivePatientId());
 
-        return ['network' => self::network(), 'patient' => ['name' => $patient->social_name ?? $patient->name]];
+        // Step 7b.3: the unread notices, for the bell in the header.
+        return ['network' => self::network(), 'patient' => ['name' => $patient->social_name ?? $patient->name], 'unread' => PortalNotificationController::unread($account)];
     }
 
     /**
