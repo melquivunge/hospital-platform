@@ -5,6 +5,7 @@ use App\Http\Controllers\Portal\PortalChildController;
 use App\Http\Controllers\Portal\PortalDocumentController;
 use App\Http\Controllers\Portal\PortalHomeController;
 use App\Http\Controllers\Portal\PortalMyDataController;
+use App\Http\Controllers\Portal\PortalNotificationController;
 use App\Http\Controllers\Portal\PortalResultPdfController;
 use App\Http\Controllers\Portal\PortalSignupController;
 use App\Http\Controllers\Portal\PortalTwoFactorController;
@@ -37,6 +38,7 @@ Route::prefix('portal/{portal}')->middleware('portal')->name('portal.')->group(f
     Route::middleware('auth:patient')->group(function () {
         Route::get('/', PortalHomeController::class)->name('home');
         Route::get('visitas', PortalVisitsController::class)->name('visits');
+        Route::get('avisos', PortalNotificationController::class)->name('notifications');
         Route::get('meus-dados', [PortalMyDataController::class, 'show'])->name('my-data');
         Route::post('meus-dados', [PortalMyDataController::class, 'store'])->middleware('throttle:5,1')->name('my-data.store');
         Route::get('documentos/{document}', PortalDocumentController::class)->whereNumber('document')->middleware('throttle:30,1')->name('document');
