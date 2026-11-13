@@ -38,8 +38,9 @@ final class PortalJourney
 
         $unit = Unit::query()->findOrFail($appointment->unit_id);
         $position = $wait = null;
-        if ($appointment->status === 'arrived') {
-            $day = CarbonImmutable::now($unit->timezone ?? 'UTC')->startOfDay();
+        $day = CarbonImmutable::now($unit->timezone ?? 'UTC')->startOfDay();
+        // Only today's queue: an arrival left open from another day has no place in it.
+        if ($appointment->status === 'arrived' && $appointment->starts_at->between($day, $day->addDay())) {
             // The day's queue of this professional, in the order the reception sees it (time booked, then id).
             $ahead = Appointment::query()->where('unit_id', $appointment->unit_id)->where('professional_id', $appointment->professional_id)
                 ->where('status', 'arrived')->where('starts_at', '>=', $day->utc())->where('starts_at', '<', $day->addDay()->utc())
@@ -47,8 +48,8 @@ final class PortalJourney
                     ->orWhere(fn (Builder $same) => $same->where('starts_at', $appointment->starts_at)->where('id', '<', $appointment->id)))
                 ->count();
             // The professional's average visit today; without one yet, the length of the booked slot.
-            $average = Visit::query()->where('professional_id', $appointment->professional_id)->whereNotNull('appointment_id')
-                ->where('closed_at', '>=', $day->utc())->selectRaw('avg(extract(epoch from closed_at - opened_at)) / 60 as minutes')->value('minutes');
+            $average = Visit::query()->where('unit_id', $appointment->unit_id)->where('professional_id', $appointment->professional_id)->whereNotNull('appointment_id')
+                ->where('closed_at', '>=', $day->utc())->where('closed_at', '<', $day->addDay()->utc())->selectRaw('avg(extract(epoch from closed_at - opened_at)) / 60 as minutes')->value('minutes');
             $slot = (float) ($average ?? $appointment->starts_at->diffInMinutes($appointment->ends_at));
             $position = $ahead + 1;
             $wait = (int) ceil($ahead * $slot);

@@ -44,27 +44,29 @@ class PortalJourneyTest extends ClinicalTestCase
 
     public function test_the_appointment_queue_counts_those_who_arrived_for_the_same_professional(): void
     {
-        foreach (['08:20', '08:40'] as $time) {
+        foreach (['08:20', '08:40', '09:00', '09:20'] as $time) {
             $this->actingAs($this->reception->user, 'web')->post(route('appointments.store', $this->unit), ['professional_id' => $this->doctor->id, 'patient_id' => $this->patient->id, 'starts_at' => "2026-11-16T{$time}"])->assertSessionHasNoErrors();
         }
-        [$first, $second] = Appointment::withoutTenantScope()->orderBy('starts_at')->get()->all();
+        // Someone waiting for another professional does not count.
+        $this->post(route('appointments.store', $this->other), ['professional_id' => $this->nurse->id, 'patient_id' => $this->patient->id, 'starts_at' => '2026-11-16T08:00'])->assertSessionHasNoErrors();
+        $appointments = Appointment::withoutTenantScope()->where('professional_id', $this->doctor->id)->orderBy('starts_at')->get()->all();
         $this->travelTo('2026-11-16 10:30:00');
-        foreach ([$second, $first] as $appointment) {
+        foreach (Appointment::withoutTenantScope()->get() as $appointment) {
             $this->post(route('appointments.arrive', $appointment), ['modality' => 'private'])->assertSessionHasNoErrors();
         }
-        $token = $this->token('visit-passes.appointment', $second->id);
+        [$first, $second, , $last] = $appointments;
+        $token = $this->token('visit-passes.appointment', $last->id);
+        $journey = fn () => $this->get(route('portal.visit', ['portal' => $this->slug, 'token' => $token]));
 
-        // One ahead and no visit closed today: the slot of the agenda (20 min).
-        $this->get(route('portal.visit', ['portal' => $this->slug, 'token' => $token]))->assertInertia(fn (Assert $page) => $page
-            ->where('visit.position', 2)->where('visit.waitMinutes', 20)->where('visit.kind', 'appointment'));
+        // Three ahead and no visit closed today: the slot of the agenda (20 min) each.
+        $journey()->assertInertia(fn (Assert $page) => $page->where('visit.position', 4)->where('visit.waitMinutes', 60)->where('visit.kind', 'appointment'));
 
-        // The first is seen in 12 minutes: the average replaces the slot, then the second is next.
+        // The first is seen in 12 minutes: the day's average replaces the slot.
         $this->actingAs($this->doctorAccount->user, 'web')->post(route('visits.open', $first))->assertSessionHasNoErrors();
-        $this->get(route('portal.visit', ['portal' => $this->slug, 'token' => $token]))->assertInertia(fn (Assert $page) => $page->where('visit.position', 1)->where('visit.waitMinutes', 0));
         $this->travel(12)->minutes();
-        $this->actingAs($this->doctorAccount->user, 'web')->post(route('visits.close', Visit::withoutTenantScope()->sole()))->assertSessionHasNoErrors();
-        $this->actingAs($this->doctorAccount->user, 'web')->post(route('visits.open', $second))->assertSessionHasNoErrors();
-        $this->get(route('portal.visit', ['portal' => $this->slug, 'token' => $token]))->assertInertia(fn (Assert $page) => $page->where('visit.position', null)->where('visit.current', 2));
+        $this->post(route('visits.close', Visit::withoutTenantScope()->sole()))->assertSessionHasNoErrors();
+        $this->post(route('visits.open', $second))->assertSessionHasNoErrors();
+        $journey()->assertInertia(fn (Assert $page) => $page->where('visit.position', 2)->where('visit.waitMinutes', 12));
     }
 
     public function test_the_emergency_queue_follows_severity_with_the_target_as_ceiling(): void

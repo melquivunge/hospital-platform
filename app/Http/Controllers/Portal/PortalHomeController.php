@@ -27,7 +27,7 @@ class PortalHomeController extends Controller
             // Step 7a.3: the patient's own results and appointments (the kept record after a merge).
             ...PortalRecord::content($account, $account->effectivePatientId()),
             // Step 7b.2: a way to the live journey while an arrival is on.
-            'visits' => count(PortalVisitsController::visits($account)),
+            'visits' => PortalVisitsController::ongoing($account),
             // Step 7a.2: the "Filhos menores" tab, only the minors linked now.
             'children' => Patient::query()->whereIn('id', PatientAccountLink::minorsOf($account))->orderBy('name')->get()
                 ->map(fn (Patient $child) => ['id' => $child->id, 'name' => $child->social_name ?? $child->name])->values(),

@@ -11,7 +11,11 @@ export default function PortalVisit({
     network: { name: string; slug: string };
     visit: Journey | null;
 }) {
-    const updated = useLiveJourney('visit', visit);
+    const updated = useLiveJourney(
+        'visit',
+        visit,
+        visit !== null && !visit.ended,
+    );
 
     if (visit === null) {
         return (

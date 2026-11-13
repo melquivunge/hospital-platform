@@ -17,8 +17,13 @@ export type Journey = {
 /**
  * Step 7b.2: refresh the given prop every 20 s and say how fresh it is.
  */
-export function useLiveJourney(prop: string, data: unknown): string {
-    usePoll(20000, { only: [prop] });
+export function useLiveJourney(
+    prop: string,
+    data: unknown,
+    live: boolean,
+): string {
+    // Only while the visit goes on; a page left open after the end stops asking.
+    usePoll(20000, { only: [prop] }, { autoStart: live });
     const [updatedAt, setUpdatedAt] = useState(() => Date.now());
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => setUpdatedAt(Date.now()), [data]);
