@@ -1,6 +1,7 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
 import { CalendarPlus, FileHeart, Pencil } from 'lucide-react';
 import PatientPortalInviteController from '@/actions/App/Http/Controllers/Portal/PatientPortalInviteController';
+import PatientPortalGuardianController from '@/actions/App/Http/Controllers/Portal/PatientPortalGuardianController';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page';
 import type { PatientSummary } from '@/components/patient-display';
@@ -10,6 +11,8 @@ import {
     StatusBadge,
 } from '@/components/patient-display';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { index as appointments } from '@/routes/appointments';
 import { show as record } from '@/routes/clinical-record';
@@ -45,10 +48,12 @@ export default function PatientShow({
     canUpdate,
     unifiedFrom,
     portal,
+    portalGuardians,
 }: {
     patient: Patient;
     canUpdate: boolean;
     portal: 'none' | 'invited' | 'active';
+    portalGuardians: { id: number; email: string }[] | null;
     unifiedFrom: {
         id: number;
         name: string | null;
@@ -186,8 +191,16 @@ export default function PatientShow({
                     ))}
                 </div>
 
-                {canUpdate && (
+                {/* A minor reaches the portal through the guardian (7a.2). */}
+                {canUpdate && !portalGuardians && (
                     <PortalAccess patientId={patient.id} portal={portal} />
+                )}
+
+                {canUpdate && portalGuardians && (
+                    <PortalGuardians
+                        patientId={patient.id}
+                        guardians={portalGuardians}
+                    />
                 )}
 
                 {unifiedFrom.length > 0 && (
@@ -284,6 +297,133 @@ function PortalAccess({
                         )}
                     </Form>
                 )}
+            </div>
+        </section>
+    );
+}
+
+/** Step 7a.2: the reception links a minor to the guardian's own portal account, or ends the link. */
+function PortalGuardians({
+    patientId,
+    guardians,
+}: {
+    patientId: number;
+    guardians: { id: number; email: string }[];
+}) {
+    return (
+        <section aria-labelledby="guardians-heading" className="mt-8">
+            <h2 id="guardians-heading" className="mb-3 font-semibold">
+                Responsáveis no portal
+            </h2>
+            <div className="grid gap-4 rounded-xl border bg-card px-4 py-4 text-sm">
+                {guardians.length === 0 ? (
+                    <p>
+                        Nenhum responsável vinculado. O paciente é menor de
+                        idade: quem tem a guarda acompanha pelo portal, na aba
+                        “Filhos menores”.
+                    </p>
+                ) : (
+                    <ul className="grid gap-2">
+                        {guardians.map((guardian) => (
+                            <li
+                                key={guardian.id}
+                                className="flex flex-wrap items-center justify-between gap-2"
+                            >
+                                <span className="break-all">
+                                    {guardian.email}
+                                </span>
+                                <Form
+                                    {...PatientPortalGuardianController.destroy.form(
+                                        [patientId, guardian.id],
+                                    )}
+                                    options={{ preserveScroll: true }}
+                                    onBefore={() =>
+                                        confirm(
+                                            `Encerrar o vínculo de ${guardian.email}? Ele deixa de ver este paciente no portal.`,
+                                        )
+                                    }
+                                >
+                                    {({ processing }) => (
+                                        <Button
+                                            type="submit"
+                                            variant="outline"
+                                            disabled={processing}
+                                            className="min-h-11"
+                                        >
+                                            {processing && <Spinner />}
+                                            Encerrar vínculo
+                                        </Button>
+                                    )}
+                                </Form>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                <Form
+                    {...PatientPortalGuardianController.store.form(patientId)}
+                    options={{ preserveScroll: true }}
+                    resetOnSuccess
+                    className="grid gap-3"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor="guardian-email">
+                                    E-mail de acesso do responsável ao portal
+                                </Label>
+                                <Input
+                                    id="guardian-email"
+                                    name="email"
+                                    type="email"
+                                    required
+                                    autoComplete="off"
+                                    aria-invalid={!!errors.email}
+                                    aria-describedby={
+                                        errors.email
+                                            ? 'guardian-email-help guardian-email-error'
+                                            : 'guardian-email-help'
+                                    }
+                                    className="h-11 max-w-md"
+                                />
+                                <p
+                                    id="guardian-email-help"
+                                    className="text-muted-foreground"
+                                >
+                                    O responsável precisa ter o próprio acesso
+                                    ativo ao portal.
+                                </p>
+                                <InputError
+                                    id="guardian-email-error"
+                                    message={errors.email}
+                                />
+                            </div>
+                            <label className="flex min-h-11 items-center gap-3">
+                                <input
+                                    type="checkbox"
+                                    name="document_checked"
+                                    value="1"
+                                    required
+                                    className="size-4 accent-primary"
+                                />
+                                Conferi o documento que prova a guarda
+                            </label>
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                disabled={processing}
+                                className="min-h-11 justify-self-start"
+                            >
+                                {processing && <Spinner />}
+                                Vincular responsável
+                            </Button>
+                            <InputError
+                                message={
+                                    errors.guardian ?? errors.document_checked
+                                }
+                            />
+                        </>
+                    )}
+                </Form>
             </div>
         </section>
     );
