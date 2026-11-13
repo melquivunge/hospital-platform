@@ -1,10 +1,10 @@
 import { Form, Head, Link, router } from '@inertiajs/react';
 import AihFileController from '@/actions/App/Http/Controllers/AihFileController';
 import InputError from '@/components/input-error';
+import { MonthField } from '@/components/month-field';
 import { Page, PageHeader } from '@/components/page';
 import { selectClassName } from '@/components/role-fields';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index } from '@/routes/sus-aih';
 
@@ -99,20 +99,17 @@ export default function SusAihIndex({
                                     <Label htmlFor="competence">
                                         Competência de apresentação
                                     </Label>
-                                    <Input
+                                    <MonthField
                                         id="competence"
                                         name="competence"
-                                        type="month"
-                                        required
                                         max={competence}
                                         defaultValue={competence}
-                                        aria-invalid={!!errors.competence}
-                                        aria-describedby={
+                                        invalid={!!errors.competence}
+                                        describedBy={
                                             errors.competence
                                                 ? 'competence-error'
                                                 : undefined
                                         }
-                                        className="h-11 w-48"
                                     />
                                 </div>
                                 <Button

@@ -2,8 +2,6 @@
 
 namespace App\Notifications;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -11,10 +9,8 @@ use Illuminate\Notifications\Notification;
  * Step 7a.1a: the single-use link to the patient portal, for an invitation or a forgotten password.
  * Carries no clinical data and no name: only the network and the link.
  */
-class PortalAccessLink extends Notification implements ShouldQueue
+class PortalAccessLink extends Notification
 {
-    use Queueable;
-
     public function __construct(
         public readonly string $url,
         public readonly string $network,

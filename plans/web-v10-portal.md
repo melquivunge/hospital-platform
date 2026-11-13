@@ -25,6 +25,15 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 7". Arquitetura: ../docs/a
 - **Feito na 7a.1b:** "Primeiro acesso" no portal: CPF + data de nascimento → código de 6 dígitos (HMAC na conta, 10 min, 5 tentativas na conta e na sessão) enviado só ao e-mail do cadastro de paciente maior, completo e não unificado, sem senha ainda; o código certo leva à mesma tela de criar senha do convite (link de uso único). Migração 010300 (código na conta; `invited_by_user_id` opcional, pois não há funcionário). Limite de 3 pedidos por CPF por hora, de qualquer IP, além de 5/min por IP. **Mudança no contrato (decisão 4):** o e-mail **não** aparece na tela, nem mascarado — mostrá-lo só quando os dados conferem revelaria que aquele CPF + nascimento é paciente; a resposta e a tela seguinte são iguais existindo ou não o cadastro. Quem já tem senha não recebe código ("Esqueci minha senha"). Testes: `tests/Feature/Portal/PatientPortalSignupTest.php` (9).
 - **Revisão da 7a.1b:** um código ainda válido é mantido ao pedir de novo (quem sabe o CPF e o nascimento não substitui o código do paciente); o e-mail do código sai na hora, fora da fila (o payload guardaria o código legível); o código confere de novo, na verificação, que o cadastro segue completo, maior, não unificado e com o mesmo e-mail; "tentativas esgotadas" aparece na primeira tela. Em aberto: dois pacientes com o mesmo e-mail na rede (o segundo não recebe código; a recepção resolve); pequena diferença de tempo entre dados que conferem ou não (limitada a 3 pedidos por CPF por hora).
 
+### Pendências da 7a.1 fechadas (12/11/2026)
+- "Esqueci minha senha" e "Primeiro acesso" respondem no mesmo tempo existindo ou não o paciente: a busca e o envio rodam depois da resposta (`SendPortalAccessMail`), sem fila; link e código saem na hora, nunca num payload guardado. O CPF digitado fica só na sessão (cifrada) até o código.
+- O nginx grava `/portal/{rede}/criar-senha/[omitido]` no log de acesso.
+- A troca do e-mail do cadastro já é auditada (`patient.updated` com os nomes dos campos).
+- Dois pacientes com o mesmo e-mail na rede: o convite mostra o erro à recepção; o autocadastro não envia código (resposta igual).
+- Competência do BPA e da AIH com mês e ano em português (`MonthField`), no lugar do campo de mês do navegador.
+- Os gatilhos de estoque leem `app_now()` (migração 010400): `now()`, ou o relógio fixo que só a suíte de testes define; os lotes de teste deixam de vencer com o calendário (conferido simulando o banco em 2027).
+- **Para a 7a.3:** antes de mostrar conteúdo clínico, conferir a unificação: a conta do cadastro duplicado só lê o cadastro mantido se a unificação não foi desfeita e o e-mail continua o mesmo.
+
 ### 7a.1c Segundo fator opcional
 - TOTP opcional na conta do paciente (configurar, códigos de recuperação, desafio no login), separado da 7a.1b por tamanho.
 
