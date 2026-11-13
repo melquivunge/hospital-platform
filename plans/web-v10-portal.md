@@ -49,6 +49,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 7". Arquitetura: ../docs/a
 - Meus dados (leitura) e pedido de correção, que vira pendência para a recepção resolver.
 - Leituras na trilha de acesso ao prontuário.
 - **Feito (7a.3a):** resultados assinados (só a versão atual de cada exame; corrigido indicado), valores com referência no formato brasileiro, aviso "procure seu médico" no crítico e PDF (só da versão atual); próximas consultas (data, hora, unidade, profissional); o mesmo conteúdo no início do paciente e na página de cada filho vinculado; depois da unificação, o cadastro mantido mostra o que foi unificado nele; cada visualização e download na trilha de acesso (motivo "portal", conta do portal no lugar do usuário da equipe), visível na tela de auditoria. Pendente: telefone da unidade (a unidade ainda não tem esse campo); Meus dados e pedido de correção ficam na 7a.3b.
+- **Feito (7a.3b):** "Meus dados" no portal (leitura, na trilha de acesso) e pedido de correção em texto (até 1000 caracteres, no máximo 3 em aberto por conta), que não muda nada no cadastro; lista "Pedidos de correção" em Atendimento para quem cadastra pacientes, com link para o cadastro e "Marcar como resolvido"; o paciente vê a resposta; auditoria só com ids. "Meus dados" do filho vinculado fica para depois (hoje só do próprio paciente).
 
 ### 7a.4 Documentos liberados
 - O profissional marca um anexo do próprio atendimento como "liberar ao paciente" e pode revogar (histórico só de inserção, auditado).

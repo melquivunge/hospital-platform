@@ -5,6 +5,7 @@ import type {
     PortalResult,
 } from '@/components/portal-record';
 import PortalChildController from '@/actions/App/Http/Controllers/Portal/PortalChildController';
+import PortalMyDataController from '@/actions/App/Http/Controllers/Portal/PortalMyDataController';
 import PortalTwoFactorController from '@/actions/App/Http/Controllers/Portal/PortalTwoFactorController';
 
 export default function PortalHome({
@@ -54,6 +55,14 @@ export default function PortalHome({
                 </section>
             )}
             <p className="mt-6 text-sm">
+                <Link
+                    href={PortalMyDataController.show.url(network.slug)}
+                    className="inline-flex min-h-11 items-center font-medium text-primary underline-offset-4 hover:underline"
+                >
+                    Meus dados
+                </Link>
+            </p>
+            <p className="text-sm">
                 <Link
                     href={PortalTwoFactorController.show.url(network.slug)}
                     className="inline-flex min-h-11 items-center font-medium text-primary underline-offset-4 hover:underline"

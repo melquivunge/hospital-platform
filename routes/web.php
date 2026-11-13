@@ -34,6 +34,7 @@ use App\Http\Controllers\MunicipalityController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PatientAllergyController;
 use App\Http\Controllers\PatientController;
+use App\Http\Controllers\PatientDataRequestController;
 use App\Http\Controllers\PatientMergeController;
 use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\PharmacyController;
@@ -255,6 +256,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('patient-merges', [PatientMergeController::class, 'index'])->name('patient-merges.index');
     Route::post('patient-merges', [PatientMergeController::class, 'store'])->middleware('throttle:30,1')->name('patient-merges.store');
     Route::post('patient-merges/{merge}/undo', [PatientMergeController::class, 'undo'])->middleware('throttle:30,1')->name('patient-merges.undo');
+    Route::get('patients/data-requests', [PatientDataRequestController::class, 'index'])->name('patient-data-requests.index');
+    Route::post('patient-data-requests/{dataRequest}/resolve', [PatientDataRequestController::class, 'resolve'])->middleware('throttle:30,1')->name('patient-data-requests.resolve');
     Route::post('patients/{patient}/portal-invite', [PatientPortalInviteController::class, 'store'])->middleware('throttle:10,1')->name('patients.portal-invite');
     Route::post('patients/{patient}/portal-guardians', [PatientPortalGuardianController::class, 'store'])->middleware('throttle:10,1')->name('patients.portal-guardians.store');
     Route::delete('patients/{patient}/portal-guardians/{account}', [PatientPortalGuardianController::class, 'destroy'])->middleware('throttle:10,1')->name('patients.portal-guardians.destroy');
