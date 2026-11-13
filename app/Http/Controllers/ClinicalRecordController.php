@@ -143,14 +143,16 @@ class ClinicalRecordController extends Controller
                     'justification' => $grant->justification,
                 ]),
             'reads' => ! $auditor ? null : DB::table('clinical_reads')->where('clinical_reads.tenant_id', $membership->tenant_id)->where('clinical_reads.read_at', '>=', $since)
-                ->join('users', 'users.id', '=', 'clinical_reads.user_id')->join('patients', 'patients.id', '=', 'clinical_reads.patient_id')
+                // Step 7a.3: a portal read has no staff user, only the portal account.
+                ->leftJoin('users', 'users.id', '=', 'clinical_reads.user_id')->leftJoin('patient_accounts', 'patient_accounts.id', '=', 'clinical_reads.patient_account_id')
+                ->join('patients', 'patients.id', '=', 'clinical_reads.patient_id')
                 ->orderByDesc('clinical_reads.read_at')->limit(self::LOG_LIMIT)
-                ->get(['clinical_reads.id', 'clinical_reads.read_at', 'clinical_reads.reason', 'users.name as user', 'patients.name', 'patients.social_name', 'patients.cpf'])
+                ->get(['clinical_reads.id', 'clinical_reads.read_at', 'clinical_reads.reason', 'users.name as user', 'patient_accounts.email as portal_email', 'patients.name', 'patients.social_name', 'patients.cpf'])
                 ->map(fn (object $read) => [
                     'id' => $read->id,
                     'readAt' => CarbonImmutable::parse($read->read_at)->toIso8601String(),
                     'reason' => $read->reason,
-                    'user' => $read->user,
+                    'user' => $read->user ?? 'Portal: '.$read->portal_email,
                     'patient' => $label($read->name, $read->social_name, $read->cpf),
                 ]),
         ]);

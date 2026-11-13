@@ -10,6 +10,7 @@ use App\Models\EmergencyAccess;
 use App\Models\ExamOrder;
 use App\Models\Membership;
 use App\Models\Patient;
+use App\Models\PatientAccount;
 use App\Models\Prescription;
 use App\Models\Professional;
 use App\Models\RoleAssignment;
@@ -242,6 +243,17 @@ final class ClinicalAccess
             'billing_account_id' => $basis instanceof BillingAccount ? $basis->id : null,
             'aih_request_id' => $basis instanceof AihRequest ? $basis->id : null,
             'read_at' => now(),
+        ]);
+    }
+
+    /**
+     * Step 7a.3 (ADR-0012): the patient or the guardian read the record through the portal, by right (LGPD, art. 18).
+     */
+    public static function recordPortalRead(PatientAccount $account, int $patientId): void
+    {
+        DB::table('clinical_reads')->insert([
+            'tenant_id' => $account->tenant_id, 'user_id' => null, 'patient_account_id' => $account->id,
+            'patient_id' => $patientId, 'reason' => 'portal', 'read_at' => now(),
         ]);
     }
 }

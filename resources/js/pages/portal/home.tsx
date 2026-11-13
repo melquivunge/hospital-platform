@@ -1,4 +1,9 @@
 import { Head, Link } from '@inertiajs/react';
+import PortalRecord from '@/components/portal-record';
+import type {
+    PortalAppointment,
+    PortalResult,
+} from '@/components/portal-record';
 import PortalChildController from '@/actions/App/Http/Controllers/Portal/PortalChildController';
 import PortalTwoFactorController from '@/actions/App/Http/Controllers/Portal/PortalTwoFactorController';
 
@@ -6,10 +11,14 @@ export default function PortalHome({
     network,
     patient,
     children,
+    results,
+    appointments,
 }: {
     network: { name: string; slug: string };
     patient: { name: string };
     children: { id: number; name: string }[];
+    results: PortalResult[];
+    appointments: PortalAppointment[];
 }) {
     return (
         <>
@@ -17,11 +26,11 @@ export default function PortalHome({
             <h1 className="text-2xl font-semibold tracking-tight">
                 Olá, {patient.name.split(' ')[0]}
             </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-                Seu acesso ao portal está ativo. Em breve você verá aqui seus
-                resultados de exame, suas próximas consultas e os documentos
-                liberados pela equipe.
-            </p>
+            <PortalRecord
+                slug={network.slug}
+                results={results}
+                appointments={appointments}
+            />
             {children.length > 0 && (
                 <section aria-labelledby="children-title" className="mt-8">
                     <h2 id="children-title" className="text-lg font-medium">
