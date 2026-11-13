@@ -8,6 +8,7 @@ use App\Http\Controllers\Portal\PortalMyDataController;
 use App\Http\Controllers\Portal\PortalResultPdfController;
 use App\Http\Controllers\Portal\PortalSignupController;
 use App\Http\Controllers\Portal\PortalTwoFactorController;
+use App\Http\Controllers\Portal\PortalVisitController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -27,6 +28,8 @@ Route::prefix('portal/{portal}')->middleware('portal')->name('portal.')->group(f
     Route::get('primeiro-acesso/codigo', [PortalSignupController::class, 'showCode'])->name('signup.code');
     Route::post('primeiro-acesso/codigo', [PortalSignupController::class, 'verify'])->middleware('throttle:10,1')->name('signup.verify');
 
+    // Step 7b.1: the arrival's journey by QR, without an account.
+    Route::get('visita/{token}', PortalVisitController::class)->middleware('throttle:60,1')->name('visit');
     Route::get('entrar/codigo', [PortalTwoFactorController::class, 'showChallenge'])->name('challenge');
     Route::post('entrar/codigo', [PortalTwoFactorController::class, 'challenge'])->middleware('throttle:10,1')->name('challenge.store');
 

@@ -1,4 +1,6 @@
 import { Form, Head, router } from '@inertiajs/react';
+import VisitPassController from '@/actions/App/Http/Controllers/VisitPassController';
+import VisitPassButton from '@/components/visit-pass-button';
 import type { ReactNode } from 'react';
 import AppointmentController from '@/actions/App/Http/Controllers/AppointmentController';
 import type { AppointmentStatus } from '@/components/appointment-actions';
@@ -181,6 +183,16 @@ export default function Queue({
                                         modalityLabels[item.modality]}
                                     {item.insurer && ` (${item.insurer})`}
                                 </p>
+                                {['arrived', 'in_progress'].includes(
+                                    item.status,
+                                ) && (
+                                    <VisitPassButton
+                                        action={VisitPassController.storeForAppointment.form(
+                                            item.id,
+                                        )}
+                                        label={item.patient ?? ''}
+                                    />
+                                )}
                             </Row>
                         ))}
                     </Section>
