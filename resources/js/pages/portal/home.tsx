@@ -47,7 +47,7 @@ export default function PortalHome({
             <p className="mt-6 text-sm">
                 <Link
                     href={PortalTwoFactorController.show.url(network.slug)}
-                    className="font-medium text-primary underline-offset-4 hover:underline"
+                    className="inline-flex min-h-11 items-center font-medium text-primary underline-offset-4 hover:underline"
                 >
                     Segurança da conta
                 </Link>

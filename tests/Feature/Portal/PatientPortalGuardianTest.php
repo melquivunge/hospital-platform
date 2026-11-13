@@ -155,6 +155,10 @@ class PatientPortalGuardianTest extends ClinicalTestCase
         $this->actingAs($this->reception->user, 'web')->post(route('patients.portal-invite', $pending), ['document_checked' => '1'])->assertSessionHasNoErrors();
         $this->link('ana@example.com')->assertSessionHasErrors('email');
 
+        // A minor's own account is never a guardian.
+        $teen = $this->registerPatient('Lia Prado', '2012-03-03');
+        (new PatientAccount)->forceFill(['tenant_id' => $teen->tenant_id, 'patient_id' => $teen->id, 'email' => 'lia@example.com', 'password' => 'Senha-forte-123'])->save();
+        $this->link('lia@example.com')->assertSessionHasErrors(['email' => 'Este acesso é de um paciente menor de idade e não pode ser responsável.']);
         $this->link()->assertSessionHasNoErrors();
         $this->link()->assertSessionHasErrors(['email' => 'Este responsável já está vinculado.']);
         $this->assertSame(1, PatientAccountLink::withoutTenantScope()->count());

@@ -48,6 +48,11 @@ class PatientPortalGuardianController extends Controller
             throw ValidationException::withMessages(['email' => 'Este é o acesso do próprio paciente.']);
         }
 
+        // The guardian is an adult: a minor's own account never becomes someone's guardian.
+        if (PatientAccountLink::isMinor(Patient::query()->findOrFail($account->effectivePatientId()))) {
+            throw ValidationException::withMessages(['email' => 'Este acesso é de um paciente menor de idade e não pode ser responsável.']);
+        }
+
         DB::transaction(function () use ($request, $patient, $account) {
             // One act at a time per minor: the latest row decides.
             Patient::query()->whereKey($patient->id)->lockForUpdate()->first();

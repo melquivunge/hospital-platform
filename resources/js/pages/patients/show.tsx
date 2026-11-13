@@ -191,7 +191,8 @@ export default function PatientShow({
                     ))}
                 </div>
 
-                {canUpdate && (
+                {/* A minor reaches the portal through the guardian (7a.2). */}
+                {canUpdate && !portalGuardians && (
                     <PortalAccess patientId={patient.id} portal={portal} />
                 )}
 
@@ -377,7 +378,11 @@ function PortalGuardians({
                                     required
                                     autoComplete="off"
                                     aria-invalid={!!errors.email}
-                                    aria-describedby="guardian-email-help guardian-email-error"
+                                    aria-describedby={
+                                        errors.email
+                                            ? 'guardian-email-help guardian-email-error'
+                                            : 'guardian-email-help'
+                                    }
                                     className="h-11 max-w-md"
                                 />
                                 <p
