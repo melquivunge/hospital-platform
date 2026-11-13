@@ -3,6 +3,7 @@
 use App\Http\Controllers\Portal\PortalAuthController;
 use App\Http\Controllers\Portal\PortalChildController;
 use App\Http\Controllers\Portal\PortalHomeController;
+use App\Http\Controllers\Portal\PortalMyDataController;
 use App\Http\Controllers\Portal\PortalResultPdfController;
 use App\Http\Controllers\Portal\PortalSignupController;
 use App\Http\Controllers\Portal\PortalTwoFactorController;
@@ -30,6 +31,8 @@ Route::prefix('portal/{portal}')->middleware('portal')->name('portal.')->group(f
 
     Route::middleware('auth:patient')->group(function () {
         Route::get('/', PortalHomeController::class)->name('home');
+        Route::get('meus-dados', [PortalMyDataController::class, 'show'])->name('my-data');
+        Route::post('meus-dados', [PortalMyDataController::class, 'store'])->middleware('throttle:5,1')->name('my-data.store');
         Route::get('resultados/{result}/pdf', PortalResultPdfController::class)->whereNumber('result')->middleware('throttle:30,1')->name('result.pdf');
         Route::get('filhos/{patient}', PortalChildController::class)->whereNumber('patient')->name('child');
         Route::get('seguranca', [PortalTwoFactorController::class, 'show'])->name('security');

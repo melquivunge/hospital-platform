@@ -57,6 +57,7 @@ import {
     TestTubeDiagonal,
     Users,
     UsersRound,
+    MessageSquareWarning,
     Wallet,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -103,6 +104,7 @@ import { index as medications } from '@/routes/medications';
 import { index as visits } from '@/routes/visits';
 import { index as ward } from '@/routes/ward';
 import { index as patients } from '@/routes/patients';
+import { index as dataRequests } from '@/routes/patient-data-requests';
 import { index as people } from '@/routes/people';
 import { index as policies } from '@/routes/policies';
 import { index as reports } from '@/routes/reports';
@@ -221,6 +223,11 @@ export function AppSidebar() {
             items: [
                 ...when(canViewPatients, [
                     { title: 'Pacientes', href: patients(), icon: UsersRound },
+                    {
+                        title: 'Pedidos de correção',
+                        href: dataRequests(),
+                        icon: MessageSquareWarning,
+                    },
                 ]),
                 ...when(canBookAppointments, [
                     { title: 'Fila do dia', href: queue(), icon: ListOrdered },
