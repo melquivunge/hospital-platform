@@ -54,6 +54,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 7". Arquitetura: ../docs/a
 ### 7a.4 Documentos liberados
 - O profissional marca um anexo do próprio atendimento como "liberar ao paciente" e pode revogar (histórico só de inserção, auditado).
 - O portal lista e baixa só os liberados e não revogados.
+- **Feito:** quem anexou o documento libera ao paciente e pode deixar de mostrar (`clinical_document_releases` só de inserção, com RLS, auditado); documento retirado sai do portal e não pode ser liberado; o portal lista e baixa só os liberados, não revogados e não retirados (paciente e responsável do menor vinculado), com a leitura na trilha de acesso.
 
 ### 7b.1 QR da visita
 - Na confirmação da chegada (consulta ou urgência) a recepção gera o QR; token aleatório, ligado à visita, válido até 12 h depois da alta, revogável.

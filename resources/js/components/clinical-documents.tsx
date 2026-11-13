@@ -16,6 +16,8 @@ export type ClinicalDocument = {
     withdrawnAt: string | null;
     withdrawReason: string | null;
     canWithdraw: boolean;
+    released?: boolean;
+    canRelease?: boolean;
 };
 
 /**
@@ -84,10 +86,23 @@ export function ClinicalDocuments({
                                     {document.withdrawReason}
                                 </p>
                             ) : (
-                                attach !== undefined &&
-                                document.canWithdraw && (
-                                    <WithdrawForm document={document} />
-                                )
+                                <>
+                                    {document.released && (
+                                        <p className="text-muted-foreground">
+                                            Liberado ao paciente no portal.
+                                        </p>
+                                    )}
+                                    {/* Released only while attaching is possible; taking it back, always. */}
+                                    {document.canRelease &&
+                                        (attach !== undefined ||
+                                            document.released) && (
+                                            <ReleaseForm document={document} />
+                                        )}
+                                    {attach !== undefined &&
+                                        document.canWithdraw && (
+                                            <WithdrawForm document={document} />
+                                        )}
+                                </>
                             )}
                         </li>
                     ))}
@@ -184,5 +199,33 @@ function WithdrawForm({ document }: { document: ClinicalDocument }) {
                 )}
             </Form>
         </details>
+    );
+}
+
+/** Step 7a.4: the author releases the document to the patient's portal, or takes it back. */
+function ReleaseForm({ document }: { document: ClinicalDocument }) {
+    const action = document.released
+        ? ClinicalDocumentController.revoke
+        : ClinicalDocumentController.release;
+
+    return (
+        <Form {...action.form(document.id)} options={{ preserveScroll: true }}>
+            {({ processing, errors }) => (
+                <>
+                    <Button
+                        type="submit"
+                        variant="outline"
+                        disabled={processing}
+                        className="min-h-11"
+                        aria-label={`${document.released ? 'Deixar de mostrar ao paciente' : 'Liberar ao paciente no portal'}: ${document.name}`}
+                    >
+                        {document.released
+                            ? 'Deixar de mostrar ao paciente'
+                            : 'Liberar ao paciente no portal'}
+                    </Button>
+                    <InputError message={errors.release} />
+                </>
+            )}
+        </Form>
     );
 }

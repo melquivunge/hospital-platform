@@ -116,6 +116,8 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function () {
     Route::get('clinical-access', [ClinicalRecordController::class, 'accessLog'])->name('clinical-access.index');
     Route::post('visits/{visit}/documents', [ClinicalDocumentController::class, 'store'])->middleware('throttle:30,1')->name('clinical-documents.store');
     Route::get('clinical-documents/{document}/download', [ClinicalDocumentController::class, 'download'])->middleware('throttle:60,1')->name('clinical-documents.download');
+    Route::post('clinical-documents/{document}/release', [ClinicalDocumentController::class, 'release'])->middleware('throttle:30,1')->name('clinical-documents.release');
+    Route::post('clinical-documents/{document}/revoke', [ClinicalDocumentController::class, 'revoke'])->middleware('throttle:30,1')->name('clinical-documents.revoke');
     Route::post('clinical-documents/{document}/withdraw', [ClinicalDocumentController::class, 'withdraw'])->middleware('throttle:30,1')->name('clinical-documents.withdraw');
     Route::post('patients/{patient}/allergies', [PatientAllergyController::class, 'store'])->middleware('throttle:30,1')->name('patient-allergies.store');
     Route::post('patient-allergies/{allergy}/inactivate', [PatientAllergyController::class, 'inactivate'])->middleware('throttle:30,1')->name('patient-allergies.inactivate');

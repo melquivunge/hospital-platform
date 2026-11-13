@@ -6,6 +6,7 @@ use App\Clinical\ClinicalAccess;
 use App\Models\Admission;
 use App\Models\AuditEvent;
 use App\Models\ClinicalDocument;
+use App\Models\ClinicalDocumentRelease;
 use App\Models\ExamOrder;
 use App\Models\Patient;
 use App\Models\Professional;
@@ -149,11 +150,7 @@ class ClinicalDocumentController extends Controller
     public function withdraw(Request $request, ClinicalDocument $document): RedirectResponse
     {
         self::professional($request);
-        // Only while the document's own visit is open, or its admission still gives the uploader access.
-        $open = $document->visit_id !== null
-            ? Visit::query()->whereKey($document->visit_id)->whereNull('closed_at')->exists()
-            : ClinicalAccess::activeAdmission($request->user(), Patient::query()->findOrFail($document->patient_id))?->id === $document->admission_id;
-        abort_unless($document->uploaded_by_user_id === $request->user()->id && $open, 403);
+        abort_unless($document->uploaded_by_user_id === $request->user()->id && self::originOpen($request, $document), 403);
         $data = $request->validate(['reason' => ['required', 'string', 'max:255']], [], ['reason' => 'motivo']);
 
         DB::transaction(function () use ($document, $request, $data) {
@@ -170,6 +167,42 @@ class ClinicalDocumentController extends Controller
     }
 
     /**
+     * Step 7a.4: the professional who attached the document releases it to the patient's portal, or revokes that.
+     */
+    public function release(Request $request, ClinicalDocument $document): RedirectResponse
+    {
+        return self::releaseAct($request, $document, 'released');
+    }
+
+    public function revoke(Request $request, ClinicalDocument $document): RedirectResponse
+    {
+        return self::releaseAct($request, $document, 'revoked');
+    }
+
+    private static function releaseAct(Request $request, ClinicalDocument $document, string $event): RedirectResponse
+    {
+        self::professional($request);
+        // Released only from the author's own visit or admission while it is open; taking it back is always allowed.
+        abort_unless($document->uploaded_by_user_id === $request->user()->id && ($event === 'revoked' || self::originOpen($request, $document)), 403);
+
+        DB::transaction(function () use ($document, $request, $event) {
+            $locked = ClinicalDocument::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            $released = ClinicalDocumentRelease::released([$locked->id]) !== [];
+
+            if ($locked->withdrawn_at !== null || $released === ($event === 'released')) {
+                throw ValidationException::withMessages(['release' => $event === 'released' ? 'Este documento não pode ser liberado.' : 'Este documento não está liberado.']);
+            }
+
+            $act = new ClinicalDocumentRelease;
+            $act->forceFill(['tenant_id' => $locked->tenant_id, 'clinical_document_id' => $locked->id, 'event' => $event, 'user_id' => $request->user()->id])->save();
+            AuditEvent::record($event === 'released' ? 'clinical_document.released_to_patient' : 'clinical_document.release_revoked', $locked->tenant_id, $locked);
+        });
+        Inertia::flash('toast', ['type' => 'success', 'message' => $event === 'released' ? 'Documento liberado ao paciente no portal.' : 'O paciente deixa de ver este documento no portal.']);
+
+        return back();
+    }
+
+    /**
      * The documents of a record, newest first. Callers must have checked ClinicalAccess.
      *
      * @param  list<int>  $patientIds
@@ -179,7 +212,10 @@ class ClinicalDocumentController extends Controller
     {
         $when = fn (?CarbonInterface $at) => $at?->setTimezone($timezone)->format('d/m/Y H:i');
 
-        return array_values(ClinicalDocument::query()->whereIn('patient_id', $patientIds)->with('professional:id,name')->latest('created_at')->latest('id')->get()
+        $documents = ClinicalDocument::query()->whereIn('patient_id', $patientIds)->with('professional:id,name')->latest('created_at')->latest('id')->get();
+        $released = ClinicalDocumentRelease::released(array_values($documents->modelKeys()));
+
+        return array_values($documents
             ->map(fn (ClinicalDocument $document) => [
                 'id' => $document->id,
                 'name' => $document->original_name,
@@ -190,7 +226,20 @@ class ClinicalDocumentController extends Controller
                 'withdrawnAt' => $when($document->withdrawn_at),
                 'withdrawReason' => $document->withdraw_reason,
                 'canWithdraw' => $document->withdrawn_at === null && $document->uploaded_by_user_id === $userId,
+                // Step 7a.4: whether the patient sees it in the portal, and whether this user may change that.
+                'released' => $document->withdrawn_at === null && in_array($document->id, $released, true),
+                'canRelease' => $document->withdrawn_at === null && $document->uploaded_by_user_id === $userId,
             ])->all());
+    }
+
+    /**
+     * The document's own visit is open, or its admission still gives the uploader access.
+     */
+    private static function originOpen(Request $request, ClinicalDocument $document): bool
+    {
+        return $document->visit_id !== null
+            ? Visit::query()->whereKey($document->visit_id)->whereNull('closed_at')->exists()
+            : ClinicalAccess::activeAdmission($request->user(), Patient::query()->findOrFail($document->patient_id))?->id === $document->admission_id;
     }
 
     private static function professional(Request $request): Professional
