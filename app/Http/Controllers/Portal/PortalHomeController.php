@@ -20,12 +20,29 @@ class PortalHomeController extends Controller
         /** @var PatientAccount|null $account */
         $account = Auth::guard('patient')->user();
         abort_if($account === null, 403);
+
+        return Inertia::render('portal/home', self::shell($account));
+    }
+
+    /**
+     * What every signed-in portal page shows around its content: the network and how to address the patient.
+     *
+     * @return array{network: array{name: string, slug: string}, patient: array{name: string}}
+     */
+    public static function shell(PatientAccount $account): array
+    {
         $patient = Patient::query()->findOrFail($account->effectivePatientId());
+
+        return ['network' => self::network(), 'patient' => ['name' => $patient->social_name ?? $patient->name]];
+    }
+
+    /**
+     * @return array{name: string, slug: string}
+     */
+    public static function network(): array
+    {
         $tenant = app(CurrentTenant::class)->require();
 
-        return Inertia::render('portal/home', [
-            'network' => ['name' => $tenant->name, 'slug' => $tenant->slug],
-            'patient' => ['name' => $patient->social_name ?? $patient->name],
-        ]);
+        return ['name' => $tenant->name, 'slug' => $tenant->slug];
     }
 }

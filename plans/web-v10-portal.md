@@ -36,6 +36,7 @@ Contrato: ../PRODUCT.md, seção "Contrato da entrega 7". Arquitetura: ../docs/a
 
 ### 7a.1c Segundo fator opcional
 - TOTP opcional na conta do paciente (configurar, códigos de recuperação, desafio no login), separado da 7a.1b por tamanho.
+- **Feito:** página "Segurança da conta" (ligar com senha + código do app, 8 códigos de recuperação mostrados uma vez, novos códigos e desligar com senha); desafio no login e também depois de nova senha pelo link do e-mail; 5 códigos errados por conta em 15 min; código só de passo de tempo posterior ao último usado (sem reuso); segredo e códigos cifrados; auditoria só com ids.
 
 ### 7a.2 Responsável legal
 - Vínculo conta do responsável ↔ paciente menor ou tutelado, conferido e encerrado pela recepção (`patient_account_links`, histórico só de inserção).
