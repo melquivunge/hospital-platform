@@ -31,7 +31,8 @@ final class PortalRecord
     }
 
     /**
-     * The kept record and every record merged into it.
+     * The kept record and every record merged into it. One level is enough: Patient::merge refuses to merge into a
+     * merged record or to merge one that others were merged into, so there are no chains.
      *
      * @return list<int>
      */
@@ -46,11 +47,10 @@ final class PortalRecord
     public static function content(PatientAccount $account, int $keptId): array
     {
         $ids = self::recordIds($keptId);
-        ClinicalAccess::recordPortalRead($account, $keptId);
 
         // The current version of each exam: a rectified result is replaced by its rectification.
         $results = ExamResult::query()->whereIn('patient_id', $ids)
-            ->whereRaw('version = (SELECT max(r.version) FROM exam_results r WHERE r.exam_order_item_id = exam_results.exam_order_item_id)')
+            ->whereRaw('exam_results.version = (SELECT max(r.version) FROM exam_results r WHERE r.exam_order_item_id = exam_results.exam_order_item_id)')
             ->join('exam_order_items', 'exam_order_items.id', '=', 'exam_results.exam_order_item_id')
             ->with('values')
             ->orderByDesc('exam_results.released_at')->limit(self::RESULTS)
@@ -60,6 +60,9 @@ final class PortalRecord
             ->join('units', 'units.id', '=', 'appointments.unit_id')->join('professionals', 'professionals.id', '=', 'appointments.professional_id')
             ->orderBy('appointments.starts_at')->limit(self::APPOINTMENTS)
             ->get(['appointments.id', 'appointments.starts_at', 'units.name as unit', 'units.timezone', 'professionals.name as professional']);
+
+        // Recorded once the content is in hand: the trail shows what was really shown.
+        ClinicalAccess::recordPortalRead($account, $keptId);
 
         return [
             'results' => array_values($results->map(fn (ExamResult $result) => [

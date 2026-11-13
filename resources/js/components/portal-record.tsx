@@ -135,9 +135,9 @@ export default function PortalRecord({
                                 )}
                                 {result.values.length > 0 && (
                                     <dl className="mt-3 grid gap-2">
-                                        {result.values.map((value) => (
+                                        {result.values.map((value, index) => (
                                             <div
-                                                key={value.name}
+                                                key={index}
                                                 className="grid gap-0.5 border-t pt-2 first:border-t-0 first:pt-0"
                                             >
                                                 <dt className="text-muted-foreground">
