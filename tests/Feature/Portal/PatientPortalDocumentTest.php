@@ -129,6 +129,15 @@ class PatientPortalDocumentTest extends ClinicalTestCase
         $this->get($this->home())->assertInertia(fn (Assert $page) => $page->where('documents', []));
     }
 
+    public function test_release_needs_the_open_visit_but_taking_it_back_does_not(): void
+    {
+        $this->actingAs($this->doctorAccount->user, 'web')->post(route('clinical-documents.release', $this->document))->assertSessionHasNoErrors();
+        $this->visit->forceFill(['closed_at' => now()])->save();
+
+        $this->post(route('clinical-documents.revoke', $this->document))->assertSessionHasNoErrors();
+        $this->post(route('clinical-documents.release', $this->document))->assertForbidden();
+    }
+
     public function test_a_stranger_gets_404_and_the_staff_never_gets_in(): void
     {
         $this->actingAs($this->doctorAccount->user, 'web')->post(route('clinical-documents.release', $this->document))->assertSessionHasNoErrors();

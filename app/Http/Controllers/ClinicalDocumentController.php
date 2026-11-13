@@ -150,11 +150,7 @@ class ClinicalDocumentController extends Controller
     public function withdraw(Request $request, ClinicalDocument $document): RedirectResponse
     {
         self::professional($request);
-        // Only while the document's own visit is open, or its admission still gives the uploader access.
-        $open = $document->visit_id !== null
-            ? Visit::query()->whereKey($document->visit_id)->whereNull('closed_at')->exists()
-            : ClinicalAccess::activeAdmission($request->user(), Patient::query()->findOrFail($document->patient_id))?->id === $document->admission_id;
-        abort_unless($document->uploaded_by_user_id === $request->user()->id && $open, 403);
+        abort_unless($document->uploaded_by_user_id === $request->user()->id && self::originOpen($request, $document), 403);
         $data = $request->validate(['reason' => ['required', 'string', 'max:255']], [], ['reason' => 'motivo']);
 
         DB::transaction(function () use ($document, $request, $data) {
@@ -186,7 +182,8 @@ class ClinicalDocumentController extends Controller
     private static function releaseAct(Request $request, ClinicalDocument $document, string $event): RedirectResponse
     {
         self::professional($request);
-        abort_unless($document->uploaded_by_user_id === $request->user()->id, 403);
+        // Released only from the author's own visit or admission while it is open; taking it back is always allowed.
+        abort_unless($document->uploaded_by_user_id === $request->user()->id && ($event === 'revoked' || self::originOpen($request, $document)), 403);
 
         DB::transaction(function () use ($document, $request, $event) {
             $locked = ClinicalDocument::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
@@ -233,6 +230,16 @@ class ClinicalDocumentController extends Controller
                 'released' => $document->withdrawn_at === null && in_array($document->id, $released, true),
                 'canRelease' => $document->withdrawn_at === null && $document->uploaded_by_user_id === $userId,
             ])->all());
+    }
+
+    /**
+     * The document's own visit is open, or its admission still gives the uploader access.
+     */
+    private static function originOpen(Request $request, ClinicalDocument $document): bool
+    {
+        return $document->visit_id !== null
+            ? Visit::query()->whereKey($document->visit_id)->whereNull('closed_at')->exists()
+            : ClinicalAccess::activeAdmission($request->user(), Patient::query()->findOrFail($document->patient_id))?->id === $document->admission_id;
     }
 
     private static function professional(Request $request): Professional

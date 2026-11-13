@@ -92,9 +92,12 @@ export function ClinicalDocuments({
                                             Liberado ao paciente no portal.
                                         </p>
                                     )}
-                                    {document.canRelease && (
-                                        <ReleaseForm document={document} />
-                                    )}
+                                    {/* Released only while attaching is possible; taking it back, always. */}
+                                    {document.canRelease &&
+                                        (attach !== undefined ||
+                                            document.released) && (
+                                            <ReleaseForm document={document} />
+                                        )}
                                     {attach !== undefined &&
                                         document.canWithdraw && (
                                             <WithdrawForm document={document} />
@@ -214,6 +217,7 @@ function ReleaseForm({ document }: { document: ClinicalDocument }) {
                         variant="outline"
                         disabled={processing}
                         className="min-h-11"
+                        aria-label={`${document.released ? 'Deixar de mostrar ao paciente' : 'Liberar ao paciente no portal'}: ${document.name}`}
                     >
                         {document.released
                             ? 'Deixar de mostrar ao paciente'
