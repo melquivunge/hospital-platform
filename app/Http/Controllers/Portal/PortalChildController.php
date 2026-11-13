@@ -27,6 +27,7 @@ class PortalChildController extends Controller
         return Inertia::render('portal/child', [
             ...PortalHomeController::shell($account),
             'child' => ['id' => $child->id, 'name' => $child->social_name ?? $child->name],
+            ...PortalRecord::content($account, $child->id),
         ]);
     }
 }

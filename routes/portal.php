@@ -3,6 +3,7 @@
 use App\Http\Controllers\Portal\PortalAuthController;
 use App\Http\Controllers\Portal\PortalChildController;
 use App\Http\Controllers\Portal\PortalHomeController;
+use App\Http\Controllers\Portal\PortalResultPdfController;
 use App\Http\Controllers\Portal\PortalSignupController;
 use App\Http\Controllers\Portal\PortalTwoFactorController;
 use Illuminate\Support\Facades\Route;
@@ -29,6 +30,7 @@ Route::prefix('portal/{portal}')->middleware('portal')->name('portal.')->group(f
 
     Route::middleware('auth:patient')->group(function () {
         Route::get('/', PortalHomeController::class)->name('home');
+        Route::get('resultados/{result}/pdf', PortalResultPdfController::class)->whereNumber('result')->middleware('throttle:30,1')->name('result.pdf');
         Route::get('filhos/{patient}', PortalChildController::class)->whereNumber('patient')->name('child');
         Route::get('seguranca', [PortalTwoFactorController::class, 'show'])->name('security');
         Route::middleware('throttle:6,1')->group(function () {
